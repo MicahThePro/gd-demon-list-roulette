@@ -218,10 +218,54 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-wrap">
-          <span className="brand-mark">DR</span>
+          <span className="brand-mark">DLR</span>
           <div>
-            <strong>Demon Roulette</strong>
-            <small>Geometry Dash challenge simulator</small>
+            <strong>
+              Made by{' '}
+              <a 
+                href="https://gdbrowser.com/u/geometricalmike" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={{ color: 'white', textDecoration: 'none' }}
+                onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
+                onMouseOut={(e) => e.target.style.textDecoration = 'none'}
+              >
+                GeometricalMike
+              </a>
+            </strong>
+            <small>
+              Dedicated to{' '}
+              <a 
+                href="https://gdbrowser.com/u/vortrox" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={{ color: 'white', textDecoration: 'none' }}
+                onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
+                onMouseOut={(e) => e.target.style.textDecoration = 'none'}
+              >
+                Vortrox
+              </a>,{' '}
+              <a 
+                href="https://gdbrowser.com/u/kingsammelot" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={{ color: 'white', textDecoration: 'none' }}
+                onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
+                onMouseOut={(e) => e.target.style.textDecoration = 'none'}
+              >
+                KingSammelot
+              </a>, and{' '}
+              <a 
+                href="https://gdbrowser.com/u/zoink" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={{ color: 'white', textDecoration: 'none' }}
+                onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
+                onMouseOut={(e) => e.target.style.textDecoration = 'none'}
+              >
+                Zoink
+              </a>.
+            </small>
           </div>
         </div>
 

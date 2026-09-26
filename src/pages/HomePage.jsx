@@ -152,9 +152,9 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
       <section className="panel hero-panel">
         <div className="hero-copy">
           <p className="eyebrow">Geometry Dash Challenge</p>
-          <h1>Demon Roulette</h1>
+          <h1>GD Demon List Roulette</h1>
           <p className="lead">
-            Start from a live demon list and climb the target from 1% upward.
+            Extreme Demon Roulette is a Geometry Dash challenge where players must beat a randomly selected level at 1%, then get 2% on a new level, and continue increasing the required percentage by 1% on a different random level each time until they reach 100%.
           </p>
         </div>
 
@@ -166,8 +166,8 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
               value={source}
               onChange={(event) => setSource(event.target.value)}
             >
-              <option value="pointercrate">Pointercrate</option>
-              <option value="aredl">AREDL</option>
+              <option value="pointercrate">Pointercrate Demon List</option>
+              <option value="aredl">All Rated Extreme Demons List</option>
             </select>
           </label>
 

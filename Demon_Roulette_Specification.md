@@ -16,8 +16,7 @@ A web application that imports a Geometry Dash demon list and runs a percentage 
 
 ## Supported Lists
 - Pointercrate Demon List
-- Shitty Demon List
-- Future custom lists
+- All Rated Extreme Demons List
 
 ## Recommended Stack
 ### Frontend
