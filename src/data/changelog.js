@@ -7,7 +7,12 @@
  * several of the changes below are grouped into the version they shipped in.
  *
  * Keep it newest first. `id` is stable and is only used as a React key.
+ *
+ * LATEST_VERSION is derived from the first entry rather than written out, so
+ * bumping the version means adding a release at the top and nothing else. The
+ * page heading and the "What's new" heading both read from it.
  */
+export const SITE_NAME = 'GD Demon List Roulette'
 export const CHANGELOG = [
   {
     id: 'v1-6',

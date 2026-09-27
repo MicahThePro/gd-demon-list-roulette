@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import HomePage from './pages/HomePage'
 import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
@@ -6,6 +6,7 @@ import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
+import { SITE_NAME, LATEST_VERSION } from './data/changelog'
 import './App.css'
 
 const SCREEN = {
@@ -86,6 +87,12 @@ function App() {
   const [saveCode, setSaveCode] = useState('')
 
   const currentStatus = useMemo(() => summarizeResult(run), [run])
+
+  // The browser tab title carries the version too, derived from the same
+  // changelog entry as the on-page heading.
+  useEffect(() => {
+    document.title = `${SITE_NAME} ${LATEST_VERSION}`
+  }, [])
 
   const saveCurrentRun = () => {
     if (!run) {

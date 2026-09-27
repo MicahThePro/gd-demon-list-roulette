@@ -5,6 +5,7 @@ import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fet
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
 import { encodeHistory, MAX_PERCENT_STEP } from '../utils/roulette'
+import { SITE_NAME, LATEST_VERSION } from '../data/changelog'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
 const IMPOSSIBLE_LEVELS_SOURCE = 'impossiblelevels'
@@ -268,7 +269,10 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
       <section className="panel hero-panel">
         <header className="hero-copy">
           <p className="eyebrow">Geometry Dash Challenge</p>
-          <h1>GD Demon List Roulette</h1>
+          <h1>
+            {SITE_NAME}
+            <span className="hero-version">{LATEST_VERSION}</span>
+          </h1>
           <p className="lead">
             Demon Roulette is a Geometry Dash challenge. You get a random level from a demon list and
             have to hit the target percentage on it. Clear it and the target goes up by your chosen step

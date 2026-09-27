@@ -40,7 +40,7 @@ export default function ChangelogDialog({ isOpen, onClose }) {
         <div className="changelog-head">
           <div>
             <p className="eyebrow">Changelog</p>
-            <h2 id="changelog-title">What's new</h2>
+            <h2 id="changelog-title">What's new in {LATEST_VERSION}</h2>
           </div>
           <button
             ref={closeRef}
@@ -71,8 +71,7 @@ export default function ChangelogDialog({ isOpen, onClose }) {
         </div>
 
         <p className="changelog-foot">
-          Latest version {LATEST_VERSION}. Everything here is stored in your browser; no
-          account and nothing is sent anywhere.
+          Everything here is stored in your browser; no account and nothing is sent anywhere.
         </p>
       </div>
     </div>

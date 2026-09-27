@@ -202,6 +202,18 @@
   letter-spacing: -0.07em;
 }
 
+/* The version sits quietly beside the title: small, dimmed and unbolded, so it
+   reads as metadata rather than as part of the name. */
+.hero-version {
+  display: inline-block;
+  margin-left: 0.5em;
+  font-size: 0.3em;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #64748b;
+  vertical-align: 0.9em;
+}
+
 .eyebrow {
   margin: 0;
   color: #f59e0b;
