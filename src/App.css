@@ -634,11 +634,21 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  /* A flex item defaults to min-width:auto, meaning it refuses to shrink below
+     its content's max-content width. The summary is a single long line of text,
+     so that minimum pushed the whole row wider than the panel and the text
+     spilled out of the screen. min-width:0 lets the row shrink and the text
+     wrap instead. */
+  min-width: 0;
 }
 
 .settings-summary {
   color: #93c5fd;
   font-size: 0.85rem;
+  min-width: 0;
+  /* Two independent guards, since the row is also a grid item: this stops the
+     text itself from ever establishing a wide min-content floor. */
+  overflow-wrap: anywhere;
 }
 
 /* The old inline settings panel, replaced by the Settings dialog. */
@@ -1620,7 +1630,10 @@
      columns stayed side by side and got crushed on narrow screens. */
   .hero-columns,
   .roulette-layout {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr) rather than a bare 1fr. A plain 1fr means minmax(auto, 1fr),
+       whose automatic minimum is the content's min-content width, so a single
+       wide row could still force the column past the viewport. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 22px;
   }
 
@@ -1708,6 +1721,14 @@
 
   .settings-row {
     gap: 10px;
+    min-width: 0;
+  }
+
+  /* Long button labels ("Hide leaderboard", "What's new") are flex items in the
+     same row, so they need the same shrink permission as the summary text.
+     Without it a wide label can still push the row past the screen. */
+  .settings-row > button {
+    min-width: 0;
   }
 
   .settings-row button {
@@ -1721,6 +1742,7 @@
   .settings-summary {
     flex: 1 0 100%;
     font-size: 0.8rem;
+    min-width: 0;
   }
 
   .lb-badge {
