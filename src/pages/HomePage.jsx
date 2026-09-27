@@ -34,6 +34,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
   const [loadCode, setLoadCode] = useState(savedRunCode || '')
   const [loadError, setLoadError] = useState('')
   const [exportMessage, setExportMessage] = useState('')
+  const [exportCode, setExportCode] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [percentStep, setPercentStep] = usePersistentPercentStep()
   const [percentStepDraft, setPercentStepDraft] = useState(() => String(percentStep))
@@ -186,17 +187,18 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
     setLoadError('')
   }
 
-  // Exports the full leaderboard and copies it. The clipboard write is async
-  // and can be rejected (an insecure origin, or no permission), so the code is
-  // also surfaced on screen rather than being lost silently.
+  // Exports the full leaderboard and copies it. The status line and the code
+  // are separate states: overloading one for both meant a successful copy
+  // replaced the code with its own message and left an empty box on screen.
   const handleExportHistory = async () => {
     const code = encodeHistory(history.entries)
     if (!code) {
+      setExportCode('')
       setExportMessage('There is nothing to copy yet.')
       return
     }
 
-    setExportMessage(code)
+    setExportCode(code)
     try {
       await navigator.clipboard?.writeText(code)
       setExportMessage('Copied. Paste it on the other device with Import leaderboard code.')
@@ -208,7 +210,10 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
   useEffect(() => {
     if (!exportMessage) return undefined
 
-    const timeoutId = window.setTimeout(() => setExportMessage(''), 15000)
+    const timeoutId = window.setTimeout(() => {
+      setExportMessage('')
+      setExportCode('')
+    }, 15000)
     return () => window.clearTimeout(timeoutId)
   }, [exportMessage])
 
@@ -373,7 +378,15 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
             {exportMessage && (
               <div className="export-box">
                 <p className="export-status">{exportMessage}</p>
-                <textarea readOnly rows="4" value={exportMessage.startsWith('DLRH1:') ? exportMessage : ''} aria-label="Exported leaderboard code" />
+                {exportCode && (
+                  <textarea
+                    readOnly
+                    rows="3"
+                    value={exportCode}
+                    aria-label="Exported leaderboard code"
+                    onFocus={(event) => event.target.select()}
+                  />
+                )}
               </div>
             )}
           </section>
