@@ -7,6 +7,11 @@ import { MAX_PERCENT_STEP } from '../utils/roulette'
  *
  * The draft is free to be empty so the field can be cleared while typing; the
  * real value only commits on blur, falling back to the minimum.
+ *
+ * There is no Cancel or Done button on purpose. Both would do exactly what
+ * Close already does, and a Cancel that silently saves the change would be
+ * actively misleading. The value commits as soon as the field loses focus, so
+ * closing the dialog by any route keeps whatever was typed.
  */
 export default function SettingsDialog({
   isOpen,
@@ -87,29 +92,6 @@ export default function SettingsDialog({
             Currently stepping up by +{percentStep}%, which means {estimatedRounds}{' '}
             {estimatedRounds === 1 ? 'level' : 'levels'} to finish a run.
           </p>
-        </div>
-
-        <div className="modal-actions">
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => {
-              onCommit()
-              onClose()
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => {
-              onCommit()
-              onClose()
-            }}
-          >
-            Done
-          </button>
         </div>
       </div>
     </div>
