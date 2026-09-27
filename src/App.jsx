@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import HomePage from './pages/HomePage'
 import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
+import { useRunHistory } from './hooks/useRunHistory'
 import { fetchAredlLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import './App.css'
@@ -53,6 +54,10 @@ const hydrateLevelForRun = async (runState, level) => {
 function App() {
   const [screen, setScreen] = useState(SCREEN.HOME)
   const [run, setRun] = usePersistentRun()
+  const history = useRunHistory()
+  // Identifies the run being played, so an ended run is recorded exactly once
+  // even though several code paths reach the results screen.
+  const trackedRunId = useRef(null)
   const [saveCode, setSaveCode] = useState('')
 
   const currentStatus = useMemo(() => summarizeResult(run), [run])
@@ -136,8 +141,7 @@ function App() {
         usedLevelIds,
         endingPercent: run.currentTarget,
       }
-      setRun(failedRun)
-      setScreen(SCREEN.RESULTS)
+      endRun(failedRun, endedAt)
       return
     }
 
@@ -154,8 +158,7 @@ function App() {
         endingPercent: 100,
         currentLevel: null,
       }
-      setRun(completedRun)
-      setScreen(SCREEN.RESULTS)
+      endRun(completedRun, endedAt)
       return
     }
 
@@ -173,6 +176,21 @@ function App() {
 
     setRun(activeRun)
   }
+
+  // Every path that ends a run routes through here, so a run is recorded once
+  // no matter whether it was cleared, failed, or given up.
+  const endRun = useCallback(
+    (endedRun, endedAt = Date.now()) => {
+      setRun(endedRun)
+      setScreen(SCREEN.RESULTS)
+
+      const key = endedRun.runId ?? `${endedRun.source ?? ''}-${endedRun.startedAt ?? endedAt}`
+      if (trackedRunId.current === key) return
+      trackedRunId.current = key
+      history.recordRun(endedRun, endedAt)
+    },
+    [setRun, history],
+  )
 
   const handleSkip = async () => {
     if (!run || !run.currentLevel) return
@@ -219,13 +237,13 @@ function App() {
       gaveUp: true,
       gaveUpAt: Date.now(),
     }
-    setRun(failedRun)
-    setScreen(SCREEN.RESULTS)
+    endRun(failedRun)
   }
 
   const handleRestart = () => {
     setRun(null)
     setSaveCode('')
+    trackedRunId.current = null
     setScreen(SCREEN.HOME)
   }
 
@@ -237,10 +255,10 @@ function App() {
           <div>
             <strong>
               Made by{' '}
-              <a 
-                href="https://gdbrowser.com/u/geometricalmike" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <a
+                href="https://gdbrowser.com/u/geometricalmike"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{ color: 'white', textDecoration: 'none' }}
                 onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
                 onMouseOut={(e) => e.target.style.textDecoration = 'none'}
@@ -250,30 +268,30 @@ function App() {
             </strong>
             <small>
               Dedicated to{' '}
-              <a 
-                href="https://gdbrowser.com/u/vortrox" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <a
+                href="https://gdbrowser.com/u/vortrox"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{ color: 'white', textDecoration: 'none' }}
                 onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
                 onMouseOut={(e) => e.target.style.textDecoration = 'none'}
               >
                 Vortrox
               </a>,{' '}
-              <a 
-                href="https://gdbrowser.com/u/kingsammelot" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <a
+                href="https://gdbrowser.com/u/kingsammelot"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{ color: 'white', textDecoration: 'none' }}
                 onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
                 onMouseOut={(e) => e.target.style.textDecoration = 'none'}
               >
                 KingSammelot
               </a>, and{' '}
-              <a 
-                href="https://gdbrowser.com/u/zoink" 
-                target="_blank" 
-                rel="noopener noreferrer" 
+              <a
+                href="https://gdbrowser.com/u/zoink"
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{ color: 'white', textDecoration: 'none' }}
                 onMouseOver={(e) => e.target.style.textDecoration = 'underline'}
                 onMouseOut={(e) => e.target.style.textDecoration = 'none'}
@@ -295,6 +313,7 @@ function App() {
       {screen === SCREEN.HOME && (
         <HomePage
           onStart={startRun}
+          history={history}
           onLoadRun={loadRunFromCode}
           onSaveRun={saveCurrentRun}
           run={run}

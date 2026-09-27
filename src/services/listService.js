@@ -26,12 +26,17 @@ const CHALLENGE_LIST_URLS = [
 // api.impossiblelevels.com sends no CORS headers either, so the same Worker
 // proxies it. Only visible levels are included, which excludes the hidden
 // legacy entries.
+// The build-time snapshot is listed first for this list specifically: the rate
+// badge (TPS or FPS) only exists there, because the site reveals the unit on
+// each level's own page and the list API does not carry it. The live Worker is
+// kept as the fallback, but it cannot supply the rate. The snapshot is still
+// fresh, since `npm run build` regenerates it before every deploy.
 const IMPOSSIBLE_LEVELS_URLS = [
-  `${LIST_WORKER_URL}/impossible-levels`,
   withBase('impossible-levels.json'),
   './impossible-levels.json',
   withBase('public/impossible-levels.json'),
   withBase('dist/impossible-levels.json'),
+  `${LIST_WORKER_URL}/impossible-levels`,
 ]
 const IMPOSSIBLE_LEVELS_NAME = 'Impossible Levels List'
 const IMPOSSIBLE_LEVELS_SIZE = 2116
@@ -552,6 +557,10 @@ const toImpossibleLevel = (item) => {
   const video = item?.video ?? getYoutubeId(item?.showcaseLink)
   const levelId = parseSnapshotLevelId(item?.levelId)
   const permalink = item?.permalink || 'https://impossiblelevels.com'
+  // Only present on the build-time snapshot: the live Worker cannot supply it,
+  // because the site shows the rate unit (TPS or FPS) solely on each level's
+  // own page, and the unit is not derivable from the rate number.
+  const rate = typeof item?.rate === 'string' && item.rate.trim() ? item.rate.trim() : null
 
   return {
     id: `impossiblelevels-${item?.id ?? rank}`,
@@ -563,6 +572,7 @@ const toImpossibleLevel = (item) => {
     thumbnail: video ? `https://i.ytimg.com/vi/${video}/mqdefault.jpg` : null,
     permalink,
     detailUrl: permalink,
+    rate,
   }
 }
 

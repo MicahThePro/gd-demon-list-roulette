@@ -82,9 +82,49 @@
 
 .hero-panel {
   display: grid;
-  grid-template-columns: 1.1fr 1fr;
+  gap: 32px;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+/* The leaderboard needs real width for its stat grid and level rows, so the
+   whole panel grows when it is open instead of squeezing it into one column. */
+.hero-panel-wide {
+  max-width: 1080px;
+}
+
+.board-section {
+  display: grid;
+  gap: 16px;
+  padding-top: 26px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.hero-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   gap: 28px;
-  align-items: center;
+  align-items: start;
+}
+
+.hero-column {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+
+.hero-side {
+  display: grid;
+  gap: 28px;
+  align-content: start;
+}
+
+.hero-copy {
+  display: grid;
+  gap: 0;
+  align-content: start;
+  padding-bottom: 28px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .hero-copy h1 {
@@ -104,10 +144,11 @@
 }
 
 .lead {
-  max-width: 40ch;
-  color: #cbd5e1;
-  font-size: 1.06rem;
-  line-height: 1.7;
+  max-width: 44ch;
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.98rem;
+  line-height: 1.75;
 }
 
 .setup-form {
@@ -143,6 +184,274 @@
 .range-row label {
   display: grid;
   gap: 8px;
+}
+
+.lb-badge {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.22);
+  color: #e0f2fe;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.lb-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.8);
+  color: #cbd5e1;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.lb-tab:hover {
+  border-color: rgba(125, 211, 252, 0.5);
+  color: #e0f2fe;
+}
+
+.lb-tab-active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #e0f2fe;
+  font-weight: 600;
+}
+
+.lb-tab-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lb-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.lb-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.lb-list {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+/* Inside the leaderboard the stat grid sizes to the available width instead of
+   forcing three columns, so nothing wraps when the board is narrow. */
+.board-section .stats-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.board-section .stat-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+}
+
+.board-section .history-thumb {
+  width: 96px;
+  height: 55px;
+}
+
+/* The thumb track has to be widened to match the wider image above. Left at
+   72px, the 96px image overflowed its column and overlapped the level name.
+   Centring both the track and the image keeps the picture lined up with the
+   text beside it instead of pinning to the top of the three-row track. */
+.board-section .history-item {
+  grid-template-columns: 96px 1fr auto;
+  align-items: center;
+}
+
+.board-section .history-thumb {
+  align-self: center;
+}
+
+.board-section .history-index {
+  align-self: center;
+}
+
+.lb-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(2, 6, 23, 0.5);
+}
+
+.lb-row:hover {
+  border-color: rgba(125, 211, 252, 0.35);
+}
+
+.lb-rank {
+  color: #64748b;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.lb-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lb-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lb-top strong {
+  color: white;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lb-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lb-status-completed {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.16);
+}
+
+.lb-status-gaveup {
+  color: #c4b5fd;
+  background: rgba(167, 139, 250, 0.18);
+}
+
+.lb-status-failed {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+.lb-sub,
+.lb-when {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lb-when {
+  color: #64748b;
+}
+
+.lb-delete {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.32);
+  background: transparent;
+  color: #fca5a5;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.lb-delete:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+
+.lb-detail-wrap {
+  display: grid;
+}
+
+.lb-detail {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.lb-detail-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.lb-back {
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.8);
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.lb-back:hover {
+  border-color: rgba(125, 211, 252, 0.5);
+}
+
+.lb-detail-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lb-detail-title strong {
+  color: white;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lb-detail-title span {
+  color: #94a3b8;
+  font-size: 0.78rem;
 }
 
 .settings-row {
@@ -263,6 +572,30 @@
   font-size: clamp(0.9rem, 1.2vw, 1.3rem);
   font-weight: 900;
   text-shadow: 0 0 18px rgba(125, 211, 252, 0.35);
+}
+
+/* The rate an Impossible Levels entry must be played at. The unit is taken
+   from the site, which labels some rates TPS and others FPS. */
+.level-rate {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  letter-spacing: 0.08em;
+  vertical-align: 0.12em;
+  text-shadow: none;
+}
+
+.level-rate-tps {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.level-rate-fps {
+  color: #a5f3fc;
+  background: rgba(34, 211, 238, 0.16);
+  border: 1px solid rgba(34, 211, 238, 0.36);
 }
 
 .level-card h3 {
@@ -602,10 +935,14 @@
 
 .history-item {
   display: grid;
-  grid-template-columns: 88px 44px minmax(0, 1fr) auto auto;
+  grid-template-columns: 72px 1fr auto;
+  grid-template-areas:
+    'thumb index result'
+    'thumb copy result'
+    'thumb time time';
   align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
+  gap: 4px 12px;
+  padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.6);
@@ -613,39 +950,62 @@
 }
 
 .history-thumb {
-  width: 88px;
-  height: 50px;
+  grid-area: thumb;
+  align-self: center;
+  width: 72px;
+  height: 41px;
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(15, 23, 42, 0.8);
 }
 
-.history-item > span:first-of-type {
-  color: #64748b;
+.history-thumb-empty {
+  display: block;
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.16), rgba(148, 163, 184, 0.04));
+}
+
+/* The index is a named class rather than `> span:first-of-type`: the thumbnail
+   placeholder is also a <span>, and that positional selector matched it
+   instead, which dropped the index into the thumb column. */
+.history-index {
+  grid-area: index;
+  align-self: center;
+  color: #94a3b8;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
-  text-align: right;
 }
 
 .history-copy {
+  grid-area: copy;
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
 .history-copy strong {
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  color: #ffffff;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .history-copy small {
   color: #93c5fd;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .history-result {
+  grid-area: result;
+  align-self: center;
+  white-space: nowrap;
   padding: 4px 10px;
   border-radius: 999px;
   font-style: normal;
@@ -686,22 +1046,103 @@
 }
 
 .history-time {
-  min-width: 58px;
+  grid-area: time;
+  min-width: 52px;
   color: #93c5fd;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
+/* ==========================================================================
+   Tablet and below
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+  /* .hero-columns was never collapsed before: the old phone rule targeted
+     .hero-panel, which is already a single-column grid, so the two hero
+     columns stayed side by side and got crushed on narrow screens. */
+  .hero-columns,
+  .roulette-layout {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+
+  /* The challenge panel pinned itself to the right and capped its width, which
+     is meaningless once the layout is one column. */
+  .challenge-panel {
+    max-width: none;
+    justify-self: stretch;
+    height: auto;
+    max-height: 70vh;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .board-section .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+
 @media (max-width: 760px) {
+  /* Room for the iOS home indicator and rounded display corners. */
+  .app-shell {
+    width: min(1200px, calc(100% - 20px));
+    padding: 14px 0 calc(40px + env(safe-area-inset-bottom));
+  }
+
   .topbar,
   .status-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
+  }
+
+  .topbar {
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+
+  .brand-wrap {
+    gap: 12px;
+  }
+
+  .brand-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+  }
+
+  .status-pill {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .panel {
+    padding: 20px 16px;
+    border-radius: 22px;
   }
 
   .hero-panel {
-    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .hero-copy {
+    padding-bottom: 20px;
+  }
+
+  /* A 4.5rem heading overflows a phone; cap it to the viewport instead. */
+  .hero-copy h1 {
+    font-size: clamp(2.1rem, 9vw, 3rem);
+    letter-spacing: -0.04em;
+  }
+
+  .lead {
+    font-size: 0.95rem;
+    line-height: 1.65;
   }
 
   .split-fields,
@@ -709,40 +1150,231 @@
     grid-template-columns: 1fr;
   }
 
-  .panel {
-    padding: 22px 18px;
+  .settings-row {
+    gap: 10px;
+  }
+
+  .settings-row button {
+    /* Comfortable tap target rather than the desktop-sized small button. */
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+  }
+
+  .settings-summary {
+    flex: 1 0 100%;
+    font-size: 0.8rem;
+  }
+
+  .lb-badge {
+    margin-left: 6px;
+  }
+
+  .leaderboard,
+  .lb-detail {
+    padding: 16px 14px;
+    border-radius: 16px;
+  }
+
+  .lb-tabs {
+    gap: 6px;
+  }
+
+  .lb-tab {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  /* 340px of scroll was cramped on a phone; let the list use the real screen. */
+  .lb-list {
+    max-height: none;
+    padding-right: 0;
+  }
+
+  .lb-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+    row-gap: 8px;
+  }
+
+  .lb-row .lb-delete {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .lb-detail-head {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .lb-back,
+  .lb-delete {
+    min-height: 44px;
   }
 
   .history-item {
-    grid-template-columns: 72px minmax(0, 1fr) auto;
+    grid-template-columns: 64px minmax(0, 1fr);
     grid-template-areas:
-      'thumb copy copy'
-      'thumb meta meta';
-    row-gap: 8px;
+      'thumb copy'
+      'thumb result'
+      'time time';
+    row-gap: 6px;
     text-align: left;
   }
 
   .history-thumb {
-    grid-area: thumb;
-    width: 72px;
-    height: 42px;
+    width: 64px;
+    height: 37px;
   }
 
-  .history-item > span:first-of-type {
+  /* Needed because .board-section .history-thumb has higher specificity than
+     the plain .history-thumb above, so the wide 96px size would otherwise win
+     and overflow the 64px mobile column. */
+  .board-section .history-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .board-section .history-thumb {
+    width: 64px;
+    height: 37px;
+  }
+
+  .history-index {
     display: none;
   }
 
-  .history-copy {
-    grid-area: copy;
-  }
-
   .history-result {
-    grid-area: meta;
     justify-self: start;
   }
 
   .history-time {
-    grid-area: meta;
-    justify-self: end;
+    margin-left: auto;
+  }
+
+  .level-card {
+    padding: 18px 16px;
+    border-radius: 18px;
+  }
+
+  .level-card h3 {
+    font-size: clamp(1.5rem, 7vw, 2rem);
+  }
+
+  .level-thumbnail {
+    border-radius: 14px;
+  }
+
+  .load-panel {
+    padding: 14px;
+  }
+
+  .action-row {
+    gap: 10px;
+  }
+
+  .action-row button,
+  .status-actions button {
+    flex: 1 1 auto;
+    min-height: 48px;
+  }
+
+  .status-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .challenge-panel {
+    max-height: none;
+  }
+
+  /* A capped height with its own scroll is awkward next to a phone keyboard,
+     so let the whole page scroll instead. */
+  .challenge-list {
+    overflow-y: visible;
+    height: auto;
+  }
+
+  .challenge-item {
+    grid-template-columns: 60px minmax(0, 1fr);
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .challenge-thumb {
+    width: 60px;
+    height: 60px;
+  }
+
+  .copy-toast,
+  .save-toast-inline {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-shell {
+    width: calc(100% - 16px);
+  }
+
+  .panel {
+    padding: 16px 13px;
+  }
+
+  /* 16px minimum: iOS Safari zooms the page in when a focused field's font is
+     smaller than this, which leaves the viewport stuck at a magnified scale. */
+  .setup-form input,
+  .setup-form select,
+  .load-panel textarea,
+  .result-form input {
+    font-size: 16px;
+    padding: 12px 14px;
+  }
+
+  .range-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row,
+  .action-row,
+  .lb-tabs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-row button,
+  .action-row button,
+  .lb-tab {
+    width: 100%;
+  }
+
+  .board-section .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-card {
+    padding: 14px 12px;
+  }
+
+  .stat-card strong {
+    font-size: 1.3rem;
+  }
+
+  .lb-top {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .lb-delete {
+    width: 100%;
+  }
+
+  .lb-row .lb-delete {
+    grid-column: 1 / -1;
+  }
+
+  .history-copy strong {
+    font-size: 0.92rem;
   }
 }

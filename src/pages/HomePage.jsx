@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import Leaderboard from '../components/Leaderboard'
 import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds } from '../services/listService'
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
+import { usePersistentListSource } from '../hooks/usePersistentListSource'
 import { MAX_PERCENT_STEP } from '../utils/roulette'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
@@ -22,9 +24,10 @@ const getBoundsForSource = (sourceName) => {
   return fetchAredlListBounds()
 }
 
-export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
+export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) {
   const [isLoading, setIsLoading] = useState(false)
-  const [source, setSource] = useState('pointercrate')
+  const [isBoardOpen, setIsBoardOpen] = useState(false)
+  const [source, setSource] = usePersistentListSource()
   const [startRange, setStartRange] = useState('')
   const [endRange, setEndRange] = useState('')
   const [rangeMax, setRangeMax] = useState(DEFAULT_MAX)
@@ -184,8 +187,8 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
 
   return (
     <main className="page-shell home-page">
-      <section className="panel hero-panel">
-        <div className="hero-copy">
+      <section className={isBoardOpen ? 'panel hero-panel hero-panel-wide' : 'panel hero-panel'}>
+        <header className="hero-copy">
           <p className="eyebrow">Geometry Dash Challenge</p>
           <h1>GD Demon List Roulette</h1>
           <p className="lead">
@@ -195,9 +198,11 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
             steps, the run ends the moment you clear a 100% level. Pick a bigger step in settings to
             make it harder, or limit it to a rank range for an even tougher draw.
           </p>
-        </div>
+        </header>
 
-        <form className="setup-form" onSubmit={handleSubmit}>
+        <div className="hero-columns">
+          <div className="hero-column hero-column-main">
+            <form className="setup-form" onSubmit={handleSubmit}>
           <div className="settings-row">
             <button
               type="button"
@@ -207,8 +212,20 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
             >
               {isSettingsOpen ? 'Hide settings' : 'Settings'}
             </button>
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={() => setIsBoardOpen((open) => !open)}
+              aria-expanded={isBoardOpen}
+            >
+              {isBoardOpen ? 'Hide leaderboard' : 'Leaderboard'}
+              {history.entries.length > 0 && (
+                <span className="lb-badge">{history.entries.length}</span>
+              )}
+            </button>
             <span className="settings-summary">
               Step: +{percentStep}% ({estimatedRounds} levels to finish)
+              {history.entries.length > 0 && ` · Best ${history.bestScore}%`}
             </span>
           </div>
 
@@ -274,11 +291,17 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
           <button type="submit" className="primary-button" disabled={isLoading}>
             {isLoading ? `Loading ${SOURCE_LABELS[source] ?? 'list'}...` : 'Start roulette'}
           </button>
-        </form>
+            </form>
+          </div>
 
-        <div className="load-panel">
-          <label>
-            Saved run code
+          <div className="hero-column hero-column-side">
+            <div className="load-panel">
+          <div className="load-panel-head">
+            <span className="eyebrow">Continue a run</span>
+            <h3>Saved run code</h3>
+          </div>
+          <label className="load-field">
+            <span className="visually-hidden">Saved run code</span>
             <textarea
               rows="3"
               value={loadCode}
@@ -307,7 +330,19 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
             )}
           </div>
           {loadError && <div className="validation-message">{loadError}</div>}
+            </div>
+          </div>
         </div>
+
+        {isBoardOpen && (
+          <section className="board-section">
+            <Leaderboard
+              entries={history.entries}
+              onDelete={history.deleteEntry}
+              onClear={history.clearHistory}
+            />
+          </section>
+        )}
       </section>
     </main>
   )

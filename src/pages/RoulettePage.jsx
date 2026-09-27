@@ -48,16 +48,12 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
     return () => window.clearInterval(intervalId)
   }, [run.currentLevel?.id, run.currentLevelStartedAt])
 
-  if (!run || !run.currentLevel) {
-    return null
-  }
-
-  const challengeEntries = run.rounds.map((round, index) => ({
+  const challengeEntries = (run?.rounds ?? []).map((round, index) => ({
     id: `${round.level?.id ?? 'round'}-${index}`,
     name: round.level?.name ?? 'Unknown level',
     creator: round.level?.creator ?? 'Unknown creator',
     thumbnail: round.level?.thumbnail ?? null,
-    target: round.targetPercent ?? run.currentTarget,
+    target: round.targetPercent ?? run?.currentTarget,
     result: round.result,
     achieved: round.achievedPercent,
     elapsedLabel: round.elapsedLabel ?? (Number.isFinite(round.elapsedMs) ? formatDurationMs(round.elapsedMs) : null),
@@ -70,6 +66,10 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
     if (!challengeListRef.current) return
     challengeListRef.current.scrollTop = challengeListRef.current.scrollHeight
   }, [challengeEntries.length])
+
+  if (!run || !run.currentLevel) {
+    return null
+  }
 
   const handleInputChange = (value) => {
     const sanitized = value.replace(/%/g, '')
@@ -146,7 +146,19 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
               </a>
             )}
 
-            <p className="level-meta">#{run.currentLevel.position} on the list</p>
+            <p className="level-meta">
+              #{run.currentLevel.position} on the list
+              {run.currentLevel.rate && (
+                <>
+                  {' · '}
+                  <span
+                    className={`level-rate level-rate-${run.currentLevel.rate.endsWith('TPS') ? 'tps' : 'fps'}`}
+                  >
+                    {run.currentLevel.rate}
+                  </span>
+                </>
+              )}
+            </p>
             <h3>{run.currentLevel.name}</h3>
             <p>{run.currentLevel.creator ? `By ${run.currentLevel.creator}` : 'Community pick'}</p>
             <div className="timer-badge">Time: {formatDurationMs(displayElapsed)}</div>

@@ -88,6 +88,7 @@ export const createRun = ({ startingPercent, levels, source, allowDuplicates, pe
   const startedAt = Date.now()
 
   return {
+    runId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     currentTarget: seedStart,
     startingPercent: seedStart,
     percentStep: safeStep,

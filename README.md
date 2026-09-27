@@ -26,6 +26,7 @@ Simple to explain, brutal to actually do.
 - **Live data** — counts and levels are read on demand, never hardcoded
 - **Real level IDs, names, creators and thumbnails** across every list
 - **Save codes** — encode a run to a string and pick it up on another device
+- **Leaderboard** — your best run and full history, stored in a cookie, with per-run level breakdowns
 - **Resumable** — your run survives a refresh
 - **Per-level timer**, with average time per level on the results screen
 - **No accounts, no backend, no tracking**
@@ -52,6 +53,17 @@ Then open the local URL Vite prints, usually `http://localhost:5173`.
 | `npm run preview` | Serve the production build locally |
 | `npm run update:challenge-list` | Re-scrape the Challenge List snapshot only |
 | `npm run update:impossible-levels` | Re-fetch the Impossible Levels snapshot only |
+
+## Leaderboard storage
+
+Finished runs are kept in the `demon-roulette-history` cookie — no account, no
+server, nothing leaves the browser. Click any run to see the levels you played,
+their target and achieved percentages, and per-level times, or delete it.
+
+Cookies cap out around 4 KB, so the history is compacted automatically: rounds
+are stored as short tuples rather than objects, and the oldest runs keep fewer
+levels once you're deep into the list. A caption shows how many of the 20
+available slots are in use.
 
 ## How the list data works
 

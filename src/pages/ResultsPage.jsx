@@ -126,7 +126,7 @@ export default function ResultsPage({ run, onRestart, onSaveRun, savedRunCode })
                       loading="lazy"
                     />
                   ) : null}
-                  <span>#{index + 1}</span>
+                  <span className="history-index">#{index + 1}</span>
                   <span className="history-copy">
                     <strong>{round.level.name}</strong>
                     <small>{detail}</small>
