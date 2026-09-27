@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import Leaderboard from '../components/Leaderboard'
 import ChangelogDialog from '../components/ChangelogDialog'
+import SettingsDialog from '../components/SettingsDialog'
 import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds } from '../services/listService'
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
-import { encodeHistory, MAX_PERCENT_STEP } from '../utils/roulette'
+import { encodeHistory } from '../utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from '../data/changelog'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
@@ -289,10 +290,10 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
             <button
               type="button"
               className="secondary-button small-button"
-              onClick={() => setIsSettingsOpen((open) => !open)}
+              onClick={() => setIsSettingsOpen(true)}
               aria-expanded={isSettingsOpen}
             >
-              {isSettingsOpen ? 'Hide settings' : 'Settings'}
+              Settings
             </button>
             <button
               type="button"
@@ -317,24 +318,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
               {history.entries.length > 0 && ` · Best ${history.bestScore}%`}
             </span>
           </div>
-
-          {isSettingsOpen && (
-            <div className="settings-panel">
-              <label>
-                Percentage increment
-                <input
-                  type="number"
-                  min="1"
-                  max={MAX_PERCENT_STEP}
-                  step="1"
-                  value={percentStepDraft}
-                  onChange={(event) => handlePercentStepChange(event.target.value)}
-                  onBlur={commitPercentStep}
-                  placeholder="1"
-                />
-              </label>
-            </div>
-          )}
 
           <label>
             List source
@@ -425,6 +408,15 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
 
       </section>
       )}
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        percentStep={percentStep}
+        percentStepDraft={percentStepDraft}
+        onDraftChange={handlePercentStepChange}
+        onCommit={commitPercentStep}
+        estimatedRounds={estimatedRounds}
+      />
       <ChangelogDialog
         isOpen={isChangelogOpen}
         onClose={() => setIsChangelogOpen(false)}
