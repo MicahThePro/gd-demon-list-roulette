@@ -230,9 +230,11 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
 
       {activeTab.items.length === 0 ? (
         <p className="lb-empty">
-          {tab === 'cleared'
-            ? 'No cleared runs yet. Hit a 100% level to make this list.'
-            : 'No runs given up yet.'}
+          {entries.length === 0
+            ? 'No runs yet. Hit a 100% level to make this list, or import a leaderboard code from another device.'
+            : tab === 'cleared'
+              ? 'No cleared runs yet. Hit a 100% level to make this list.'
+              : 'No runs given up yet.'}
         </p>
       ) : (
         <div className="lb-list">
@@ -273,19 +275,24 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
         </p>
       )}
 
-      {entries.length > 0 && (
-        <div className="action-row">
+      {/* Import stays available with an empty history, since restoring a
+          backup onto a fresh device is exactly when it is needed. Export and
+          clear are pointless with nothing to export or clear. */}
+      <div className="action-row">
+        {entries.length > 0 && (
           <button type="button" className="secondary-button" onClick={onExport}>
             Copy leaderboard code
           </button>
-          <button type="button" className="secondary-button" onClick={() => setIsImportOpen(true)}>
-            Import leaderboard code
-          </button>
+        )}
+        <button type="button" className="secondary-button" onClick={() => setIsImportOpen(true)}>
+          Import leaderboard code
+        </button>
+        {entries.length > 0 && (
           <button type="button" className="secondary-button" onClick={onClear}>
             Clear all runs
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {isImportOpen && (
         <div
