@@ -219,7 +219,51 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
 
   return (
     <main className="page-shell home-page">
-      <section className={isBoardOpen ? 'panel hero-panel hero-panel-wide' : 'panel hero-panel'}>
+      {/* The leaderboard replaces the start form rather than overlaying it.
+          A fixed overlay measured correctly in the DOM but did not reliably
+          paint above the page, and a full-page view is simpler and matches the
+          request for it to fill the screen. */}
+      {isBoardOpen ? (
+        <section className="panel board-page">
+          <header className="board-page-bar">
+            <div>
+              <p className="eyebrow">Your runs</p>
+              <h2>Leaderboard</h2>
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setIsBoardOpen(false)}
+            >
+              Back
+            </button>
+          </header>
+
+          <Leaderboard
+            entries={history.entries}
+            onDelete={history.deleteEntry}
+            onClear={history.clearHistory}
+            onExport={handleExportHistory}
+            onImport={history.importEntries}
+          />
+
+          {exportMessage && (
+            <div className="export-box">
+              <p className="export-status">{exportMessage}</p>
+              {exportCode && (
+                <textarea
+                  readOnly
+                  rows="3"
+                  value={exportCode}
+                  aria-label="Exported leaderboard code"
+                  onFocus={(event) => event.target.select()}
+                />
+              )}
+            </div>
+          )}
+        </section>
+      ) : (
+      <section className="panel hero-panel">
         <header className="hero-copy">
           <p className="eyebrow">Geometry Dash Challenge</p>
           <h1>GD Demon List Roulette</h1>
@@ -366,32 +410,8 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
           </div>
         </div>
 
-        {isBoardOpen && (
-          <section className="board-section">
-            <Leaderboard
-              entries={history.entries}
-              onDelete={history.deleteEntry}
-              onClear={history.clearHistory}
-              onExport={handleExportHistory}
-              onImport={history.importEntries}
-            />
-            {exportMessage && (
-              <div className="export-box">
-                <p className="export-status">{exportMessage}</p>
-                {exportCode && (
-                  <textarea
-                    readOnly
-                    rows="3"
-                    value={exportCode}
-                    aria-label="Exported leaderboard code"
-                    onFocus={(event) => event.target.select()}
-                  />
-                )}
-              </div>
-            )}
-          </section>
-        )}
       </section>
+      )}
     </main>
   )
 }

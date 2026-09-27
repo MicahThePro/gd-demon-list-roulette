@@ -16,6 +16,9 @@
   box-shadow: 0 12px 35px rgba(15, 23, 42, 0.2);
   border-radius: 18px;
   backdrop-filter: blur(12px);
+  /* The app-shell is a flex column, so the topbar would otherwise stretch to
+     fill leftover height along with the page. */
+  flex: 0 0 auto;
 }
 
 .brand-wrap {
@@ -80,6 +83,70 @@
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
 }
 
+/* The home page panel fills the window height on desktop, so switching between
+   Settings, Leaderboard and the start form does not visibly resize the page.
+   Deliberately does NOT set display, because the panel is a grid and forcing it
+   to flex would break the hero layout. .page-shell already stretches its items;
+   this only widens the breakpoint at which that applies. */
+/* Desktop only. height: 100vh with overflow hidden is what pins the app to
+   the window so the page never scrolls. It is scoped here because on a phone
+   the page is meant to scroll normally and this would cut content off. */
+@media (min-width: 1025px) {
+  .app-shell {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* The topbar and the page both sit in that flex column, so the page has to
+     be told to take the leftover height. flex-basis 0 matters: with the default
+     auto basis it is sized by its content, which grows the window instead. */
+  .page-shell {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  /* The panel is a flex item here, so it needs to be told to stretch. Without
+     align-self it would shrink to its content and the page would sit in a band
+     partway down the window instead of filling it. */
+  .page-shell > .panel {
+    align-self: stretch;
+    min-height: 0;
+  }
+}
+
+/* The leaderboard takes over the page instead of being squeezed into whatever
+   space is left under the hero. Cramming it in did not work: the heading, intro
+   and form together already fill most of a laptop window, so the board was
+   squashed to a few dozen pixels and clipped, and the page gained a scrollbar
+   at the same time. */
+.board-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 18px;
+  max-width: 1080px;
+  min-height: 0;
+}
+
+.board-page-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.board-page-bar h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(1.4rem, 2.4vw, 2rem);
+}
+
+.board-page .export-box {
+  flex: 0 0 auto;
+}
+
 .hero-panel {
   display: grid;
   gap: 32px;
@@ -95,9 +162,10 @@
 
 .board-section {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 16px;
-  padding-top: 26px;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  height: 100%;
+  min-height: 0;
 }
 
 .hero-columns {
@@ -151,6 +219,16 @@
   line-height: 1.75;
 }
 
+/* The home page panel fills the window on desktop, so the intro text has to fit
+   the height rather than push the page into a scroll. Letting it use the full
+   panel width instead of stopping at 44ch cuts it from about eight lines to
+   three, which is the height budget the panel needs. */
+@media (min-width: 1025px) {
+  .home-page .lead {
+    max-width: 78ch;
+  }
+}
+
 .setup-form {
   display: grid;
   gap: 18px;
@@ -198,7 +276,9 @@
 
 .leaderboard {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: 16px;
+  min-height: 0;
   padding: 22px;
   border-radius: 20px;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -259,10 +339,12 @@
 
 .lb-list {
   display: grid;
+  align-content: start;
   gap: 8px;
-  max-height: 340px;
+  min-height: 0;
   padding-right: 4px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Inside the leaderboard the stat grid sizes to the available width instead of
@@ -407,7 +489,9 @@
 
 .lb-detail {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 18px;
+  min-height: 0;
   padding: 22px;
   border-radius: 20px;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -1089,7 +1173,11 @@
 
 .history-list {
   display: grid;
+  align-content: start;
   gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .history-item {
@@ -1347,10 +1435,12 @@
     padding: 10px 12px;
   }
 
-  /* 340px of scroll was cramped on a phone; let the list use the real screen. */
-  .lb-list {
-    max-height: none;
-    padding-right: 0;
+  /* On a phone the page scrolls normally, so the list should not become a
+     nested scroll area. It is left to grow with the page instead. */
+  .lb-list,
+  .history-list {
+    min-height: auto;
+    overflow-y: visible;
   }
 
   .lb-row {
