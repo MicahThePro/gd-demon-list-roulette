@@ -135,8 +135,21 @@ const RunDetail = ({ entry, onClose, onDelete }) => {
   )
 }
 
+/* Succeeded runs have a single natural order (the levels you cleared), so they
+   get no filters. Gave-up runs have several comparable numbers, so that tab can
+   be sorted. */
+const FILTERS = {
+  gaveup: [
+    { key: 'score', label: 'Highest %', compare: (a, b) => b.score - a.score },
+    { key: 'levels', label: 'Most levels', compare: (a, b) => b.roundsPlayed - a.roundsPlayed },
+    { key: 'passed', label: 'Most passed', compare: (a, b) => b.passed - a.passed },
+    { key: 'newest', label: 'Newest', compare: (a, b) => b.at - a.at },
+  ],
+}
+
 export default function Leaderboard({ entries, onDelete, onClear, onExport, onImport }) {
   const [tab, setTab] = useState('cleared')
+  const [filter, setFilter] = useState(FILTERS.gaveup[0].key)
   const [openId, setOpenId] = useState(null)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [importCode, setImportCode] = useState('')
@@ -200,6 +213,14 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
   )
 
   const activeTab = tabs.find((t) => t.key === tab) ?? tabs[0]
+  const activeFilters = FILTERS[activeTab.key] ?? []
+  const activeFilter =
+    activeFilters.find((f) => f.key === filter) ?? activeFilters[0] ?? null
+  // Sorting a device-local list of runs is cheap, so it just happens per render
+  // instead of through a memo that would depend on a fresh object each time.
+  const visibleItems = activeFilter
+    ? [...activeTab.items].sort(activeFilter.compare)
+    : activeTab.items
   const openEntry = openId ? entries.find((entry) => entry.id === openId) : null
 
   if (openEntry) {
@@ -228,6 +249,22 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
         ))}
       </div>
 
+      {activeFilters.length > 0 && activeTab.items.length > 0 && (
+        <div className="lb-filters" role="group" aria-label="Sort runs">
+          {activeFilters.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              className={f.key === activeFilter?.key ? 'lb-filter lb-filter-active' : 'lb-filter'}
+              aria-pressed={f.key === activeFilter?.key}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {activeTab.items.length === 0 ? (
         <p className="lb-empty">
           {entries.length === 0
@@ -238,7 +275,7 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
         </p>
       ) : (
         <div className="lb-list">
-          {activeTab.items.map((entry, index) => (
+          {visibleItems.map((entry, index) => (
             <div key={entry.id} className="lb-row">
               <span className="lb-rank">{index + 1}</span>
               <button type="button" className="lb-main" onClick={() => setOpenId(entry.id)}>
