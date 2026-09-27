@@ -60,9 +60,24 @@ const fromBase64Url = (value) => {
   return decodeURIComponent(escape(atob(padded)))
 }
 
+// Prefixed and versioned like the leaderboard code, for the same reason: a bare
+// base64 blob can be re-encoded by hand into any run anyone likes, and a code
+// that carries no type marker cannot tell a run save from a history export. The
+// "1" is the format version, so a future change can be detected rather than
+// parsed as garbage.
+const RUN_PREFIX = 'DLRS1:'
+const KNOWN_RUN_PREFIXES = [RUN_PREFIX]
+
+/**
+ * Encodes the in-progress run into a portable string.
+ *
+ * The "1" in the prefix is a format version, not an integrity guarantee. Codes
+ * are share codes, not proof of play: anyone can hand-edit the payload before it
+ * is re-encoded, so loading a code means trusting whoever shared it.
+ */
 export const encodeRunState = (run) => {
   if (!run) return ''
-  return toBase64Url(JSON.stringify(run))
+  return RUN_PREFIX + toBase64Url(JSON.stringify({ v: 1, run }))
 }
 
 export const decodeRunState = (encoded) => {
@@ -70,12 +85,19 @@ export const decodeRunState = (encoded) => {
     return null
   }
 
+  // Codes shared before the prefix existed are still accepted, since people have
+  // those in their clipboard history, but the app never produces one any more.
+  const prefix = KNOWN_RUN_PREFIXES.find((candidate) => encoded.startsWith(candidate))
+  const payload = prefix ? encoded.slice(prefix.length) : encoded.trim()
+  const isLegacy = !prefix
+
   try {
-    const parsed = JSON.parse(fromBase64Url(encoded))
-    if (!parsed || typeof parsed !== 'object') {
+    const parsed = JSON.parse(fromBase64Url(payload))
+    const run = isLegacy ? parsed : parsed?.run
+    if (!run || typeof run !== 'object' || !Number.isFinite(Number(run.currentTarget))) {
       return null
     }
-    return parsed
+    return run
   } catch {
     return null
   }
