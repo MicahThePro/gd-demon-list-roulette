@@ -12,7 +12,7 @@
  * bumping the version means adding a release at the top and nothing else. The
  * page heading and the "What's new" heading both read from it.
  */
-export const SITE_NAME = 'GD Demon List Roulette'
+export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
     id: 'v1-6',

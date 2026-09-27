@@ -1,10 +1,10 @@
 <div align="center">
 
-# GD Demon List Roulette
+# GD List Roulette
 
-**Extreme Demon Roulette, rebuilt for the web.**
+**Extreme Demon Roulette, rebuilt.**
 
-[**Play it live**](https://micahthepro.github.io/gd-demon-list-roulette/) · [Report an issue](https://github.com/MicahThePro/gd-demon-list-roulette/issues)
+[**Play it live**](https://micahthepro.github.io/gd-list-roulette/) · [Report an issue](https://github.com/MicahThePro/gd-list-roulette/issues)
 
 </div>
 
@@ -12,7 +12,7 @@
 
 ## The challenge
 
-You get a random level from a demon list and have to hit the target percentage on it. Clear it, and the target goes up on a **new** random level. Miss it, and the run is over.
+You get a random level from a chosen list and have to hit the target percentage on it. Clear it, and the target goes up on a **new** random level. Miss it, and the run is over.
 
 At the default step that's 1%, 2%, 3% … all the way to 100% — 100 levels, one streak, no second chances. Clear a 100% level and you win.
 
@@ -37,8 +37,8 @@ Simple to explain, brutal to actually do.
 ## Getting started
 
 ```bash
-git clone https://github.com/MicahThePro/gd-demon-list-roulette.git
-cd gd-demon-list-roulette
+git clone https://github.com/MicahThePro/gd-list-roulette.git
+cd gd-list-roulette
 npm install
 npm run dev
 ```

@@ -275,7 +275,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
             <span className="hero-version">{LATEST_VERSION}</span>
           </h1>
           <p className="lead">
-            Demon Roulette is a Geometry Dash challenge. You get a random level from a demon list and
+            GD List Roulette is a Geometry Dash challenge. You get a random level from a chosen list and
             have to hit the target percentage on it. Clear it and the target goes up by your chosen step
             on a brand new random level. Miss it and the run is over. Starting at 1% and climbing in
             steps, the run ends the moment you clear a 100% level. Pick a bigger step in settings to
