@@ -15,6 +15,19 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v1-7',
+    version: 'v1.7',
+    title: 'A leaderboard you can read at a glance',
+    summary: 'Sort the gave-up tab, full timestamps on every run, and a save code that behaves like a pause.',
+    changes: [
+      'The Gave up tab now has sort buttons: Highest %, Most levels and Newest, with the ranking following whichever one you pick.',
+      'The Succeeded tab stays as a plain list of the levels you cleared, with nothing to sort by.',
+      'Runs now show the date as well as the time, so you can tell when a run happened rather than only what hour.',
+      'Save codes are now tagged DLRS1: so they can never be confused with a leaderboard code, and older untagged codes still load.',
+      'Fixed the level timer counting time you were away. Saving and loading a run, or closing the tab and coming back, now picks up exactly where you left off instead of counting the whole gap as play time.',
+    ],
+  },
+  {
     id: 'v1-6',
     version: 'v1.6',
     title: 'A leaderboard that fits the screen',
