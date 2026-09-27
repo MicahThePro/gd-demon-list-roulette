@@ -1,7 +1,7 @@
 {
   "source": "challengelist",
   "sourceUrl": "https://challengelist.gd/challenges/",
-  "fetchedAt": "2026-09-27T05:03:52.032Z",
+  "fetchedAt": "2026-09-27T17:13:28.515Z",
   "count": 100,
   "levels": [
     {
@@ -559,150 +559,150 @@
     },
     {
       "id": 80,
+      "name": "Soulwind",
+      "creator": "Quberry",
+      "levelId": 86471614,
+      "video": "OfVkAKJuecQ"
+    },
+    {
+      "id": 81,
       "name": "Sadism",
       "creator": "Irisu",
       "levelId": 64919670,
       "video": "ZBLI8NRd070"
     },
     {
-      "id": 81,
+      "id": 82,
       "name": "Last Prism",
       "creator": "scorpion",
       "levelId": 107978711,
       "video": "JhE_2Z_nQd4"
     },
     {
-      "id": 82,
+      "id": 83,
       "name": "Burnout",
       "creator": "shdrr",
       "levelId": 114603016,
       "video": "5n6_BcDGrEs"
     },
     {
-      "id": 83,
+      "id": 84,
       "name": "JENOVA",
       "creator": "anixlol",
       "levelId": 81932491,
       "video": "Vh56Hd-0mXc"
     },
     {
-      "id": 84,
+      "id": 85,
       "name": "Doodkey to Zhirdow",
       "creator": "1goOse",
       "levelId": 111095215,
       "video": "E8g_D5gQU-c"
     },
     {
-      "id": 85,
+      "id": 86,
       "name": "ash",
       "creator": "kwezy",
       "levelId": 123840253,
       "video": "KKlQ7_Vrd84"
     },
     {
-      "id": 86,
+      "id": 87,
       "name": "Sunken",
       "creator": "Quad",
       "levelId": 128264871,
       "video": "wArkns8dnXA"
     },
     {
-      "id": 87,
+      "id": 88,
       "name": "Viridescent",
       "creator": "parker",
       "levelId": 73227169,
       "video": "CebaHg4zTF4"
     },
     {
-      "id": 88,
+      "id": 89,
       "name": "Wax Wings",
       "creator": "ChatGPTGaming",
       "levelId": 137061637,
       "video": "5pNOZePR1_0"
     },
     {
-      "id": 89,
+      "id": 90,
       "name": "Kokomo",
       "creator": "HaydenDom",
       "levelId": 95682001,
       "video": "fS3bVR6JQVM"
     },
     {
-      "id": 90,
+      "id": 91,
       "name": "Chains Binding",
       "creator": "NucDev",
       "levelId": 118709556,
       "video": "h6HVNYbdeyU"
     },
     {
-      "id": 91,
+      "id": 92,
       "name": "Kunzite",
       "creator": "Fluff467",
       "levelId": 134254070,
       "video": "RG86Y0z-MR8"
     },
     {
-      "id": 92,
+      "id": 93,
       "name": "Taste The Sun",
       "creator": "Polyqueseraine",
       "levelId": 138589504,
       "video": "9tRxLTitXbs"
     },
     {
-      "id": 93,
+      "id": 94,
       "name": "Flutterwonder",
       "creator": "DaG",
       "levelId": 65496433,
       "video": "7-JVtPTmPsE"
     },
     {
-      "id": 94,
+      "id": 95,
       "name": "Delusion",
       "creator": "xEl3cTr0",
       "levelId": 65348932,
       "video": "oiswnAWYQtI"
     },
     {
-      "id": 95,
+      "id": 96,
       "name": "habit",
       "creator": "seels55",
       "levelId": 91790026,
       "video": "jc46foYD_kM"
     },
     {
-      "id": 96,
+      "id": 97,
       "name": "The Escape",
       "creator": "bailablesolid4",
       "levelId": 124143533,
       "video": "baZRkjiDuW0"
     },
     {
-      "id": 97,
+      "id": 98,
       "name": "yossarian challenge",
       "creator": "Seebi",
       "levelId": 95209282,
       "video": "idjONjl8KtQ"
     },
     {
-      "id": 98,
+      "id": 99,
       "name": "2hreddies",
       "creator": "inf7",
       "levelId": 115214812,
       "video": "KlHL9eWWcc8"
     },
     {
-      "id": 99,
+      "id": 100,
       "name": "soon",
       "creator": "NucDev",
       "levelId": 132511666,
       "video": "WXrbpmguNNU"
-    },
-    {
-      "id": 100,
-      "name": "Envenomed",
-      "creator": "xEl3cTr0",
-      "levelId": 101993302,
-      "video": "R5c3AOcxgLw"
     }
   ]
 }

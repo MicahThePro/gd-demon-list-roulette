@@ -2,7 +2,7 @@
   "source": "impossiblelevels",
   "sourceUrl": "https://api.impossiblelevels.com/api/levels",
   "siteUrl": "https://impossiblelevels.com",
-  "fetchedAt": "2026-09-27T05:03:52.720Z",
+  "fetchedAt": "2026-09-27T17:13:29.266Z",
   "count": 2116,
   "hiddenExcluded": 205,
   "levels": [
@@ -511,18 +511,9 @@
       "permalink": "https://impossiblelevels.com/level/2799"
     },
     {
-      "id": 3142,
-      "levelId": 145068038,
-      "rank": 57,
-      "name": "Ballistic Machine",
-      "creator": "Mir1x",
-      "video": "42_pIVKH0hA",
-      "permalink": "https://impossiblelevels.com/level/3142"
-    },
-    {
       "id": 2714,
       "levelId": 130065696,
-      "rank": 58,
+      "rank": 57,
       "name": "Mystic Chaoz",
       "creator": "CryoSpark",
       "video": "e9EH2Rwvvjo",
@@ -531,7 +522,7 @@
     {
       "id": 23,
       "levelId": 119680110,
-      "rank": 59,
+      "rank": 58,
       "name": "MINUStheory",
       "creator": "043",
       "video": "MS3BcS79V9Q",
@@ -540,7 +531,7 @@
     {
       "id": 27,
       "levelId": 17777889,
-      "rank": 60,
+      "rank": 59,
       "name": "Six Paths of Pain",
       "creator": "GionniBlood",
       "video": "VD7iiE9diqs",
@@ -549,7 +540,7 @@
     {
       "id": 1401,
       "levelId": 122949631,
-      "rank": 61,
+      "rank": 60,
       "name": "Ku259Half-Life",
       "creator": "043",
       "video": "4VgtQ-BO_Y4",
@@ -558,7 +549,7 @@
     {
       "id": 3338,
       "levelId": 145532208,
-      "rank": 62,
+      "rank": 61,
       "name": "Katoraji",
       "creator": "iIzerogmdIi",
       "video": "62H0focAm8g",
@@ -567,7 +558,7 @@
     {
       "id": 34,
       "levelId": 90859590,
-      "rank": 63,
+      "rank": 62,
       "name": "The Squall",
       "creator": "Pieguy57",
       "video": "fbx4vYN13dI",
@@ -576,11 +567,20 @@
     {
       "id": 1842,
       "levelId": 140475229,
-      "rank": 64,
+      "rank": 63,
       "name": "Nivel de Silencio",
       "creator": "shownmaster",
       "video": "SmZ06XvicHo",
       "permalink": "https://impossiblelevels.com/level/1842"
+    },
+    {
+      "id": 3142,
+      "levelId": 145068038,
+      "rank": 64,
+      "name": "Ballistic Machine",
+      "creator": "Mir1x",
+      "video": "42_pIVKH0hA",
+      "permalink": "https://impossiblelevels.com/level/3142"
     },
     {
       "id": 2850,
@@ -18556,9 +18556,18 @@
       "permalink": "https://impossiblelevels.com/level/1870"
     },
     {
+      "id": 3097,
+      "levelId": 78709,
+      "rank": 2062,
+      "name": "fast as you can",
+      "creator": "Player (user ID 27223)",
+      "video": "HTUnYy_fmdw",
+      "permalink": "https://impossiblelevels.com/level/3097"
+    },
+    {
       "id": 2934,
       "levelId": 123593082,
-      "rank": 2062,
+      "rank": 2063,
       "name": "Cathedral",
       "creator": "Compendium",
       "video": "wng37gLnbXM",
@@ -18567,7 +18576,7 @@
     {
       "id": 3139,
       "levelId": 127359,
-      "rank": 2063,
+      "rank": 2064,
       "name": "Amazing Gravity",
       "creator": "James",
       "video": "QrhpWT2i6G0",
@@ -18576,7 +18585,7 @@
     {
       "id": 1255,
       "levelId": 124090,
-      "rank": 2064,
+      "rank": 2065,
       "name": "demons 123",
       "creator": "bbddee (User ID 94337)",
       "video": "YGKQ12F9gxk",
@@ -18585,7 +18594,7 @@
     {
       "id": 1268,
       "levelId": 236519,
-      "rank": 2065,
+      "rank": 2066,
       "name": "ice demon world",
       "creator": "Player (User ID 53282)",
       "video": "il5W4SOOKkA",
@@ -18594,7 +18603,7 @@
     {
       "id": 3362,
       "levelId": 103412,
-      "rank": 2066,
+      "rank": 2067,
       "name": "demon on track",
       "creator": "number",
       "video": "-NoagExKj34",
@@ -18603,7 +18612,7 @@
     {
       "id": 1293,
       "levelId": 120432,
-      "rank": 2067,
+      "rank": 2068,
       "name": "Bicycle",
       "creator": "Back",
       "video": "h-B-obfRtIw",
@@ -18612,7 +18621,7 @@
     {
       "id": 1295,
       "levelId": 83284,
-      "rank": 2068,
+      "rank": 2069,
       "name": "demon fly",
       "creator": "superhexagon (User ID 37573)",
       "video": "k9eVHQXtRXs",
@@ -18621,7 +18630,7 @@
     {
       "id": 1296,
       "levelId": 72540,
-      "rank": 2069,
+      "rank": 2070,
       "name": "demon world",
       "creator": "superhexagon",
       "video": "bUMT_NRt5_0",
@@ -18630,7 +18639,7 @@
     {
       "id": 3343,
       "levelId": 1834,
-      "rank": 2070,
+      "rank": 2071,
       "name": "still star",
       "creator": "- (id: 1125)",
       "video": "qa97paBTghE",
@@ -18639,7 +18648,7 @@
     {
       "id": 2592,
       "levelId": 93931,
-      "rank": 2071,
+      "rank": 2072,
       "name": "YCO",
       "creator": "YUUSHA (User ID 11000)",
       "video": "5WbUF_6SheM",
@@ -18648,7 +18657,7 @@
     {
       "id": 1303,
       "levelId": 26754444,
-      "rank": 2072,
+      "rank": 2073,
       "name": "Treasure Mine",
       "creator": "Compendium",
       "video": "DQM51iqG8J4",
@@ -18657,7 +18666,7 @@
     {
       "id": 1916,
       "levelId": 24273,
-      "rank": 2073,
+      "rank": 2074,
       "name": "tall tall mountain",
       "creator": "gomchi (User ID 14646)",
       "video": "UN4regh94Cs",
@@ -18666,7 +18675,7 @@
     {
       "id": 1941,
       "levelId": 126575620,
-      "rank": 2074,
+      "rank": 2075,
       "name": "lucky and unlucky",
       "creator": "FixedVersions",
       "video": "uayiaLMGaSE",
@@ -18675,7 +18684,7 @@
     {
       "id": 1297,
       "levelId": 267746,
-      "rank": 2075,
+      "rank": 2076,
       "name": "The Antarctic Man",
       "creator": "Hiroquet",
       "video": "E3u6bZfvJmg",
@@ -18684,7 +18693,7 @@
     {
       "id": 1290,
       "levelId": 97527,
-      "rank": 2076,
+      "rank": 2077,
       "name": "DEMON CYCLES",
       "creator": "Ene (User ID 25515)",
       "video": "HmTQ43YWBpI",
@@ -18693,7 +18702,7 @@
     {
       "id": 1315,
       "levelId": 334,
-      "rank": 2077,
+      "rank": 2078,
       "name": "help",
       "creator": "yes man (User ID 120)",
       "video": "kPHrj46g0lo",
@@ -18702,7 +18711,7 @@
     {
       "id": 1935,
       "levelId": 111739,
-      "rank": 2078,
+      "rank": 2079,
       "name": "kjh devils palace 2",
       "creator": "- (User ID 104394)",
       "video": "ZkS7b69Iuds",
@@ -18711,7 +18720,7 @@
     {
       "id": 3216,
       "levelId": 124554653,
-      "rank": 2079,
+      "rank": 2080,
       "name": "darkworld2",
       "creator": "FuryCannon",
       "video": "6qr0K2VRFXE",
@@ -18720,7 +18729,7 @@
     {
       "id": 1316,
       "levelId": 9548,
-      "rank": 2080,
+      "rank": 2081,
       "name": "1",
       "creator": "9",
       "video": "rq-bQlww48I",
@@ -18729,7 +18738,7 @@
     {
       "id": 2968,
       "levelId": 41254,
-      "rank": 2081,
+      "rank": 2082,
       "name": "The Climax",
       "creator": "Sohn0924",
       "video": "2OIS1SgDSCg",
@@ -18738,20 +18747,11 @@
     {
       "id": 1955,
       "levelId": 91402,
-      "rank": 2082,
+      "rank": 2083,
       "name": "FINAL DESTINATION",
       "creator": "ZurkQyulox (User ID 730)",
       "video": "Q8C2R7eTgIs",
       "permalink": "https://impossiblelevels.com/level/1955"
-    },
-    {
-      "id": 3097,
-      "levelId": 78709,
-      "rank": 2083,
-      "name": "fast as you can",
-      "creator": "Player (user ID 27223)",
-      "video": "HTUnYy_fmdw",
-      "permalink": "https://impossiblelevels.com/level/3097"
     },
     {
       "id": 1310,
