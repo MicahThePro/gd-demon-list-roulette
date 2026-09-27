@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
-import { formatDurationMs } from '../utils/roulette'
+import { formatDurationMs, decodeHistory } from '../utils/roulette'
 
 const STATUS_LABELS = {
   completed: 'Cleared',
@@ -135,9 +135,61 @@ const RunDetail = ({ entry, onClose, onDelete }) => {
   )
 }
 
-export default function Leaderboard({ entries, onDelete, onClear }) {
+export default function Leaderboard({ entries, onDelete, onClear, onExport, onImport }) {
   const [tab, setTab] = useState('cleared')
   const [openId, setOpenId] = useState(null)
+  const [isImportOpen, setIsImportOpen] = useState(false)
+  const [importCode, setImportCode] = useState('')
+  const [importMessage, setImportMessage] = useState('')
+  const [importError, setImportError] = useState(false)
+
+  useEffect(() => {
+    if (!isImportOpen) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsImportOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isImportOpen])
+
+  const closeImport = () => {
+    setIsImportOpen(false)
+    setImportCode('')
+    setImportMessage('')
+    setImportError(false)
+  }
+
+  const handleImport = () => {
+    const decoded = decodeHistory(importCode.trim())
+    if (!decoded) {
+      setImportError(true)
+      setImportMessage('That does not look like a leaderboard code. Copy the whole code, starting with DLRH1:.')
+      return
+    }
+
+    const result = onImport(decoded)
+
+    if (result.added === 0) {
+      // Keep the dialog open so the reason is visible instead of the window
+      // closing with no explanation.
+      setImportError(false)
+      setImportMessage(
+        result.skipped > 0
+          ? `All ${result.skipped} run${result.skipped === 1 ? '' : 's'} in that code are already on this device.`
+          : 'Nothing in that code was valid.',
+      )
+      return
+    }
+
+    setTab(decoded[0]?.status === 'gaveup' ? 'gaveup' : 'cleared')
+    setImportError(false)
+    setImportMessage(`Imported ${result.added} run${result.added === 1 ? '' : 's'}.`)
+    window.setTimeout(closeImport, 900)
+  }
 
   const tabs = useMemo(
     () => [
@@ -223,9 +275,64 @@ export default function Leaderboard({ entries, onDelete, onClear }) {
 
       {entries.length > 0 && (
         <div className="action-row">
+          <button type="button" className="secondary-button" onClick={onExport}>
+            Copy leaderboard code
+          </button>
+          <button type="button" className="secondary-button" onClick={() => setIsImportOpen(true)}>
+            Import leaderboard code
+          </button>
           <button type="button" className="secondary-button" onClick={onClear}>
             Clear all runs
           </button>
+        </div>
+      )}
+
+      {isImportOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={closeImport}
+          role="presentation"
+        >
+          <div
+            className="modal modal-wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="import-dialog-title">Import leaderboard</h2>
+            <p>
+              Paste a leaderboard code to add its runs to this device. Existing
+              runs are kept, and anything already here is skipped rather than
+              duplicated.
+            </p>
+            <label className="modal-field">
+              <span className="visually-hidden">Leaderboard code</span>
+              <textarea
+                rows="4"
+                value={importCode}
+                onChange={(event) => {
+                  setImportCode(event.target.value)
+                  setImportMessage('')
+                }}
+                placeholder="Paste your DLRH1: code here"
+                autoFocus
+              />
+            </label>
+            {importMessage && (
+              <div className={importError ? 'validation-message' : 'import-success'}>
+                {importMessage}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button className="secondary-button" type="button" onClick={closeImport}>
+                Cancel
+              </button>
+              <button className="primary-button" type="button" onClick={handleImport}>
+                Import runs
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

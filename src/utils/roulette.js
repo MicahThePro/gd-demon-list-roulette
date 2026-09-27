@@ -81,6 +81,42 @@ export const decodeRunState = (encoded) => {
   }
 }
 
+// Prefixed so a history code can never be mistaken for a run save code, and so
+// a future format change can be detected instead of being parsed as garbage.
+// The "1" is the format version.
+const HISTORY_PREFIX = 'DLRH1:'
+
+/**
+ * Encodes the whole leaderboard into a portable string.
+ *
+ * Every stored field travels, including each level's id, name, target and
+ * achieved percentages, result, time and thumbnail. Nothing is summarised or
+ * dropped, so an imported history renders exactly like the exported one.
+ */
+export const encodeHistory = (entries) => {
+  if (!Array.isArray(entries) || !entries.length) {
+    return ''
+  }
+  return HISTORY_PREFIX + toBase64Url(JSON.stringify({ v: 1, entries }))
+}
+
+export const decodeHistory = (encoded) => {
+  if (typeof encoded !== 'string' || !encoded.startsWith(HISTORY_PREFIX)) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(fromBase64Url(encoded.slice(HISTORY_PREFIX.length)))
+    const entries = parsed?.entries
+    if (!Array.isArray(entries) || !entries.length) {
+      return null
+    }
+    return entries
+  } catch {
+    return null
+  }
+}
+
 export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1 }) => {
   const safeStep = normalizePercentStep(percentStep)
   const seedStart = clampPercent(Math.max(safeStep, startingPercent ?? safeStep))

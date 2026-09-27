@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { getElapsedLevelTimeMs } from '../utils/roulette'
 
 const STORAGE_KEY = 'demon-roulette-history'
+// Full-fidelity mirror of the history. The cookie is trimmed to fit its ~4 KB
+// budget, so reading state from the cookie alone would permanently lose level
+// detail and an exported code could not carry everything. The mirror is
+// unbounded in the way a cookie is not, so export and import work off it.
+const MIRROR_KEY = 'demon-roulette-history-full'
 // A cookie caps out around 4 KB, so the history is kept deliberately small.
 // Each entry holds only what the leaderboard needs, not the full run.
 export const MAX_ENTRIES = 20
@@ -36,13 +41,64 @@ const writeCookie = (name, value) => {
   document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`
 }
 
+const isEntryLike = (entry) => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry))
+
+// Every field has to survive validation for an entry to be accepted, otherwise
+// a hand-edited or truncated code would import runs that render as blanks.
+const REQUIRED_ENTRY_FIELDS = [
+  'id',
+  'at',
+  'source',
+  'step',
+  'status',
+  'score',
+  'roundsPlayed',
+  'passed',
+  'skipped',
+  'rounds',
+]
+
+export const isValidEntry = (entry) =>
+  isEntryLike(entry) &&
+  REQUIRED_ENTRY_FIELDS.every((field) => entry[field] != null) &&
+  Array.isArray(entry.rounds) &&
+  Number.isFinite(Number(entry.at))
+
+const readMirror = () => {
+  if (typeof localStorage === 'undefined') return []
+
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MIRROR_KEY))
+    return Array.isArray(parsed) ? parsed.filter(isValidEntry) : []
+  } catch {
+    return []
+  }
+}
+
+const writeMirror = (entries) => {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(MIRROR_KEY, JSON.stringify(entries))
+  } catch {
+    // A full mirror can be large, and localStorage is capped too. Losing the
+    // mirror only costs export fidelity; the cookie below is still written.
+  }
+}
+
 const readHistory = () => {
+  // The mirror is preferred because it holds every level, while the cookie has
+  // had detail shed to fit. A first-time visitor has neither.
+  const mirrored = readMirror()
+  if (mirrored.length) {
+    return mirrored
+  }
+
   const raw = readCookie(STORAGE_KEY)
   if (!raw) return []
 
   try {
     const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry === 'object') : []
+    return Array.isArray(parsed) ? parsed.filter(isEntryLike) : []
   } catch {
     return []
   }
@@ -175,8 +231,11 @@ export const compareEntries = (a, b) => {
 export const useRunHistory = () => {
   const [entries, setEntries] = useState(readHistory)
 
-  // A fresh run replaces the previous one rather than stacking with it.
+  // Two writes with different jobs. The mirror keeps every level so an export
+  // can be complete; the cookie is trimmed to fit and is what survives if
+  // localStorage is ever cleared.
   useEffect(() => {
+    writeMirror(entries)
     writeCookie(STORAGE_KEY, JSON.stringify(fitCookieLimit(entries)))
   }, [entries])
 
@@ -200,6 +259,38 @@ export const useRunHistory = () => {
     setEntries([])
   }, [])
 
+  // Merges imported entries into the existing history. Entries are matched on
+  // id, and `at` is part of that id, so re-importing the same code is a no-op
+  // rather than a way to flood the leaderboard with duplicates.
+  const importEntries = useCallback((incoming) => {
+    if (!Array.isArray(incoming) || !incoming.length) {
+      return { added: 0, skipped: 0, total: incoming?.length ?? 0 }
+    }
+
+    const valid = incoming.filter(isValidEntry)
+    let added = 0
+    let skipped = 0
+
+    setEntries((current) => {
+      const seen = new Set(current.map((entry) => entry.id))
+      const merged = [...current]
+
+      for (const entry of valid) {
+        if (seen.has(entry.id)) {
+          skipped += 1
+          continue
+        }
+        seen.add(entry.id)
+        merged.push(entry)
+        added += 1
+      }
+
+      return merged.sort(compareEntries).slice(0, MAX_ENTRIES)
+    })
+
+    return { added, skipped, total: incoming.length }
+  }, [])
+
   const bestScore = entries.length ? Math.max(...entries.map((entry) => entry.score)) : 0
   const completedCount = entries.filter((entry) => entry.status === 'completed').length
 
@@ -208,6 +299,7 @@ export const useRunHistory = () => {
     recordRun,
     deleteEntry,
     clearHistory,
+    importEntries,
     bestScore,
     completedCount,
   }
