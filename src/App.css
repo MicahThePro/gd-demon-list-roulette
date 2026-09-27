@@ -274,9 +274,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Named rows, not a fixed five-row template. The list and the note are both
+   conditional, so with no runs there are only three children and a positional
+   template dropped the action buttons into the flexible 1fr row, stretching a
+   single button into a tall column down the page. Naming each area means every
+   element keeps its natural size no matter which siblings are present. */
 .leaderboard {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'tabs'
+    'list'
+    'note'
+    'actions';
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 16px;
   min-height: 0;
   padding: 22px;
@@ -286,9 +296,41 @@
 }
 
 .lb-tabs {
+  grid-area: tabs;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.lb-empty {
+  grid-area: list;
+  align-self: start;
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.lb-list {
+  grid-area: list;
+  min-height: 0;
+  align-content: start;
+  display: grid;
+  gap: 8px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.lb-note {
+  grid-area: note;
+  margin: 0;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.leaderboard > .action-row {
+  grid-area: actions;
 }
 
 .lb-tab {
@@ -323,28 +365,6 @@
   background: rgba(148, 163, 184, 0.22);
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
-}
-
-.lb-empty {
-  margin: 0;
-  color: #94a3b8;
-  font-size: 0.9rem;
-}
-
-.lb-note {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.75rem;
-}
-
-.lb-list {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  min-height: 0;
-  padding-right: 4px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 /* Inside the leaderboard the stat grid sizes to the available width instead of
@@ -487,15 +507,41 @@
   display: grid;
 }
 
+/* Named rows for the same reason as .leaderboard: the level list is
+   conditional, so a positional template would stretch the wrong child. */
 .lb-detail {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas:
+    'head'
+    'stats'
+    'label'
+    'levels';
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 18px;
   min-height: 0;
   padding: 22px;
   border-radius: 20px;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(15, 23, 42, 0.6);
+}
+
+.lb-detail > .lb-detail-head {
+  grid-area: head;
+}
+
+.lb-detail > .stats-grid {
+  grid-area: stats;
+}
+
+.lb-detail > .results-section-label {
+  grid-area: label;
+}
+
+.lb-detail > .history-list {
+  grid-area: levels;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .lb-detail-head {
