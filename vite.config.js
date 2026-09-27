@@ -13,6 +13,12 @@ export default defineConfig({
         secure: false,
         rewrite: (path) => path.replace(/^\/api\/pointercrate/, ''),
       },
+      '/api/gsl': {
+        target: 'https://globalshittylist.com/',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/gsl/, '/api'),
+      },
     },
   },
 })

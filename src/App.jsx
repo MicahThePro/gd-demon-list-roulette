@@ -4,7 +4,7 @@ import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
 import { fetchAredlLevelDetails, fetchList } from './services/listService'
-import { clampPercent, createRun, createLevelResult, decodeRunState, encodeRunState, getElapsedLevelTimeMs, pickNextLevel, summarizeResult } from './utils/roulette'
+import { clampPercent, createRun, createLevelResult, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import './App.css'
 
 const SCREEN = {
@@ -14,7 +14,9 @@ const SCREEN = {
 }
 
 const hydrateLevelForRun = async (runState, level) => {
-  if (!level || runState?.source !== 'AREDL') {
+  // Only the GSL list ships incomplete levels; the others include the creator
+  // and thumbnail up front. run.source holds the list's display title.
+  if (!level || runState?.source !== 'Global Shitty List') {
     return level
   }
 
@@ -75,11 +77,13 @@ function App() {
 
   const startRun = async (request = {}) => {
     const importedList = await fetchList(request)
+    const percentStep = normalizePercentStep(request.percentStep ?? 1)
     const createdRun = createRun({
-      startingPercent: 1,
+      startingPercent: percentStep,
       levels: importedList.levels,
       source: importedList.sourceTitle,
       allowDuplicates: false,
+      percentStep,
     })
 
     const hydratedCurrentLevel = await hydrateLevelForRun(createdRun, createdRun.currentLevel)
@@ -95,6 +99,7 @@ function App() {
 
     const normalizedAchieved = clampPercent(achievedPercent)
     const isSuccess = normalizedAchieved >= run.currentTarget
+    const percentStep = normalizePercentStep(run.percentStep ?? 1)
     const endedAt = Date.now()
     const currentResult = createLevelResult({
       level: run.currentLevel,
@@ -113,7 +118,9 @@ function App() {
       },
     ]
 
-    const nextTarget = isSuccess ? normalizedAchieved + 1 : run.currentTarget
+    const nextTarget = isSuccess
+      ? getNextTargetPercent(normalizedAchieved, percentStep)
+      : run.currentTarget
     const usedLevelIds = [...(run.usedLevelIds || []), run.currentLevel.id]
     const nextLevel = pickNextLevel(run.levels, usedLevelIds, run.allowDuplicates)
 
@@ -130,7 +137,10 @@ function App() {
       return
     }
 
-    if (nextTarget > 100) {
+    // The run finishes when the level just cleared reached 100%, not when the
+    // next target would be 100. With a step of 20 the targets are 20, 40, 60,
+    // 80, 100, so clearing 80 must still hand out the 100% level.
+    if (normalizedAchieved >= 100) {
       const completedRun = {
         ...run,
         currentTarget: 100,
@@ -202,7 +212,8 @@ function App() {
       ...run,
       status: 'failed',
       endingPercent: run.currentTarget,
-      currentLevel: null,
+      gaveUp: true,
+      gaveUpAt: Date.now(),
     }
     setRun(failedRun)
     setScreen(SCREEN.RESULTS)

@@ -1,16 +1,42 @@
 import { useEffect, useState } from 'react'
-import { fetchAredlListBounds } from '../services/listService'
+import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds } from '../services/listService'
+import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
+import { MAX_PERCENT_STEP } from '../utils/roulette'
+
+const CHALLENGE_LIST_SOURCE = 'challengelist'
+const IMPOSSIBLE_LEVELS_SOURCE = 'impossiblelevels'
+const SOURCE_LABELS = {
+  pointercrate: 'Pointercrate',
+  aredl: 'AREDL',
+  gsl: 'GSL',
+  [CHALLENGE_LIST_SOURCE]: 'Challenge List',
+  [IMPOSSIBLE_LEVELS_SOURCE]: 'Impossible Levels List',
+}
+const RANKABLE_SOURCES = ['aredl', 'gsl', CHALLENGE_LIST_SOURCE, IMPOSSIBLE_LEVELS_SOURCE]
+const DEFAULT_MAX = 150
+
+const getBoundsForSource = (sourceName) => {
+  if (sourceName === 'gsl') return fetchGslListBounds()
+  if (sourceName === CHALLENGE_LIST_SOURCE) return fetchChallengeListBounds()
+  if (sourceName === IMPOSSIBLE_LEVELS_SOURCE) return fetchImpossibleLevelsBounds()
+  return fetchAredlListBounds()
+}
 
 export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
   const [isLoading, setIsLoading] = useState(false)
   const [source, setSource] = useState('pointercrate')
   const [startRange, setStartRange] = useState('')
   const [endRange, setEndRange] = useState('')
-  const [aredlMax, setAredlMax] = useState(150)
+  const [rangeMax, setRangeMax] = useState(DEFAULT_MAX)
   const [loadCode, setLoadCode] = useState(savedRunCode || '')
   const [loadError, setLoadError] = useState('')
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [percentStep, setPercentStep] = usePersistentPercentStep()
+  const [percentStepDraft, setPercentStepDraft] = useState(() => String(percentStep))
+  const estimatedRounds = Math.ceil(100 / percentStep)
+  const isRankable = RANKABLE_SOURCES.includes(source)
 
-  const clampAredlValue = (value, minimum = 1, maximum = aredlMax) => {
+  const clampValue = (value, minimum = 1, maximum = rangeMax) => {
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) {
       return minimum
@@ -19,7 +45,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
     return Math.min(Math.max(Math.trunc(numeric), minimum), maximum)
   }
 
-  const normalizeAredlDraft = (value, minimum = 1, maximum = aredlMax) => {
+  const normalizeDraft = (value, minimum = 1, maximum = rangeMax) => {
     if (value === '') {
       return ''
     }
@@ -44,34 +70,31 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
   }, [savedRunCode])
 
   useEffect(() => {
-    if (source !== 'aredl') {
-      setAredlMax(150)
+    if (!RANKABLE_SOURCES.includes(source)) {
+      setRangeMax(DEFAULT_MAX)
       return undefined
     }
 
     let isActive = true
 
     const loadBounds = async () => {
-      const bounds = await fetchAredlListBounds()
+      const bounds = await getBoundsForSource(source)
       if (!isActive) return
-      const resolvedMax = Math.max(1, Number(bounds.end) || 150)
-      setAredlMax(resolvedMax)
-      setStartRange((current) => {
-        const raw = current === '' ? '1' : current
-        return String(clampAredlValue(raw, 1, resolvedMax))
-      })
-      setEndRange((current) => {
-        if (current === '') {
-          return String(resolvedMax)
-        }
-
-        return String(clampAredlValue(current, 1, resolvedMax))
-      })
+      const resolvedMax = Math.max(1, Number(bounds.end) || DEFAULT_MAX)
+      setRangeMax(resolvedMax)
+      // Always reset to the full range for the newly selected list. Clamping
+      // the previous value would be wrong in one direction: going from a
+      // longer list to a shorter one hides levels, and going from a shorter
+      // list to a longer one would keep the old smaller end value.
+      setStartRange('1')
+      setEndRange(String(resolvedMax))
     }
 
     loadBounds().catch(() => {
       if (isActive) {
-        setAredlMax(150)
+        setRangeMax(DEFAULT_MAX)
+        setStartRange('1')
+        setEndRange(String(DEFAULT_MAX))
       }
     })
 
@@ -81,7 +104,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
   }, [source])
 
   const handleStartChange = (value) => {
-    const nextStart = value === '' ? '' : normalizeAredlDraft(value, 1, aredlMax)
+    const nextStart = value === '' ? '' : normalizeDraft(value, 1, rangeMax)
     setStartRange(nextStart)
 
     if (nextStart !== '' && endRange !== '') {
@@ -100,7 +123,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
     }
 
     const minimum = Number(startRange || 1)
-    const nextValue = normalizeAredlDraft(value, 1, aredlMax)
+    const nextValue = normalizeDraft(value, 1, rangeMax)
     if (Number(nextValue) < minimum) {
       setEndRange(String(minimum))
       return
@@ -109,14 +132,25 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
     setEndRange(nextValue)
   }
 
+  // The draft is free to be empty so the field can be cleared while typing;
+  // the real value only commits on blur, falling back to 1.
+  const handlePercentStepChange = (value) => {
+    setPercentStepDraft(value)
+  }
+
+  const commitPercentStep = () => {
+    const committed = setPercentStep(percentStepDraft)
+    setPercentStepDraft(String(committed))
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     setIsLoading(true)
     try {
-      const nextStart = source === 'aredl' ? clampAredlValue(startRange || '1', 1, aredlMax) : undefined
-      const nextEnd = source === 'aredl' ? clampAredlValue(endRange || String(aredlMax), 1, aredlMax) : undefined
+      const nextStart = isRankable ? clampValue(startRange || '1', 1, rangeMax) : undefined
+      const nextEnd = isRankable ? clampValue(endRange || String(rangeMax), 1, rangeMax) : undefined
 
-      if (source === 'aredl' && nextEnd < nextStart) {
+      if (isRankable && nextEnd < nextStart) {
         setEndRange(String(nextStart))
       }
 
@@ -124,6 +158,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
         source,
         start: nextStart,
         end: nextEnd,
+        percentStep,
       })
     } finally {
       setIsLoading(false)
@@ -154,11 +189,47 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
           <p className="eyebrow">Geometry Dash Challenge</p>
           <h1>GD Demon List Roulette</h1>
           <p className="lead">
-            Extreme Demon Roulette is a Geometry Dash challenge where players must beat a randomly selected level at 1%, then get 2% on a new level, and continue increasing the required percentage by 1% on a different random level each time until they reach 100%.
+            Demon Roulette is a Geometry Dash challenge. You get a random level from a demon list and
+            have to hit the target percentage on it. Clear it and the target goes up by your chosen step
+            on a brand new random level. Miss it and the run is over. Starting at 1% and climbing in
+            steps, the run ends the moment you clear a 100% level. Pick a bigger step in settings to
+            make it harder, or limit it to a rank range for an even tougher draw.
           </p>
         </div>
 
         <form className="setup-form" onSubmit={handleSubmit}>
+          <div className="settings-row">
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={() => setIsSettingsOpen((open) => !open)}
+              aria-expanded={isSettingsOpen}
+            >
+              {isSettingsOpen ? 'Hide settings' : 'Settings'}
+            </button>
+            <span className="settings-summary">
+              Step: +{percentStep}% ({estimatedRounds} levels to finish)
+            </span>
+          </div>
+
+          {isSettingsOpen && (
+            <div className="settings-panel">
+              <label>
+                Percentage increment
+                <input
+                  type="number"
+                  min="1"
+                  max={MAX_PERCENT_STEP}
+                  step="1"
+                  value={percentStepDraft}
+                  onChange={(event) => handlePercentStepChange(event.target.value)}
+                  onBlur={commitPercentStep}
+                  placeholder="1"
+                />
+              </label>
+            </div>
+          )}
+
           <label>
             List source
             <select
@@ -168,10 +239,13 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
             >
               <option value="pointercrate">Pointercrate Demon List</option>
               <option value="aredl">All Rated Extreme Demons List</option>
+              <option value="gsl">Global Shitty List</option>
+              <option value={CHALLENGE_LIST_SOURCE}>Challenge List</option>
+              <option value={IMPOSSIBLE_LEVELS_SOURCE}>Impossible Levels List</option>
             </select>
           </label>
 
-          {source === 'aredl' && (
+          {isRankable && (
             <div className="range-row">
               <label>
                 Start rank
@@ -190,7 +264,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
                   step="1"
                   value={endRange}
                   onChange={(event) => handleEndChange(event.target.value)}
-                  placeholder={String(aredlMax)}
+                  placeholder={String(rangeMax)}
                 />
               </label>
               <small className="range-hint">Use arrow keys to decrease the numbers.</small>
@@ -198,7 +272,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode }) {
           )}
 
           <button type="submit" className="primary-button" disabled={isLoading}>
-            {isLoading ? `Loading ${source === 'aredl' ? 'AREDL' : 'Pointercrate'}...` : 'Start roulette'}
+            {isLoading ? `Loading ${SOURCE_LABELS[source] ?? 'list'}...` : 'Start roulette'}
           </button>
         </form>
 

@@ -21,58 +21,121 @@ export default function ResultsPage({ run, onRestart, onSaveRun, savedRunCode })
   const finalPercent = run.endingPercent ?? run.startingPercent
   const completed = run.status === 'completed'
 
+  const timedRounds = run.rounds.filter((round) => Number.isFinite(round.elapsedMs))
+  const averageTimeMs =
+    timedRounds.length > 0
+      ? timedRounds.reduce((total, round) => total + round.elapsedMs, 0) / timedRounds.length
+      : null
+  const averageTimeLabel = averageTimeMs == null ? '--:--' : formatDurationMs(averageTimeMs)
+
+  const gaveUp = run.gaveUp === true
+  const finalLevel = run.currentLevel
+
+  const finalLevelElapsedMs =
+    gaveUp && finalLevel && Number.isFinite(run.currentLevelStartedAt) && Number.isFinite(run.gaveUpAt)
+      ? Math.max(0, run.gaveUpAt - run.currentLevelStartedAt)
+      : null
+
+  const finalLevelTimeLabel =
+    finalLevelElapsedMs == null || finalLevelElapsedMs < 1000
+      ? '0:00'
+      : formatDurationMs(finalLevelElapsedMs)
+
+  const historyRounds = gaveUp && finalLevel ? [...run.rounds, { final: true, level: finalLevel }] : run.rounds
+
   return (
     <main className="page-shell results-page">
       <section className="panel results-panel">
         <p className="eyebrow">Run summary</p>
-        <h2>{completed ? 'Roulette complete' : 'Run ended'}</h2>
+        <h2>{completed ? 'Roulette complete' : gaveUp ? 'You gave up' : 'Run ended'}</h2>
 
+        <p className="results-section-label">Outcome</p>
         <div className="stats-grid">
           <div className="stat-card result-card">
             <span>Final %</span>
             <strong>{finalPercent}%</strong>
           </div>
           <div className="stat-card result-card">
+            <span>Status</span>
+            <strong>{completed ? 'Cleared' : gaveUp ? 'Gave up' : 'Failed'}</strong>
+          </div>
+          <div className="stat-card result-card">
             <span>Rounds</span>
             <strong>{run.rounds.length}</strong>
           </div>
-          <div className="stat-card result-card">
-            <span>Status</span>
-            <strong>{completed ? 'Cleared' : 'Failed'}</strong>
-          </div>
         </div>
 
+        <p className="results-section-label">Run details</p>
         <div className="stats-grid">
+          <div className="stat-card result-card">
+            <span>Average time / level</span>
+            <strong>{averageTimeLabel}</strong>
+          </div>
+          <div className="stat-card result-card">
+            <span>Target</span>
+            <strong>{run.currentTarget}%</strong>
+          </div>
           <div className="stat-card result-card">
             <span>Skips</span>
             <strong>{run.skippedCount || 0}</strong>
           </div>
           <div className="stat-card result-card">
             <span>Source</span>
-            <strong>{run.source}</strong>
-          </div>
-          <div className="stat-card result-card">
-            <span>Target</span>
-            <strong>{run.currentTarget}%</strong>
+            <strong className="stat-value-small">{run.source}</strong>
           </div>
         </div>
 
+        <p className="results-section-label">
+          {gaveUp ? 'Level you gave up on' : 'Round history'}
+        </p>
+
         <div className="history-list">
-          {run.rounds.length === 0 ? (
+          {historyRounds.length === 0 ? (
             <p>No rounds were completed.</p>
           ) : (
-            run.rounds.map((round, index) => (
-              <div key={`${round.level.id}-${index}`} className="history-item">
-                <span>#{index + 1}</span>
-                <strong>{round.level.name}</strong>
-                <em>{round.result === 'success' ? 'Passed' : round.result === 'skipped' ? 'Skipped' : 'Failed'}</em>
-                <small>
-                  {round.achievedPercent == null ? 'Skipped' : `${round.achievedPercent}%`}
-                  {round.elapsedLabel ? ` • ${round.elapsedLabel}` : ''}
-                  {round.elapsedMs != null && !round.elapsedLabel ? ` • ${formatDurationMs(round.elapsedMs)}` : ''}
-                </small>
-              </div>
-            ))
+            historyRounds.map((round, index) => {
+              const isFinal = round.final === true
+              const result = isFinal ? 'gaveup' : round.result
+              const timeLabel = isFinal
+                ? finalLevelTimeLabel
+                : (round.elapsedLabel ?? (round.elapsedMs != null ? formatDurationMs(round.elapsedMs) : '--:--'))
+              const detail = isFinal
+                ? `${round.level.targetPercent ?? run.currentTarget}% was required`
+                : round.achievedPercent == null
+                  ? 'No attempt'
+                  : `${round.achievedPercent}% achieved`
+              const resultLabel =
+                result === 'success'
+                  ? 'Passed'
+                  : result === 'skipped'
+                    ? 'Skipped'
+                    : result === 'gaveup'
+                      ? 'Gave up'
+                      : 'Failed'
+
+              return (
+                <div
+                  key={`${round.level.id}-${index}`}
+                  className={isFinal ? 'history-item history-item-final' : 'history-item'}
+                >
+                  {round.level.thumbnail ? (
+                    <img
+                      className="history-thumb"
+                      src={round.level.thumbnail}
+                      alt={`${round.level.name} thumbnail`}
+                      loading="lazy"
+                    />
+                  ) : null}
+                  <span>#{index + 1}</span>
+                  <span className="history-copy">
+                    <strong>{round.level.name}</strong>
+                    <small>{detail}</small>
+                  </span>
+                  <em className={`history-result history-result-${result}`}>{resultLabel}</em>
+                  <small className="history-time">{timeLabel}</small>
+                </div>
+              )
+            })
           )}
         </div>
 

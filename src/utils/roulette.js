@@ -4,6 +4,23 @@ export const clampPercent = (value) => {
   return Math.min(100, Math.max(1, Math.round(number)))
 }
 
+// Any whole number from 1 to 100 is a valid step. A step that would push the
+// next target past 100 simply lands on 100 instead, so 45 goes 45 -> 90 -> 100.
+export const MAX_PERCENT_STEP = 100
+
+export const normalizePercentStep = (value) => {
+  const numeric = Math.trunc(Number(value))
+  if (!Number.isFinite(numeric)) return 1
+  return Math.min(MAX_PERCENT_STEP, Math.max(1, numeric))
+}
+
+// Targets are whole numbers only, so the achieved value can never be decimal.
+export const getNextTargetPercent = (achievedPercent, step = 1) => {
+  const safeStep = normalizePercentStep(step)
+  const achieved = clampPercent(achievedPercent)
+  return Math.min(100, (Math.floor(achieved / safeStep) + 1) * safeStep)
+}
+
 export const formatDurationMs = (durationMs = 0) => {
   const safeMilliseconds = Number.isFinite(durationMs) ? Math.max(0, Math.round(durationMs)) : 0
   const totalSeconds = Math.floor(safeMilliseconds / 1000)
@@ -64,14 +81,16 @@ export const decodeRunState = (encoded) => {
   }
 }
 
-export const createRun = ({ startingPercent, levels, source, allowDuplicates }) => {
-  const seedStart = clampPercent(startingPercent)
+export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1 }) => {
+  const safeStep = normalizePercentStep(percentStep)
+  const seedStart = clampPercent(Math.max(safeStep, startingPercent ?? safeStep))
   const currentLevel = pickNextLevel(levels, [], allowDuplicates)
   const startedAt = Date.now()
 
   return {
     currentTarget: seedStart,
     startingPercent: seedStart,
+    percentStep: safeStep,
     status: 'active',
     source,
     allowDuplicates,

@@ -150,17 +150,28 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
             <h3>{run.currentLevel.name}</h3>
             <p>{run.currentLevel.creator ? `By ${run.currentLevel.creator}` : 'Community pick'}</p>
             <div className="timer-badge">Time: {formatDurationMs(displayElapsed)}</div>
-            <button
-              className="level-id-link level-id-button"
-              type="button"
-              onClick={() => {
-                navigator.clipboard?.writeText(String(run.currentLevel.levelId ?? run.currentLevel.id))
-                setLevelCopyMessage('Copied!')
-                setSaveCopyMessage('')
-              }}
-            >
-              Level ID: {run.currentLevel.levelId ?? run.currentLevel.id}
-            </button>
+            {run.currentLevel.levelId != null ? (
+              <button
+                className="level-id-link level-id-button"
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(String(run.currentLevel.levelId))
+                  setLevelCopyMessage('Copied!')
+                  setSaveCopyMessage('')
+                }}
+              >
+                Level ID: {run.currentLevel.levelId}
+              </button>
+            ) : (
+              <a
+                className="level-id-link level-id-button"
+                href={run.currentLevel.detailUrl || run.currentLevel.permalink}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View on Challenge List
+              </a>
+            )}
             {levelCopyMessage && <div className="copy-toast">{levelCopyMessage}</div>}
           </div>
 

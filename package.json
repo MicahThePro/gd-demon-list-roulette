@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
+    "update:challenge-list": "node scripts/build-challenge-list.mjs",
+    "update:impossible-levels": "node scripts/build-impossible-levels.mjs",
+    "build": "node scripts/build-challenge-list.mjs && node scripts/build-impossible-levels.mjs && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "gh-pages -d dist"
