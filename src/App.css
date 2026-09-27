@@ -640,6 +640,7 @@
      spilled out of the screen. min-width:0 lets the row shrink and the text
      wrap instead. */
   min-width: 0;
+  max-width: 100%;
 }
 
 .settings-summary {
@@ -1719,15 +1720,18 @@
     grid-template-columns: 1fr;
   }
 
+  /* Stack the row vertically on phones. Flex-wrap alone still let the summary
+     share a line with the buttons, which pushed it past the screen edge;
+     a column with stretch guarantees it gets a full-width line of its own. */
   .settings-row {
+    flex-direction: column;
+    align-items: stretch;
     gap: 10px;
     min-width: 0;
   }
 
-  /* Long button labels ("Hide leaderboard", "What's new") are flex items in the
-     same row, so they need the same shrink permission as the summary text.
-     Without it a wide label can still push the row past the screen. */
   .settings-row > button {
+    width: 100%;
     min-width: 0;
   }
 
@@ -1740,7 +1744,8 @@
   }
 
   .settings-summary {
-    flex: 1 0 100%;
+    flex: 0 0 auto;
+    width: 100%;
     font-size: 0.8rem;
     min-width: 0;
   }
