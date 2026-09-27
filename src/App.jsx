@@ -13,10 +13,14 @@ const SCREEN = {
   RESULTS: 'results',
 }
 
+// The AREDL list endpoint returns no creator or video, only publisher_id, so
+// those come from the per-level detail endpoint. That is fetched on demand for
+// the one level on screen rather than for the whole list, which would be far
+// too slow. run.source holds the list's display title.
+const HYDRATABLE_SOURCES = new Set(['AREDL'])
+
 const hydrateLevelForRun = async (runState, level) => {
-  // Only the GSL list ships incomplete levels; the others include the creator
-  // and thumbnail up front. run.source holds the list's display title.
-  if (!level || runState?.source !== 'Global Shitty List') {
+  if (!level || !HYDRATABLE_SOURCES.has(runState?.source)) {
     return level
   }
 

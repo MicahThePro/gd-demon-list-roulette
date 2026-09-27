@@ -1,0 +1,6 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "demon-roulette-list-proxy",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-01-01"
+}

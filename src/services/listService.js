@@ -9,30 +9,33 @@ const GSL_LIST_TYPE = 'classic'
 const GSL_PAGE_SIZE = 500
 const GSL_MAX_PAGES = 20
 // challengelist.gd sends no CORS headers, so the browser cannot fetch it.
-// A snapshot is generated at build time by scripts/build-challenge-list.mjs
-// and served from our own origin instead. The list of paths covers the usual
-// ways this project gets served: a Vite build (copies public/ to dist/) and a
-// plain static server pointed at the project root.
+// A Cloudflare Worker re-serves it with CORS enabled, which means the list is
+// read live on every page load instead of from a frozen build-time file. The
+// build-time snapshots are kept as a fallback, so the app still works if the
+// Worker is unreachable. Paths are relative to Vite's base so they resolve
+// when the app is deployed under a subpath, such as GitHub Pages at /<repo>/.
+const withBase = (filePath) => `${import.meta.env.BASE_URL}${filePath}`.replace(/\/{2,}/g, '/')
+const LIST_WORKER_URL = 'https://demon-roulette-list-proxy.micah-nordlund.workers.dev'
 const CHALLENGE_LIST_URLS = [
-  '/challenge-list.json',
+  `${LIST_WORKER_URL}/challenge-list`,
+  withBase('challenge-list.json'),
   './challenge-list.json',
-  '/public/challenge-list.json',
-  '/dist/challenge-list.json',
+  withBase('public/challenge-list.json'),
+  withBase('dist/challenge-list.json'),
 ]
-// api.impossiblelevels.com sends no CORS headers, so the browser cannot fetch
-// it. A snapshot is generated at build time by scripts/build-impossible-levels.mjs
-// and served from our own origin instead. Only visible levels are included,
-// which excludes the hidden legacy entries.
+// api.impossiblelevels.com sends no CORS headers either, so the same Worker
+// proxies it. Only visible levels are included, which excludes the hidden
+// legacy entries.
 const IMPOSSIBLE_LEVELS_URLS = [
-  '/impossible-levels.json',
+  `${LIST_WORKER_URL}/impossible-levels`,
+  withBase('impossible-levels.json'),
   './impossible-levels.json',
-  '/public/impossible-levels.json',
-  '/dist/impossible-levels.json',
+  withBase('public/impossible-levels.json'),
+  withBase('dist/impossible-levels.json'),
 ]
 const IMPOSSIBLE_LEVELS_NAME = 'Impossible Levels List'
 const IMPOSSIBLE_LEVELS_SIZE = 2116
 const CHALLENGE_LIST_MAIN_SIZE = 100
-const AREDL_DELAY_MS = 250
 const AREDL_MAX_RETRIES = 5
 
 const wait = (delayMs) => new Promise((resolve) => globalThis.setTimeout(resolve, delayMs))
@@ -311,20 +314,6 @@ export const fetchAredlLevelDetails = async (level, fetcher = fetch) => {
   return level
 }
 
-const hydrateAredlLevels = async (levels) => {
-  const hydratedLevels = []
-
-  for (const nextLevel of levels) {
-    hydratedLevels.push(await fetchAredlLevelDetails(nextLevel))
-
-    if (levels[levels.length - 1] !== nextLevel) {
-      await wait(AREDL_DELAY_MS)
-    }
-  }
-
-  return hydratedLevels
-}
-
 export const fetchAredlListBounds = async (fetcher = fetch) => {
   const response = await fetcher(`${AREDL_URL}/levels?exclude_pending=true&exclude_removed=true&exclude_legacy=true`)
 
@@ -382,8 +371,8 @@ export const mapGslLevelToLevel = (level) => {
     detailUrl: `https://gdbrowser.com/${levelId}`,
   }
 }
-const fetchGslPage = async (offset, fetcher) => {
-  const url = `${GSL_URL}?list=${GSL_LIST_TYPE}&limit=${GSL_PAGE_SIZE}&offset=${offset}`
+const fetchGslPage = async (offset, fetcher, limit = GSL_PAGE_SIZE) => {
+  const url = `${GSL_URL}?list=${GSL_LIST_TYPE}&limit=${limit}&offset=${offset}`
   const response = await fetcher(url)
   if (!response?.ok) {
     throw new Error('Failed to load the Global Shitty List.')
@@ -401,32 +390,44 @@ const fetchGslPage = async (offset, fetcher) => {
 }
 export const fetchGslListBounds = async (fetcher = fetch) => {
   try {
-    const { rows, total } = await fetchGslPage(0, fetcher)
-    const positions = rows
-      .map((row) => Number(row?.rank))
-      .filter((value) => Number.isFinite(value) && value > 0)
-    if (!positions.length) {
-      return { start: 1, end: 150 }
+    // Only the total is needed here. Asking for a single row returns the same
+    // meta.total in a fraction of a kilobyte, instead of downloading a full
+    // page of levels just to count them.
+    const { total } = await fetchGslPage(0, fetcher, 1)
+    if (Number.isFinite(total) && total > 0) {
+      return { start: 1, end: total }
     }
-    return {
-      start: 1,
-      end: Math.max(total || 0, ...positions),
-    }
+    return { start: 1, end: 150 }
   } catch {
     return { start: 1, end: 150 }
   }
 }
-const fetchGslList = async ({ start, end } = {}, fetcher = fetch) => {
-  const rawLevels = []
-  let offset = 0
+// The GSL ranks are sequential from 1, so the API's offset maps straight onto
+// rank - 1. That means a rank range can be fetched directly instead of paging
+// through the whole list and discarding most of it.
+const fetchGslRange = async ({ start, end } = {}, fetcher = fetch) => {
+  const from = Math.max(1, parsePositiveInteger(start) ?? 1)
+  const to = parsePositiveInteger(end) ?? Number.MAX_SAFE_INTEGER
+  const rows = []
+  let offset = from - 1
+
   for (let page = 0; page < GSL_MAX_PAGES; page += 1) {
-    const result = await fetchGslPage(offset, fetcher)
-    rawLevels.push(...result.rows)
-    if (!result.hasMore || result.rows.length === 0) {
+    // Never ask for more than the remaining span of the range.
+    const remaining = to === Number.MAX_SAFE_INTEGER ? GSL_PAGE_SIZE : to - offset
+    const limit = Math.min(GSL_PAGE_SIZE, Math.max(1, remaining))
+    const result = await fetchGslPage(offset, fetcher, limit)
+    rows.push(...result.rows)
+    if (!result.hasMore || result.rows.length === 0 || result.rows.length < limit) {
       break
     }
     offset += result.rows.length
   }
+
+  return rows
+}
+
+const fetchGslList = async ({ start, end } = {}, fetcher = fetch) => {
+  const rawLevels = await fetchGslRange({ start, end }, fetcher)
   if (!rawLevels.length) {
     throw new Error('Global Shitty List data could not be parsed.')
   }
@@ -461,6 +462,20 @@ const toChallengeListLevel = (item, position) => ({
   detailUrl: `https://challengelist.gd/challenges/${item.id}/`,
 })
 
+// Accepts both shapes: the { levels: [...] } snapshot and a bare array, so a
+// plain proxy response is usable without a separate mapping step.
+const readSnapshotLevels = (payload) => {
+  if (Array.isArray(payload)) {
+    // A bare array is the raw upstream API, which also carries the hidden
+    // legacy rows. Drop those so the count matches the public list.
+    return payload.filter((row) => row?.visible !== false)
+  }
+  if (Array.isArray(payload?.levels)) {
+    return payload.levels
+  }
+  return []
+}
+
 const fetchChallengeListSnapshot = async (fetcher = fetch) => {
   for (const url of CHALLENGE_LIST_URLS) {
     try {
@@ -470,7 +485,9 @@ const fetchChallengeListSnapshot = async (fetcher = fetch) => {
       }
 
         const snapshot = await response.json()
-        const levels = Array.isArray(snapshot?.levels) ? snapshot.levels : []
+        const levels = readSnapshotLevels(snapshot).filter(
+          (row) => row && (row.rank ?? row.position ?? row.id) != null,
+        )
 
         if (!levels.length) {
           continue
@@ -515,17 +532,39 @@ export const fetchChallengeList = async ({ start, end } = {}, fetcher = fetch) =
   }
 }
 
-const toImpossibleLevel = (item) => ({
-  id: `impossiblelevels-${item.id ?? item.rank}`,
-  levelId: item.levelId ?? null,
-  position: item.rank,
-  name: item.name || `Impossible level #${item.rank}`,
-  creator: item.creator || 'Unknown creator',
-  video: item.video || null,
-  thumbnail: item.video ? `https://i.ytimg.com/vi/${item.video}/mqdefault.jpg` : null,
-  permalink: item.permalink || 'https://impossiblelevels.com',
-  detailUrl: item.permalink || 'https://impossiblelevels.com',
-})
+// levelId is usually a number, but a raw API row can hold a link to the
+// level's history page or the string "N/A". In those the CURRENT level is the
+// last id in the string; the first is the outdated one it was fixed from.
+const parseSnapshotLevelId = (value) => {
+  if (value == null || Number.isInteger(value)) {
+    return value ?? null
+  }
+  const ids = String(value).match(/\b\d{2,12}\b/g)
+  return ids && ids.length ? Number(ids[ids.length - 1]) : null
+}
+
+// A raw API row keeps the source field names, a parsed snapshot uses mapped
+// ones. Accept either so a plain proxy response works without extra mapping.
+const toImpossibleLevel = (item) => {
+  const rank = item?.rank ?? item?.position ?? null
+  const name = item?.name ?? ''
+  const creator = item?.creator ?? item?.uploader ?? 'Unknown creator'
+  const video = item?.video ?? getYoutubeId(item?.showcaseLink)
+  const levelId = parseSnapshotLevelId(item?.levelId)
+  const permalink = item?.permalink || 'https://impossiblelevels.com'
+
+  return {
+    id: `impossiblelevels-${item?.id ?? rank}`,
+    levelId,
+    position: Number.isFinite(Number(rank)) ? Number(rank) : null,
+    name: name || `Impossible level #${rank}`,
+    creator: creator || 'Unknown creator',
+    video: video || null,
+    thumbnail: video ? `https://i.ytimg.com/vi/${video}/mqdefault.jpg` : null,
+    permalink,
+    detailUrl: permalink,
+  }
+}
 
 const fetchImpossibleLevelsSnapshot = async (fetcher = fetch) => {
   for (const url of IMPOSSIBLE_LEVELS_URLS) {
@@ -535,8 +574,9 @@ const fetchImpossibleLevelsSnapshot = async (fetcher = fetch) => {
         continue
       }
 
-      const snapshot = await response.json()
-      const levels = Array.isArray(snapshot?.levels) ? snapshot.levels : []
+      const levels = readSnapshotLevels(await response.json()).filter(
+        (row) => row && (row.rank ?? row.position) != null,
+      )
 
       if (!levels.length) {
         continue

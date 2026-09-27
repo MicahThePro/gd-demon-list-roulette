@@ -1,77 +1,90 @@
-# 🏆 Geometry Dash Extreme Demon Roulette
+<div align="center">
 
-An interactive, web-based implementation of the legendary Geometry Dash community challenge. Built completely from scratch with React and Vite, powered by live level data.
+# GD Demon List Roulette
 
-🔗 **[Play the Live Game Here](https://micahthepro.github.io/gd-demon-list-roulette/)**
+**Extreme Demon Roulette, rebuilt for the web.**
 
----
+[**Play it live**](https://micahthepro.github.io/gd-demon-list-roulette/) · [Report an issue](https://github.com/MicahThePro/gd-demon-list-roulette/issues)
 
-## 🎮 What is the Extreme Demon Roulette Challenge?
-
-The **Extreme Demon Roulette** is a progressive survival challenge designed to test your mastery across the hardest levels in Geometry Dash. The rules are simple but brutal:
-
-1. **Start at 1%:** The game randomly selects an Extreme Demon from the live list. You must achieve exactly (or at least) **1%** on that level.
-2. **Advance by 1%:** If successful, the game rolls a completely different random Extreme Demon. For this new level, your target increases to **2%**.
-3. **Keep Surviving:** Every single time you advance, you get a new random level and your required percentage increases by **1%**.
-4. **The Ultimate Goal:** Continue this cycle all the way up to **100%** across 100 distinct random levels without breaking your streak!
+</div>
 
 ---
 
-## 🚀 Features
+## The challenge
 
-- ⚡ **Live Pointercrate Integration:** Fetches the most up-to-date, official list of Extreme Demons directly from the Pointercrate API.
-- 🔄 **True Randomization:** Smoothly rolls a completely fresh and unique demon for every percentage step.
-- 🎨 **Responsive UI:** Clean, dark-themed dashboard tailored specifically to match the Geometry Dash aesthetic.
-- 🚀 **Static Architecture:** Fully optimized frontend execution requiring zero backend server middle-men for instant load speeds.
+You get a random level from a demon list and have to hit the target percentage on it. Clear it, and the target goes up on a **new** random level. Miss it, and the run is over.
 
----
+At the default step that's 1%, 2%, 3% … all the way to 100% — 100 levels, one streak, no second chances. Clear a 100% level and you win.
 
-## 🛠️ Tech Stack
+Simple to explain, brutal to actually do.
 
-- **Framework:** [React 19](https://react.dev/)
-- **Build Tool:** [Vite 8](https://vite.dev/)
-- **API Integration:** [Pointercrate API](https://pointercrate.com/)
-- **Deployment Platform:** [GitHub Pages](https://pages.github.com/)
+## Features
 
----
+- **Five level lists** — Pointercrate, AREDL, Global Shitty List, Challenge List, and Impossible Levels List
+- **Configurable difficulty** — any step from 1% to 100%. 1% is the classic 100-level grind, 5% is a 20-level sprint, 50% is two levels and a coin flip
+- **Rank ranges** — narrow any list down to a brutal slice, like Impossible Levels ranks 1–50
+- **Live data** — counts and levels are read on demand, never hardcoded
+- **Real level IDs, names, creators and thumbnails** across every list
+- **Save codes** — encode a run to a string and pick it up on another device
+- **Resumable** — your run survives a refresh
+- **Per-level timer**, with average time per level on the results screen
+- **No accounts, no backend, no tracking**
 
-## 📦 Local Installation & Development
+## Getting started
 
-Want to host your own version locally or inspect the source code? Follow these simple terminal commands:
+```bash
+git clone https://github.com/MicahThePro/gd-demon-list-roulette.git
+cd gd-demon-list-roulette
+npm install
+npm run dev
+```
 
-1. **Clone the Repository:**
-   ```bash
-   git clone https://github.com/MicahThePro/gd-demon-list-roulette.git
-   cd gd-demon-list-roulette
-   ```
+Then open the local URL Vite prints, usually `http://localhost:5173`.
 
-2. **Install Dependencies:**
-   ```bash
-   npm install
-   ```
+### Scripts
 
-3. **Launch the Local Development Server:**
-   ```bash
-   npm run dev
-   ```
-   *Your terminal will spin up a local preview address (typically `http://localhost:5173`).*
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the dev server with hot reload |
+| `npm run build` | Refresh the list snapshots, then build to `dist/` |
+| `npm run deploy` | Publish `dist/` to GitHub Pages |
+| `npm run lint` | Run ESLint |
+| `npm run preview` | Serve the production build locally |
+| `npm run update:challenge-list` | Re-scrape the Challenge List snapshot only |
+| `npm run update:impossible-levels` | Re-fetch the Impossible Levels snapshot only |
 
-4. **Deploying Updates to GitHub Pages:**
-   ```bash
-   npm run build && npm run deploy
-   ```
+## How the list data works
 
----
+Two of the five lists can't be read directly from a browser, because
+[challengelist.gd](https://challengelist.gd/) and
+[impossiblelevels.com](https://impossiblelevels.com/) send no CORS headers.
+That's a browser security rule, not something an app can work around, so both
+go through a [Cloudflare Worker](worker/index.js) that re-serves them with CORS
+enabled. The other three are read live from their own APIs.
 
-## 🌟 Acknowledgements & Credits
+`npm run build` also writes a JSON snapshot of the two proxied lists. The app
+tries the Worker first and falls back to the snapshot if it's unreachable, so
+the site keeps working if the Worker goes down or you're offline.
 
-### Core Creator
-- **[GeometricalMike](https://gdbrowser.com/u/43289439)** — Project Architecture & Code Development
+Forking this? Deploy your own Worker and point `LIST_WORKER_URL` in
+`src/services/listService.js` at it.
 
-### Dedicated To
-- **[Vortrox](https://gdbrowser.com/u/vortrox)**
-- **[KingSammelot](https://gdbrowser.com/u/kingsammelot)**
-- **[Zoink](https://gdbrowser.com/u/zoink)**
+## Tech stack
 
----
-*Built with ❤️ for the Geometry Dash Community.*
+- [React 19](https://react.dev/) and [Vite 8](https://vite.dev/)
+- [Cloudflare Workers](https://workers.cloudflare.com/) for the list proxy
+- [GitHub Pages](https://pages.github.com/) for hosting
+
+## Credits
+
+Built by [GeometricalMike](https://gdbrowser.com/u/geometricalmike).
+
+Dedicated to [Vortrox](https://gdbrowser.com/u/vortrox),
+[KingSammelot](https://gdbrowser.com/u/kingsammelot) and
+[Zoink](https://gdbrowser.com/u/zoink).
+
+Level data comes from [Pointercrate](https://pointercrate.com/),
+[AREDL](https://aredl.net/), [Global Shitty List](https://globalshittylist.com/),
+[Challenge List](https://challengelist.gd/) and
+[Impossible Levels List](https://impossiblelevels.com/).
+All level names and creators belong to their respective owners.
