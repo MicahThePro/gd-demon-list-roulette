@@ -24,12 +24,15 @@ Simple to explain, brutal to actually do.
 - **Configurable difficulty** — any step from 1% to 100%. 1% is the classic 100-level grind, 5% is a 20-level sprint, 50% is two levels and a coin flip
 - **Rank ranges** — narrow any list down to a brutal slice, like Impossible Levels ranks 1–50
 - **Live data** — counts and levels are read on demand, never hardcoded
+- **Rate and version badges** — Impossible Levels entries show the TPS or FPS they need, and the game version, when the list provides one
 - **Real level IDs, names, creators and thumbnails** across every list
 - **Save codes** — encode a run to a string and pick it up on another device
 - **Leaderboard** — your best run and full history, stored in a cookie, with per-run level breakdowns
-- **Resumable** — your run survives a refresh
+- **Resumable** — your run survives a refresh, and your chosen list is remembered too
+- **Quit mid-run** — abandon a run without it counting as a give-up or reaching the leaderboard
 - **Per-level timer**, with average time per level on the results screen
-- **No accounts, no backend, no tracking**
+- **Works on phones and tablets** — touch-friendly controls and a layout built for small screens
+- **No accounts, no tracking**
 
 ## Getting started
 
@@ -47,12 +50,17 @@ Then open the local URL Vite prints, usually `http://localhost:5173`.
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Start the dev server with hot reload |
-| `npm run build` | Refresh the list snapshots, then build to `dist/` |
+| `npm run build` | Build to `dist/` |
 | `npm run deploy` | Publish `dist/` to GitHub Pages |
 | `npm run lint` | Run ESLint |
 | `npm run preview` | Serve the production build locally |
+| `npm run worker:dev` | Run the Cloudflare Worker locally |
+| `npm run worker:deploy` | Deploy the Cloudflare Worker |
 | `npm run update:challenge-list` | Re-scrape the Challenge List snapshot only |
 | `npm run update:impossible-levels` | Re-fetch the Impossible Levels snapshot only |
+
+The two `update:` scripts are optional. Lists are served live by the Worker, so
+the committed snapshots are only a fallback and rarely need refreshing.
 
 ## Leaderboard storage
 
@@ -74,9 +82,32 @@ That's a browser security rule, not something an app can work around, so both
 go through a [Cloudflare Worker](worker/index.js) that re-serves them with CORS
 enabled. The other three are read live from their own APIs.
 
-`npm run build` also writes a JSON snapshot of the two proxied lists. The app
-tries the Worker first and falls back to the snapshot if it's unreachable, so
-the site keeps working if the Worker goes down or you're offline.
+Every Worker request re-reads upstream, so the lists stay current without a
+rebuild or redeploy.
+
+### Rate and version badges
+
+Impossible Levels entries often have to be played at a specific rate, and
+sometimes on a specific game version. The site shows both, but only on each
+level's own page — and the list API doesn't carry either.
+
+The unit genuinely can't be derived from the number. The site labels a level
+TPS only when it carries the 2.2 tag, so the same rate appears under both units
+across the list: one 240 rate is `240 TPS` while another is `240 FPS`. The
+list API's free-text `versionPossible` field is no help either, since it
+disagrees with what the site actually renders.
+
+So the Worker reads the rendered badges off the level's own page, and the app
+fetches them for the level you're currently on. Each is cached at the edge for a
+day and shared between visitors, so this costs one request the first time you
+see a level and none after that. Levels with no rate or no version simply show
+no badge.
+
+### Snapshots
+
+The `update:` scripts write a JSON snapshot of the two proxied lists into the
+repo. The app tries the Worker first and falls back to the snapshot if it's
+unreachable, so the site keeps working if the Worker goes down.
 
 Forking this? Deploy your own Worker and point `LIST_WORKER_URL` in
 `src/services/listService.js` at it.
