@@ -99,7 +99,17 @@ function App() {
       return ''
     }
 
-    const encoded = encodeRunState(run)
+    // The timer is derived from currentLevelStartedAt, so a bare save leaves that
+    // timestamp pointing at the moment of saving and every second spent away
+    // would be counted as play time on the next load. The elapsed time at the
+    // point of saving is stored instead, and loadRunFromCode rebases the start
+    // time to "now minus that much", which pauses the clock across the gap.
+    const elapsedMs = getElapsedLevelTimeMs({
+      startedAt: run.currentLevelStartedAt,
+      currentLevelStartedAt: run.currentLevelStartedAt,
+    })
+
+    const encoded = encodeRunState({ ...run, elapsedMs })
     setSaveCode(encoded)
     return encoded
   }
@@ -110,7 +120,18 @@ function App() {
       return false
     }
 
-    setRun(decoded)
+    const loaded = {
+      ...decoded,
+      // Resume where the save left off rather than counting the time away. A
+      // code saved before this field existed has no elapsed time, so those runs
+      // restart their level clock at zero.
+      currentLevelStartedAt: Number.isFinite(decoded.elapsedMs)
+        ? Date.now() - Math.max(0, decoded.elapsedMs)
+        : Date.now(),
+    }
+    delete loaded.elapsedMs
+
+    setRun(loaded)
     setSaveCode(encodedCode)
     setScreen(decoded.status === 'active' ? SCREEN.ROULETTE : SCREEN.RESULTS)
     return true
