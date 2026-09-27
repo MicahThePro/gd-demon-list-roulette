@@ -640,8 +640,12 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(2, 6, 23, 0.72);
-  backdrop-filter: blur(4px);
+  /* Solid, not translucent. A backdrop-filter here has to re-sample and blur
+     the whole viewport on every frame the overlay is up, which is what made
+     opening a dialog feel sluggish. The dimmed fill gives the same visual
+     separation for a fraction of the cost, and it costs the same on every
+     dialog, so the quit and import boxes benefit too. */
+  background: rgba(2, 6, 23, 0.88);
 }
 
 .modal {
@@ -739,11 +743,6 @@
   line-height: 1.2;
 }
 
-.changelog-close {
-  flex: 0 0 auto;
-  height: 40px;
-  padding: 0 16px;
-}
 
 .changelog-list {
   display: grid;
@@ -924,6 +923,18 @@
 .primary-button:hover,
 .secondary-button:hover {
   transform: translateY(-1px);
+}
+
+/* Must stay after the shared button rules above, since they set the padding
+   this button needs to override. */
+.changelog-close {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .status-panel,
