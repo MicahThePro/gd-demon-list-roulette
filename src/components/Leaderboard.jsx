@@ -19,22 +19,16 @@ const formatWhen = (timestamp) => {
   if (!Number.isFinite(timestamp)) return 'Unknown date'
 
   const date = new Date(timestamp)
-  const now = new Date()
-  const sameYear = date.getFullYear() === now.getFullYear()
-  const sameDay =
-    sameYear &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
+  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const sameYear = date.getFullYear() === new Date().getFullYear()
 
-  if (sameDay) {
-    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-  }
-
-  return date.toLocaleDateString(undefined, {
+  // The time is always shown next to the date: a leaderboard is read as
+  // "how far and how fast", and "12:04 PM" alone loses the day it happened on.
+  return `${date.toLocaleDateString(undefined, {
     year: sameYear ? undefined : 'numeric',
     month: 'short',
     day: 'numeric',
-  })
+  })} · ${time}`
 }
 
 const RunDetail = ({ entry, onClose, onDelete }) => {
