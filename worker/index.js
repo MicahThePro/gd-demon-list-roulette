@@ -2,11 +2,13 @@
  * Cloudflare Worker that serves the two list sources this app cannot fetch
  * directly from the browser, because neither upstream sends CORS headers.
  *
- *   /impossible-levels -> proxied and filtered from the Impossible Levels API
- *   /challenge-list    -> scraped and parsed from challengelist.gd into the
- *                         same shape as the build-time snapshot
+ *   /impossible-levels      -> proxied and filtered from the Impossible Levels API
+ *   /challenge-list         -> scraped and parsed from challengelist.gd into the
+ *                              same shape as the build-time snapshot
+ *   /impossible-level-rate  -> the TPS/FPS badge for one level, read from that
+ *                              level's page
  *
- * Both endpoints send Access-Control-Allow-Origin so the site can call them.
+ * Both list endpoints send Access-Control-Allow-Origin so the site can call them.
  * Every request re-reads upstream, so the counts stay current without a
  * rebuild, and cache-control keeps browsers from re-fetching on every click.
  */
@@ -14,6 +16,7 @@
 const IMPOSSIBLE_LEVELS_API = 'https://api.impossiblelevels.com/api/levels'
 const CHALLENGE_LIST_URL = 'https://challengelist.gd/challenges/'
 const CHALLENGE_LIST_DETAIL = (id) => `https://challengelist.gd/challenges/${id}/`
+const IMPOSSIBLE_LEVEL_PAGE = (id) => `https://impossiblelevels.com/level/${id}`
 
 // challengelist.gd only publishes a 100 level main list. The legacy list is
 // deliberately ignored: most of those levels were deleted from the site, so
@@ -29,15 +32,20 @@ const CORS_HEADERS = {
   'access-control-allow-headers': 'Content-Type',
 }
 
-const json = (data, init = {}) =>
-  new Response(JSON.stringify(data), {
-    ...init,
+const json = (data, init = {}) => {
+  const { headers, ...rest } = init
+  return new Response(JSON.stringify(data), {
+    ...rest,
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'public, max-age=900',
       ...CORS_HEADERS,
+      // Caller-supplied headers come last so they win; spreading them first
+      // would silently drop the per-route cache-control.
+      ...headers,
     },
   })
+}
 
 // showcaseLink is a YouTube URL in several shapes: watch?v=ID,
 // watch?app=...&v=ID, youtu.be/ID, or /embed/ID.
@@ -86,6 +94,36 @@ const mapImpossibleLevel = (raw) => {
       ? `https://impossiblelevels.com/level/${raw.id}`
       : 'https://impossiblelevels.com',
   }
+}
+
+/**
+ * The rate a level must be played at, as the site labels it, e.g. "240 TPS".
+ *
+ * The unit is NOT derivable from the number: the site shows TPS only for
+ * levels carrying the 2.2 tag, so the same rate appears under both units
+ * (240 is mostly TPS, 120 is mostly FPS). The list API has no tags field and
+ * its free-text versionPossible disagrees with the rendered label on some
+ * entries, so the rendered badge is read straight off the level's own page.
+ *
+ * This is served per level rather than for the whole list on purpose. A Worker
+ * has a hard subrequest limit, so scraping all ~2100 pages inside one request
+ * is not possible; the app only ever displays the rate for the level it is
+ * currently on, which makes a single fetch per request the right shape. The
+ * long cache-control means each level is only ever fetched about once a day,
+ * at the edge, shared by every visitor.
+ */
+const RATE_LABEL = /text-2xl font-bold text-(?:white|amber-400)">([0-9.]+) (FPS|TPS)</
+
+const getImpossibleLevelRate = async (id) => {
+  const response = await fetch(IMPOSSIBLE_LEVEL_PAGE(id))
+  if (!response.ok) {
+    throw new Error(`Impossible Levels page returned ${response.status}`)
+  }
+
+  const match = (await response.text()).match(RATE_LABEL)
+  // A null rate is a real answer, not a failure: a handful of levels show no
+  // badge on the site at all, and 404 here would make the client retry.
+  return { rate: match ? `${match[1]} ${match[2]}` : null }
 }
 
 const buildImpossibleLevels = async () => {
@@ -224,6 +262,11 @@ const ROUTES = {
   'challenge-list': buildChallengeList,
 }
 
+// Served for a long time: a level's required rate changes only when the list
+// revises it, and every visitor asking about the same level shares this copy.
+const RATE_CACHE_CONTROL =
+  'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800'
+
 export default {
   async fetch(request) {
     if (request.method === 'OPTIONS') {
@@ -234,7 +277,23 @@ export default {
       return json({ error: 'Method not allowed' }, { status: 405 })
     }
 
-    const key = new URL(request.url).pathname.replace(/^\/+/, '').replace(/\.json$/, '')
+    const url = new URL(request.url)
+    const key = url.pathname.replace(/^\/+/, '').replace(/\.json$/, '')
+
+    if (key === 'impossible-level-rate') {
+      const id = url.searchParams.get('id')
+      if (!/^\d+$/.test(id ?? '')) {
+        return json({ error: 'A numeric level id is required' }, { status: 400 })
+      }
+
+      try {
+        const data = await getImpossibleLevelRate(id)
+        return json(data, { headers: { 'cache-control': RATE_CACHE_CONTROL } })
+      } catch (error) {
+        return json({ error: error?.message ?? 'Failed to read rate' }, { status: 502 })
+      }
+    }
+
     const build = ROUTES[key]
 
     if (!build) {

@@ -12,6 +12,12 @@
  * entirely. Re-run this when the list changes:
  *
  *   node scripts/build-impossible-levels.mjs
+ *
+ * This snapshot is a FALLBACK only. The app prefers the Cloudflare Worker,
+ * which re-reads the API on every request, so the committed data is just a
+ * safety net for when the Worker is unreachable. Nothing here scrapes the
+ * ~2100 level pages, because the required rate is fetched on demand for the
+ * single level being played (see /impossible-level-rate in worker/index.js).
  */
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -53,66 +59,6 @@ const cleanCreator = (value) => {
   if (typeof value !== 'string') return ''
   const trimmed = value.replace(/^@/, '').trim()
   return !trimmed || trimmed.toLowerCase() === 'n/a' ? '' : trimmed
-}
-
-/**
- * The rate a level must be played at, as the website labels it, e.g. "240 TPS"
- * or "1200 FPS".
- *
- * This is NOT derivable from the number. The site's own rule is tag-based: it
- * shows "TPS" when the level carries the 2.2 tag and "FPS" otherwise, so the
- * same rate appears under both units (240 is mostly TPS, but 120 is mostly
- * FPS). The list API has no tags field and the free-text versionPossible
- * disagrees with the site's rendering on some entries, so the rendered label
- * is read straight off the level page, which is the ground truth.
- */
-const RATE_LABEL = /text-2xl font-bold text-(?:white|amber-400)">([0-9.]+) (FPS|TPS)</
-
-const fetchRateLabel = async (id) => {
-  const response = await fetch(DETAIL_URL(id), {
-    headers: { 'user-agent': 'gd-demon-roulette-build/1.0 (list snapshot builder)' },
-  })
-  if (!response.ok) return null
-
-  const html = await response.text()
-  const match = html.match(RATE_LABEL)
-  return match ? `${match[1]} ${match[2]}` : null
-}
-
-/**
- * The rate label lives only on the per-level page, so every level has to be
- * fetched. A bounded worker pool keeps that to roughly a minute without
- * hammering the site: 2117 sequential requests would take far longer.
- */
-const fetchRateLabels = async (levels, onProgress) => {
-  const labels = new Array(levels.length).fill(null)
-  let cursor = 0
-  let done = 0
-
-  const worker = async () => {
-    while (cursor < levels.length) {
-      const index = cursor
-      cursor += 1
-      const level = levels[index]
-
-      // Retry once: a single transient failure would otherwise silently drop
-      // the rate for one level.
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          labels[index] = await fetchRateLabel(level.id)
-          if (labels[index]) break
-        } catch {
-          labels[index] = null
-        }
-      }
-
-      done += 1
-      if (done % 250 === 0) onProgress?.(done, levels.length)
-    }
-  }
-
-  await Promise.all(Array.from({ length: 24 }, worker))
-  return labels
 }
 
 // levelId is usually a number, but some entries instead hold a link to the
@@ -192,25 +138,6 @@ const main = async () => {
   const missingVideo = levels.filter((level) => !level.video).length
   const missingLevelId = levels.filter((level) => level.levelId == null).length
 
-  // Every level should have a rate label. A large gap means the site changed
-  // its markup, so fail loudly rather than quietly dropping the field.
-  console.log('Fetching rate labels (TPS/FPS) from each level page...')
-  const rateLabels = await fetchRateLabels(levels, (done, total) => {
-    console.log(`  ${done}/${total}`)
-  })
-  levels.forEach((level, index) => {
-    level.rate = rateLabels[index]
-  })
-  const missingRate = levels.filter((level) => !level.rate).length
-  const tpsCount = levels.filter((level) => level.rate?.endsWith('TPS')).length
-
-  if (missingRate > levels.length * 0.02) {
-    throw new Error(
-      `Only ${levels.length - missingRate} of ${levels.length} levels had a readable rate label. ` +
-        'The site markup may have changed, so the TPS/FPS badge would be missing.',
-    )
-  }
-
   const maxRank = levels[levels.length - 1].rank
   if (levels[0].rank !== 1 || maxRank !== levels.length) {
     throw new Error(
@@ -240,7 +167,6 @@ const main = async () => {
   console.log(`  hidden skipped: ${hidden}`)
   console.log(`  with video:     ${levels.length - missingVideo}/${levels.length}`)
   console.log(`  with level id:  ${levels.length - missingLevelId}/${levels.length}`)
-  console.log(`  with rate:      ${levels.length - missingRate}/${levels.length} (${tpsCount} TPS)`)
   console.log(`  top level:      #${levels[0].rank} ${levels[0].name} by ${levels[0].creator}`)
 }
 

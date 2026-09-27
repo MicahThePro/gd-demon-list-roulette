@@ -26,17 +26,15 @@ const CHALLENGE_LIST_URLS = [
 // api.impossiblelevels.com sends no CORS headers either, so the same Worker
 // proxies it. Only visible levels are included, which excludes the hidden
 // legacy entries.
-// The build-time snapshot is listed first for this list specifically: the rate
-// badge (TPS or FPS) only exists there, because the site reveals the unit on
-// each level's own page and the list API does not carry it. The live Worker is
-// kept as the fallback, but it cannot supply the rate. The snapshot is still
-// fresh, since `npm run build` regenerates it before every deploy.
+// The Worker is the primary source for both lists: it re-reads upstream on
+// every request, so counts and levels stay current with no rebuild. The
+// build-time snapshots are only a fallback for when the Worker is unreachable.
 const IMPOSSIBLE_LEVELS_URLS = [
+  `${LIST_WORKER_URL}/impossible-levels`,
   withBase('impossible-levels.json'),
   './impossible-levels.json',
   withBase('public/impossible-levels.json'),
   withBase('dist/impossible-levels.json'),
-  `${LIST_WORKER_URL}/impossible-levels`,
 ]
 const IMPOSSIBLE_LEVELS_NAME = 'Impossible Levels List'
 const IMPOSSIBLE_LEVELS_SIZE = 2116
@@ -557,13 +555,18 @@ const toImpossibleLevel = (item) => {
   const video = item?.video ?? getYoutubeId(item?.showcaseLink)
   const levelId = parseSnapshotLevelId(item?.levelId)
   const permalink = item?.permalink || 'https://impossiblelevels.com'
-  // Only present on the build-time snapshot: the live Worker cannot supply it,
-  // because the site shows the rate unit (TPS or FPS) solely on each level's
-  // own page, and the unit is not derivable from the rate number.
+  // Only present in the build-time snapshot. The live Worker cannot supply it
+  // in the list response, because the site reveals the unit (TPS or FPS) only
+  // on each level's own page and the unit is not derivable from the rate
+  // number. fetchImpossibleLevelRate asks the Worker for the level on screen.
   const rate = typeof item?.rate === 'string' && item.rate.trim() ? item.rate.trim() : null
 
   return {
     id: `impossiblelevels-${item?.id ?? rank}`,
+    // The upstream id, kept because the rate badge is looked up per level by
+    // this id. It is stripped from the run history, which only keeps the
+    // display fields, so it costs nothing in the cookie.
+    listId: item?.id ?? null,
     levelId,
     position: Number.isFinite(Number(rank)) ? Number(rank) : null,
     name: name || `Impossible level #${rank}`,
@@ -573,6 +576,36 @@ const toImpossibleLevel = (item) => {
     permalink,
     detailUrl: permalink,
     rate,
+  }
+}
+
+/**
+ * The TPS/FPS badge for one Impossible Levels entry, from the Worker.
+ *
+ * The unit is not derivable from the rate number: the site labels a level TPS
+ * only when it carries the 2.2 tag, so the same rate shows up as both TPS and
+ * FPS across the list. It is therefore read from the level's own page, which
+ * the Worker caches at the edge for a day, so this costs one request the first
+ * time a given level is played and none after that.
+ *
+ * Returns null when the level genuinely has no rate (a few do not), and also
+ * when the Worker cannot be reached, so the caller can simply not render a
+ * badge rather than handling an error.
+ */
+export const fetchImpossibleLevelRate = async (levelId, fetcher = fetch) => {
+  if (levelId == null) return null
+
+  try {
+    const response = await fetcher(
+      `${LIST_WORKER_URL}/impossible-level-rate?id=${encodeURIComponent(levelId)}`,
+    )
+    if (!response?.ok) return null
+
+    const data = await response.json()
+    const rate = data?.rate
+    return typeof rate === 'string' && rate.trim() ? rate.trim() : null
+  } catch {
+    return null
   }
 }
 

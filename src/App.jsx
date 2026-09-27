@@ -4,7 +4,7 @@ import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
-import { fetchAredlLevelDetails, fetchList } from './services/listService'
+import { fetchAredlLevelDetails, fetchImpossibleLevelRate, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import './App.css'
 
@@ -20,7 +20,27 @@ const SCREEN = {
 // too slow. run.source holds the list's display title.
 const HYDRATABLE_SOURCES = new Set(['AREDL'])
 
+// The Impossible Levels list omits the rate a level must be played at, and the
+// unit (TPS or FPS) is not derivable from the rate number, so it is asked of
+// the Worker for the one level on screen. The build-time snapshot may already
+// carry it, in which case there is nothing to fetch.
+const RATE_SOURCE = 'Impossible Levels List'
+
+const attachLevelRate = async (runState, level) => {
+  if (!level || runState?.source !== RATE_SOURCE || level.rate) {
+    return level
+  }
+
+  const rate = await fetchImpossibleLevelRate(level.listId)
+  return rate ? { ...level, rate } : level
+}
+
 const hydrateLevelForRun = async (runState, level) => {
+  const withRate = await attachLevelRate(runState, level)
+  return hydrateAredlLevel(runState, withRate)
+}
+
+const hydrateAredlLevel = async (runState, level) => {
   if (!level || !HYDRATABLE_SOURCES.has(runState?.source)) {
     return level
   }
