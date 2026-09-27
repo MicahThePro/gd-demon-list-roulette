@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { MAX_PERCENT_STEP } from '../utils/roulette'
 
 /**
  * The percentage-step setting, shown in a dialog like the What's new and quit
@@ -41,11 +40,11 @@ export default function SettingsDialog({
     }
     window.addEventListener('keydown', handleKeyDown)
 
-    // Focus the input, not the Close button. Focusing the button meant the
-    // first keypress went to a button rather than the field, and Backspace
-    // appeared to do nothing.
+    // Focus the input, not the Close button, so typing goes to the field.
+    // The caret is deliberately NOT moved to the end and the text is NOT
+    // selected: selecting made the first keystroke replace the whole value, so
+    // typing a second digit was impossible without clicking first.
     inputRef.current?.focus()
-    inputRef.current?.select()
 
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose, onCommit])
@@ -107,21 +106,20 @@ export default function SettingsDialog({
             Percentage increment
             <input
               ref={inputRef}
-              type="number"
-              min="1"
-              max={MAX_PERCENT_STEP}
-              step="1"
+              type="text"
+              inputMode="numeric"
               value={percentStepDraft}
-              onChange={(event) => onDraftChange(event.target.value)}
+              onChange={(event) => onDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
               onBlur={() => {
                 setHasSeenHint(true)
                 onCommit()
               }}
               placeholder="1"
+              aria-describedby="settings-step-hint"
             />
           </label>
 
-          <p className="settings-hint">
+          <p className="settings-hint" id="settings-step-hint">
             Currently stepping up by +{percentStep}%, which means {estimatedRounds}{' '}
             {estimatedRounds === 1 ? 'level' : 'levels'} to finish a run.
           </p>
