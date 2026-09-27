@@ -555,17 +555,20 @@ const toImpossibleLevel = (item) => {
   const video = item?.video ?? getYoutubeId(item?.showcaseLink)
   const levelId = parseSnapshotLevelId(item?.levelId)
   const permalink = item?.permalink || 'https://impossiblelevels.com'
-  // Only present in the build-time snapshot. The live Worker cannot supply it
-  // in the list response, because the site reveals the unit (TPS or FPS) only
-  // on each level's own page and the unit is not derivable from the rate
-  // number. fetchImpossibleLevelRate asks the Worker for the level on screen.
+  // Only present in the build-time snapshot. The live Worker cannot supply
+  // these in the list response, because the site reveals the unit (TPS or FPS)
+  // and the version tag only on each level's own page, and neither is
+  // derivable from the list fields. fetchImpossibleLevelDetails asks the
+  // Worker for the level on screen.
   const rate = typeof item?.rate === 'string' && item.rate.trim() ? item.rate.trim() : null
+  const version =
+    typeof item?.version === 'string' && item.version.trim() ? item.version.trim() : null
 
   return {
     id: `impossiblelevels-${item?.id ?? rank}`,
-    // The upstream id, kept because the rate badge is looked up per level by
-    // this id. It is stripped from the run history, which only keeps the
-    // display fields, so it costs nothing in the cookie.
+    // The upstream id, kept because the rate and version are looked up per
+    // level by this id. It is stripped from the run history, which only keeps
+    // the display fields, so it costs nothing in the cookie.
     listId: item?.id ?? null,
     levelId,
     position: Number.isFinite(Number(rank)) ? Number(rank) : null,
@@ -576,36 +579,42 @@ const toImpossibleLevel = (item) => {
     permalink,
     detailUrl: permalink,
     rate,
+    version,
   }
 }
 
 /**
- * The TPS/FPS badge for one Impossible Levels entry, from the Worker.
+ * The required rate and game version for one Impossible Levels entry, from the
+ * Worker.
  *
- * The unit is not derivable from the rate number: the site labels a level TPS
- * only when it carries the 2.2 tag, so the same rate shows up as both TPS and
- * FPS across the list. It is therefore read from the level's own page, which
- * the Worker caches at the edge for a day, so this costs one request the first
- * time a given level is played and none after that.
+ * Neither is derivable from the list data: the site labels a level TPS only when
+ * it carries the 2.2 tag, so the same rate shows up as both TPS and FPS across
+ * the list, and its versionPossible field is free text that disagrees with the
+ * rendered version tag. Both are therefore read from the level's own page,
+ * which the Worker caches at the edge for a day, so this costs one request the
+ * first time a given level is played and none after that.
  *
- * Returns null when the level genuinely has no rate (a few do not), and also
- * when the Worker cannot be reached, so the caller can simply not render a
- * badge rather than handling an error.
+ * Returns nulls when the level has no rate or no version (most have neither a
+ * version nor, rarely, a rate), and also when the Worker cannot be reached, so
+ * the caller can simply not render a badge rather than handling an error.
  */
-export const fetchImpossibleLevelRate = async (levelId, fetcher = fetch) => {
-  if (levelId == null) return null
+export const fetchImpossibleLevelDetails = async (levelId, fetcher = fetch) => {
+  const empty = { rate: null, version: null }
+  if (levelId == null) return empty
 
   try {
     const response = await fetcher(
       `${LIST_WORKER_URL}/impossible-level-rate?id=${encodeURIComponent(levelId)}`,
     )
-    if (!response?.ok) return null
+    if (!response?.ok) return empty
 
     const data = await response.json()
-    const rate = data?.rate
-    return typeof rate === 'string' && rate.trim() ? rate.trim() : null
+    const clean = (value) =>
+      typeof value === 'string' && value.trim() ? value.trim() : null
+
+    return { rate: clean(data?.rate), version: clean(data?.version) }
   } catch {
-    return null
+    return empty
   }
 }
 

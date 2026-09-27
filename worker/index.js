@@ -105,25 +105,47 @@ const mapImpossibleLevel = (raw) => {
  * its free-text versionPossible disagrees with the rendered label on some
  * entries, so the rendered badge is read straight off the level's own page.
  *
+ * The required game version comes off the same page, for the same reason: the
+ * list API's versionPossible is free text and disagrees with what the site
+ * renders (some levels say "2.2" there but show no version tag at all).
+ *
  * This is served per level rather than for the whole list on purpose. A Worker
  * has a hard subrequest limit, so scraping all ~2100 pages inside one request
- * is not possible; the app only ever displays the rate for the level it is
- * currently on, which makes a single fetch per request the right shape. The
- * long cache-control means each level is only ever fetched about once a day,
- * at the edge, shared by every visitor.
+ * is not possible; the app only ever displays the rate and version for the
+ * level it is currently on, which makes a single fetch per request the right
+ * shape. The long cache-control means each level is only ever fetched about
+ * once a day, at the edge, shared by every visitor.
  */
 const RATE_LABEL = /text-2xl font-bold text-(?:white|amber-400)">([0-9.]+) (FPS|TPS)</
 
-const getImpossibleLevelRate = async (id) => {
+// The site renders every tag as the same blue pill, so the markup alone cannot
+// tell a version tag from "2 Player", "Rated" or "Tentative Placement". Only
+// these three names denote a game version, so the text has to be matched too.
+const VERSION_TAGS = new Set(['<2.1', '2.1', '2.2'])
+const TAG_PILL =
+  /<span class="px-3 py-1\.5 bg-blue-600\/90 text-blue-100 rounded-full border border-blue-400 group relative text-sm">([^<]+)</
+
+const getImpossibleLevelDetails = async (id) => {
   const response = await fetch(IMPOSSIBLE_LEVEL_PAGE(id))
   if (!response.ok) {
     throw new Error(`Impossible Levels page returned ${response.status}`)
   }
 
-  const match = (await response.text()).match(RATE_LABEL)
-  // A null rate is a real answer, not a failure: a handful of levels show no
-  // badge on the site at all, and 404 here would make the client retry.
-  return { rate: match ? `${match[1]} ${match[2]}` : null }
+  const html = await response.text()
+  const match = html.match(RATE_LABEL)
+
+  // A null version is a real answer, not a failure: most levels have no
+  // version tag, and erroring here would make the client retry constantly.
+  const versions = [...html.matchAll(new RegExp(TAG_PILL.source, 'g'))]
+    .map((m) => m[1].trim())
+    .filter((name) => VERSION_TAGS.has(name))
+
+  return {
+    rate: match ? `${match[1]} ${match[2]}` : null,
+    // At most one version tag in practice, but joining keeps a hypothetical
+    // multi-version level readable instead of silently dropping one.
+    version: versions.length ? versions.join(' / ') : null,
+  }
 }
 
 const buildImpossibleLevels = async () => {
@@ -287,10 +309,10 @@ export default {
       }
 
       try {
-        const data = await getImpossibleLevelRate(id)
+        const data = await getImpossibleLevelDetails(id)
         return json(data, { headers: { 'cache-control': RATE_CACHE_CONTROL } })
       } catch (error) {
-        return json({ error: error?.message ?? 'Failed to read rate' }, { status: 502 })
+        return json({ error: error?.message ?? 'Failed to read level details' }, { status: 502 })
       }
     }
 

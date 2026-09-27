@@ -499,6 +499,58 @@
   accent-color: #f97316;
 }
 
+/* Confirmation dialog, centred over the page with the content behind it
+   dimmed. Fixed positioning is relative to the viewport, not the page, so it
+   stays put when the challenge list is scrolled. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  display: grid;
+  gap: 14px;
+  width: min(420px, 100%);
+  padding: 26px 24px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.97);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.6);
+  text-align: center;
+}
+
+.modal h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.4rem;
+  line-height: 1.2;
+}
+
+.modal p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.modal-actions button {
+  flex: 1 1 160px;
+}
+
 .primary-button,
 .secondary-button {
   border: none;
@@ -520,6 +572,25 @@
   color: #e2e8f0;
   background: rgba(51, 65, 85, 0.7);
   border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Used only for the confirm step of quitting a run, the one action that cannot
+   be undone. Kept beside the primary button so the shared hover applies. */
+.danger-button {
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 14px;
+  padding: 14px 18px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.16);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.danger-button:hover {
+  transform: translateY(-1px);
+  background: rgba(239, 68, 68, 0.24);
 }
 
 .primary-button:hover,
@@ -574,16 +645,25 @@
   text-shadow: 0 0 18px rgba(125, 211, 252, 0.35);
 }
 
-/* The rate an Impossible Levels entry must be played at. The unit is taken
-   from the site, which labels some rates TPS and others FPS. */
-.level-rate {
+/* The rate an Impossible Levels entry must be played at, and the game version
+   it needs. Both are optional and sit on their own row so the rank line above
+   does not get crowded on a phone. */
+.level-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 14px;
+}
+
+.level-rate,
+.level-version {
   display: inline-block;
-  padding: 2px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
-  font-size: 0.78em;
-  letter-spacing: 0.08em;
-  vertical-align: 0.12em;
-  text-shadow: none;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
 }
 
 .level-rate-tps {
@@ -596,6 +676,12 @@
   color: #a5f3fc;
   background: rgba(34, 211, 238, 0.16);
   border: 1px solid rgba(34, 211, 238, 0.36);
+}
+
+.level-version {
+  color: #ddd6fe;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(167, 139, 250, 0.4);
 }
 
 .level-card h3 {
@@ -774,6 +860,14 @@
   object-fit: cover;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+/* Placeholder for a level with no thumbnail. It must still occupy the thumb
+   grid cell, so it needs a real box rather than collapsing to zero size. */
+.challenge-thumb-empty {
+  display: block;
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.14), rgba(148, 163, 184, 0.03));
+  border-color: rgba(148, 163, 184, 0.14);
 }
 
 .challenge-copy {
@@ -1310,6 +1404,21 @@
   .copy-toast,
   .save-toast-inline {
     white-space: normal;
+  }
+
+  .modal {
+    padding: 22px 18px;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  /* The confirm button is the destructive one, so it sits lowest on a phone
+     rather than directly under the user's thumb next to Cancel. */
+  .modal-actions button {
+    width: 100%;
+    flex: 1 1 auto;
   }
 }
 

@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Local wrangler state (dev caches, not needed to deploy)
+.wrangler/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local env files
+.env
+.env.local
+.env.*.local

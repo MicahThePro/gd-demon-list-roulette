@@ -1,16 +1,33 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
 
-export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveRun, savedRunCode }) {
+export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit, onSaveRun, savedRunCode }) {
   const [achievedPercent, setAchievedPercent] = useState('')
   const [validationMessage, setValidationMessage] = useState('')
   const [levelCopyMessage, setLevelCopyMessage] = useState('')
   const [saveCopyMessage, setSaveCopyMessage] = useState('')
+  const [isConfirmingQuit, setIsConfirmingQuit] = useState(false)
 
   useEffect(() => {
     setAchievedPercent('')
     setValidationMessage('')
   }, [run.currentTarget, run.currentLevel?.id])
+
+  // Escape cancels, as it should for a dialog. The listener only exists while
+  // the dialog is open, and the page's own key handler is left alone because
+  // this is a cancel action rather than a gameplay input.
+  useEffect(() => {
+    if (!isConfirmingQuit) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsConfirmingQuit(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isConfirmingQuit])
 
   useEffect(() => {
     if (!levelCopyMessage) return undefined
@@ -146,19 +163,24 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
               </a>
             )}
 
-            <p className="level-meta">
-              #{run.currentLevel.position} on the list
-              {run.currentLevel.rate && (
-                <>
-                  {' · '}
+            <p className="level-meta">#{run.currentLevel.position} on the list</p>
+            {/* The required rate and game version come from the Impossible
+                Levels site. Either can be absent, so each is rendered only
+                when present, and the row disappears entirely when neither is. */}
+            {(run.currentLevel.rate || run.currentLevel.version) && (
+              <div className="level-badges">
+                {run.currentLevel.rate && (
                   <span
                     className={`level-rate level-rate-${run.currentLevel.rate.endsWith('TPS') ? 'tps' : 'fps'}`}
                   >
                     {run.currentLevel.rate}
                   </span>
-                </>
-              )}
-            </p>
+                )}
+                {run.currentLevel.version && (
+                  <span className="level-version">v{run.currentLevel.version}</span>
+                )}
+              </div>
+            )}
             <h3>{run.currentLevel.name}</h3>
             <p>{run.currentLevel.creator ? `By ${run.currentLevel.creator}` : 'Community pick'}</p>
             <div className="timer-badge">Time: {formatDurationMs(displayElapsed)}</div>
@@ -220,6 +242,16 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
             <button className="secondary-button" type="button" onClick={onGiveUp}>
               Give up
             </button>
+            {/* Quitting discards the run entirely, unlike Give up which ends
+                it and records it. A single click only opens the confirm
+                dialog, because it is the one action here that cannot be undone. */}
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setIsConfirmingQuit(true)}
+            >
+              Quit run
+            </button>
           </div>
 
         </section>
@@ -233,8 +265,13 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
           <div className="challenge-list" ref={challengeListRef}>
             {challengeEntries.map((entry) => (
               <div key={entry.id} className="challenge-item">
-                {entry.thumbnail && (
+                {/* The thumbnail cell is always rendered, even with no image to
+                    put in it. Omitting it would pull the level name into the
+                    thumbnail's grid column and squeeze the text. */}
+                {entry.thumbnail ? (
                   <img src={entry.thumbnail} alt={`${entry.name} thumbnail`} className="challenge-thumb" loading="lazy" />
+                ) : (
+                  <span className="challenge-thumb challenge-thumb-empty" aria-hidden="true" />
                 )}
                 <div className="challenge-copy">
                   <strong>{entry.name}</strong>
@@ -250,6 +287,48 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onSaveR
           </div>
         </aside>
       </div>
+
+      {isConfirmingQuit && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setIsConfirmingQuit(false)}
+          role="presentation"
+        >
+          {/* role="dialog" with aria-modal marks this as a real dialog for
+              assistive tech, and the click on the inner box is stopped so
+              clicking inside it does not dismiss. */}
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quit-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="quit-dialog-title">Quit this run?</h2>
+            <p>
+              Your progress will be lost and this run will not be added to the
+              leaderboard.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setIsConfirmingQuit(false)}
+                autoFocus
+              >
+                No, keep playing
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={onQuit}
+              >
+                Yes, quit run
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

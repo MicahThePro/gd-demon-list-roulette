@@ -4,7 +4,7 @@ import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
-import { fetchAredlLevelDetails, fetchImpossibleLevelRate, fetchList } from './services/listService'
+import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import './App.css'
 
@@ -20,24 +20,29 @@ const SCREEN = {
 // too slow. run.source holds the list's display title.
 const HYDRATABLE_SOURCES = new Set(['AREDL'])
 
-// The Impossible Levels list omits the rate a level must be played at, and the
-// unit (TPS or FPS) is not derivable from the rate number, so it is asked of
-// the Worker for the one level on screen. The build-time snapshot may already
-// carry it, in which case there is nothing to fetch.
+// The Impossible Levels list omits the rate a level must be played at and the
+// game version it needs, and neither can be derived from the list fields (the
+// TPS/FPS unit depends on the level's 2.2 tag). Both are asked of the Worker
+// for the one level on screen. The build-time snapshot may already carry them,
+// in which case there is nothing to fetch.
 const RATE_SOURCE = 'Impossible Levels List'
 
-const attachLevelRate = async (runState, level) => {
-  if (!level || runState?.source !== RATE_SOURCE || level.rate) {
+const attachLevelDetails = async (runState, level) => {
+  if (!level || runState?.source !== RATE_SOURCE) {
     return level
   }
 
-  const rate = await fetchImpossibleLevelRate(level.listId)
-  return rate ? { ...level, rate } : level
+  if (level.rate && level.version) {
+    return level
+  }
+
+  const { rate, version } = await fetchImpossibleLevelDetails(level.listId)
+  return { ...level, rate: level.rate ?? rate, version: level.version ?? version }
 }
 
 const hydrateLevelForRun = async (runState, level) => {
-  const withRate = await attachLevelRate(runState, level)
-  return hydrateAredlLevel(runState, withRate)
+  const withDetails = await attachLevelDetails(runState, level)
+  return hydrateAredlLevel(runState, withDetails)
 }
 
 const hydrateAredlLevel = async (runState, level) => {
@@ -267,6 +272,17 @@ function App() {
     setScreen(SCREEN.HOME)
   }
 
+  // Abandoning a run mid-game, as opposed to giving up on the current level.
+  // Giving up ends the run, records it on the leaderboard and shows results;
+  // quitting just discards it and returns to the menu, leaving no trace. That
+  // distinction matters, so this deliberately does not route through endRun.
+  const handleQuitRun = () => {
+    setRun(null)
+    setSaveCode('')
+    trackedRunId.current = null
+    setScreen(SCREEN.HOME)
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -346,6 +362,7 @@ function App() {
           onSuccess={(value) => finishRound(value)}
           onSkip={handleSkip}
           onGiveUp={handleGiveUp}
+          onQuit={handleQuitRun}
           onSaveRun={saveCurrentRun}
           onLoadRun={loadRunFromCode}
           savedRunCode={saveCode}
