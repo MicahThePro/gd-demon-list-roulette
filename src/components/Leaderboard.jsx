@@ -142,7 +142,6 @@ const FILTERS = {
   gaveup: [
     { key: 'score', label: 'Highest %', compare: (a, b) => b.score - a.score },
     { key: 'levels', label: 'Most levels', compare: (a, b) => b.roundsPlayed - a.roundsPlayed },
-    { key: 'passed', label: 'Most passed', compare: (a, b) => b.passed - a.passed },
     { key: 'newest', label: 'Newest', compare: (a, b) => b.at - a.at },
   ],
 }
