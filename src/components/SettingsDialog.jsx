@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MAX_PERCENT_STEP } from '../utils/roulette'
 
 /**
@@ -22,13 +22,17 @@ export default function SettingsDialog({
   onCommit,
   estimatedRounds,
 }) {
+  const inputRef = useRef(null)
   const closeRef = useRef(null)
+  // The dialog is the same component across opens, so a ref carries whether the
+  // user has already dismissed the "what's new" hint for this visit. It is not
+  // worth being told twice, but it is worth being told at least once.
+  const [hasSeenHint, setHasSeenHint] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return undefined
 
-    // Escape cancels, and commits the field on the way out so a value the user
-    // typed is never silently thrown away by closing with the keyboard.
+    // Escape commits and closes.
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         onCommit()
@@ -37,12 +41,35 @@ export default function SettingsDialog({
     }
     window.addEventListener('keydown', handleKeyDown)
 
-    // Move focus into the dialog so keyboard and screen reader users land
-    // inside it rather than staying back on the trigger button.
-    closeRef.current?.focus()
+    // Focus the input, not the Close button. Focusing the button meant the
+    // first keypress went to a button rather than the field, and Backspace
+    // appeared to do nothing.
+    inputRef.current?.focus()
+    inputRef.current?.select()
 
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose, onCommit])
+
+  // Roving focus inside the dialog: Tab and Shift+Tab cycle the input and the
+  // close button instead of escaping to the page behind. Native dialogs trap
+  // focus; a div with role="dialog" does not, so this has to be done by hand.
+  const handleKeyDownForFocus = (event) => {
+    if (event.key !== 'Tab') return
+
+    const focusables = [inputRef.current, closeRef.current].filter(Boolean)
+    if (!focusables.length) return
+
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
 
   if (!isOpen) return null
 
@@ -54,6 +81,7 @@ export default function SettingsDialog({
         aria-modal="true"
         aria-labelledby="settings-title"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={handleKeyDownForFocus}
       >
         <div className="changelog-head">
           <div>
@@ -65,6 +93,7 @@ export default function SettingsDialog({
             type="button"
             className="secondary-button changelog-close"
             onClick={() => {
+              setHasSeenHint(true)
               onCommit()
               onClose()
             }}
@@ -77,13 +106,17 @@ export default function SettingsDialog({
           <label className="settings-field">
             Percentage increment
             <input
+              ref={inputRef}
               type="number"
               min="1"
               max={MAX_PERCENT_STEP}
               step="1"
               value={percentStepDraft}
               onChange={(event) => onDraftChange(event.target.value)}
-              onBlur={onCommit}
+              onBlur={() => {
+                setHasSeenHint(true)
+                onCommit()
+              }}
               placeholder="1"
             />
           </label>
@@ -92,6 +125,13 @@ export default function SettingsDialog({
             Currently stepping up by +{percentStep}%, which means {estimatedRounds}{' '}
             {estimatedRounds === 1 ? 'level' : 'levels'} to finish a run.
           </p>
+
+          {!hasSeenHint && (
+            <p className="settings-note">
+              Saved as soon as you click away, so pressing Close keeps whatever you
+              typed.
+            </p>
+          )}
         </div>
       </div>
     </div>
