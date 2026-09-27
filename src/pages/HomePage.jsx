@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Leaderboard from '../components/Leaderboard'
+import ChangelogDialog from '../components/ChangelogDialog'
 import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds } from '../services/listService'
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
@@ -27,6 +28,7 @@ const getBoundsForSource = (sourceName) => {
 export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) {
   const [isLoading, setIsLoading] = useState(false)
   const [isBoardOpen, setIsBoardOpen] = useState(false)
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false)
   const [source, setSource] = usePersistentListSource()
   const [startRange, setStartRange] = useState('')
   const [endRange, setEndRange] = useState('')
@@ -299,6 +301,13 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
                 <span className="lb-badge">{history.entries.length}</span>
               )}
             </button>
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={() => setIsChangelogOpen(true)}
+            >
+              What's new
+            </button>
             <span className="settings-summary">
               Step: +{percentStep}% ({estimatedRounds} levels to finish)
               {history.entries.length > 0 && ` · Best ${history.bestScore}%`}
@@ -412,6 +421,10 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
 
       </section>
       )}
+      <ChangelogDialog
+        isOpen={isChangelogOpen}
+        onClose={() => setIsChangelogOpen(false)}
+      />
     </main>
   )
 }
