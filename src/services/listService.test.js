@@ -185,3 +185,19 @@ test('encodeRunState round-trips a run state and preserves skip metadata', () =>
   assert.equal(typeof encoded, 'string')
   assert.deepEqual(decodeRunState(encoded), run)
 })
+
+test('run save codes use the GDLRS1: prefix', () => {
+  const encoded = encodeRunState({ currentTarget: 5, rounds: [] })
+  assert.ok(encoded.startsWith('GDLRS1:'), `expected a GDLRS1: prefix, got ${encoded.slice(0, 12)}`)
+})
+
+test('run save codes saved with the old DLRS1: prefix still load', () => {
+  const run = { currentTarget: 3, rounds: [] }
+
+  // Rewriting the current prefix to the retired one stands in for a code that
+  // was copied out of the app before the rename; the payload is untouched.
+  const old = encodeRunState(run).replace(/^GDLRS1:/, 'DLRS1:')
+
+  assert.ok(old.startsWith('DLRS1:'))
+  assert.deepEqual(decodeRunState(old), run)
+})

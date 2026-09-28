@@ -381,7 +381,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
                 setLoadCode(event.target.value)
                 setLoadError('')
               }}
-              placeholder="Paste your DLRS1: save code here"
+              placeholder="Paste your GDLRS1: save code here"
             />
           </label>
           <div className="action-row">

@@ -15,6 +15,18 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v1-8',
+    version: 'v1.8',
+    title: 'Everything scrolls when it has to',
+    summary: 'Short windows now fit properly, any page can be scrolled, and save codes carry the full name.',
+    changes: [
+      'Every page can now be scrolled when the content is taller than the window. Previously the layout was locked to the window size, so the bottom of a long page could be cut off with no way to reach it.',
+      'On a short or half-screen window the layout tightens up automatically: smaller padding, more compact buttons and cards, and the level list shrinks to fit instead of pushing the buttons below it out of the box.',
+      'Save codes are now tagged GDLRS1: to match the site name. Codes saved with the old DLRS1: tag still load, and untagged codes still load as before.',
+      'Fixed the favicon path so the site icon shows up on the published site.',
+    ],
+  },
+  {
     id: 'v1-7',
     version: 'v1.7',
     title: 'A leaderboard you can read at a glance',

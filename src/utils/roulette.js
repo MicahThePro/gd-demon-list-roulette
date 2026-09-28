@@ -65,8 +65,12 @@ const fromBase64Url = (value) => {
 // that carries no type marker cannot tell a run save from a history export. The
 // "1" is the format version, so a future change can be detected rather than
 // parsed as garbage.
-const RUN_PREFIX = 'DLRS1:'
-const KNOWN_RUN_PREFIXES = [RUN_PREFIX]
+const RUN_PREFIX = 'GDLRS1:'
+// The prefix used before the site was renamed to GD List Roulette. Kept in the
+// known list so codes people already saved with it still load, but the app
+// only ever writes the current prefix.
+const LEGACY_RUN_PREFIX = 'DLRS1:'
+const KNOWN_RUN_PREFIXES = [RUN_PREFIX, LEGACY_RUN_PREFIX]
 
 /**
  * Encodes the in-progress run into a portable string.
