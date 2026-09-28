@@ -88,22 +88,26 @@
    Deliberately does NOT set display, because the panel is a grid and forcing it
    to flex would break the hero layout. .page-shell already stretches its items;
    this only widens the breakpoint at which that applies. */
-/* Desktop only. height: 100vh with overflow hidden is what pins the app to
-   the window so the page never scrolls. It is scoped here because on a phone
-   the page is meant to scroll normally and this would cut content off. */
+/* Desktop only. min-height rather than a fixed height, with the shell as the
+   scroller: the page still fills the window when the content is short, but
+   anything taller than the window (a long home page, the leaderboard, a results
+   card) extends the shell and the user scrolls the whole page instead of having
+   the bottom clipped. It is scoped here because on a phone the page scrolls
+   normally and this would add a second, nested scroll area. */
 @media (min-width: 1025px) {
   .app-shell {
-    height: 100vh;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   /* The topbar and the page both sit in that flex column, so the page has to
      be told to take the leftover height. flex-basis 0 matters: with the default
      auto basis it is sized by its content, which grows the window instead. */
   .page-shell {
-    flex: 1 1 0;
+    flex: 1 0 auto;
     min-height: 0;
   }
 
@@ -112,7 +116,6 @@
      partway down the window instead of filling it. */
   .page-shell > .panel {
     align-self: stretch;
-    min-height: 0;
   }
 }
 
