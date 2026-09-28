@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
-import { formatDurationMs, decodeHistory } from '../utils/roulette'
+import { formatDurationMs, decodeHistory, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 
 const STATUS_LABELS = {
   completed: 'Cleared',
@@ -34,6 +34,13 @@ const formatWhen = (timestamp) => {
 const RunDetail = ({ entry, onClose, onDelete }) => {
   const totalTime = entry.totalMs ? formatDurationMs(entry.totalMs) : '--:--'
   const avgTime = entry.avgMs ? formatDurationMs(entry.avgMs) : '--:--'
+
+  // Only the reasons actually used, in the fixed vocabulary order, so the
+  // breakdown lines up between runs instead of shuffling per run. An entry
+  // recorded before reasons existed has no tally, hence the empty default.
+  const skipBreakdown = SKIP_REASONS
+    .map((reason) => ({ ...reason, count: entry.skipReasons?.[reason.id] ?? 0 }))
+    .filter((reason) => reason.count > 0)
 
   return (
     <div className="lb-detail">
@@ -86,6 +93,23 @@ const RunDetail = ({ entry, onClose, onDelete }) => {
         </div>
       </div>
 
+      {/* The whole section is omitted rather than shown as an empty block, since
+          a run with no skips and a run recorded before reasons existed both
+          have nothing to say here. */}
+      {skipBreakdown.length > 0 && (
+        <div className="skip-breakdown">
+          <p className="results-section-label">Why levels were skipped</p>
+          <div className="skip-reason-chips">
+            {skipBreakdown.map((reason) => (
+              <span key={reason.id} className="skip-reason-chip">
+                {reason.label}
+                <span className="skip-reason-chip-count">{reason.count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="results-section-label">Levels</p>
       <div className="history-list">
         {entry.rounds.length === 0 ? (
@@ -109,9 +133,11 @@ const RunDetail = ({ entry, onClose, onDelete }) => {
                   <small>
                     {round.result === 'gaveup'
                       ? `${round.target}% was required`
-                      : round.achieved == null
-                        ? 'No attempt'
-                        : `${round.achieved}% achieved`}
+                      : round.result === 'skipped'
+                        ? `Skipped${round.skipReason ? ` • ${getSkipReasonLabel(round.skipReason)}` : ''}`
+                        : round.achieved == null
+                          ? 'No attempt'
+                          : `${round.achieved}% achieved`}
                   </small>
                 </span>
                 <em className={`history-result history-result-${round.result}`}>

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { normalizeListRequest, filterLevelsByRange, mapAredlDetailToLevel, fetchAredlLevelDetails, fetchList } from './listService.js'
-import { encodeRunState, decodeRunState, pickNextLevel, getElapsedLevelTimeMs, formatDurationMs } from '../utils/roulette.js'
+import { encodeRunState, decodeRunState, createLevelResult, countSkipReason, normalizeSkipReason, pickNextLevel, getElapsedLevelTimeMs, formatDurationMs } from '../utils/roulette.js'
 
 test('normalizeListRequest defaults to Pointercrate and validates AREDL ranges', () => {
   assert.deepEqual(normalizeListRequest({}), {
@@ -200,4 +200,59 @@ test('run save codes saved with the old DLRS1: prefix still load', () => {
 
   assert.ok(old.startsWith('DLRS1:'))
   assert.deepEqual(decodeRunState(old), run)
+})
+
+test('a skip reason survives a save code round trip', () => {
+  const run = {
+    currentTarget: 9,
+    rounds: [
+      {
+        roundNumber: 1,
+        targetPercent: 9,
+        achievedPercent: null,
+        result: 'skipped',
+        skipReason: 'unfair',
+      },
+    ],
+  }
+
+  assert.deepEqual(decodeRunState(encodeRunState(run)), run)
+})
+
+test('an unknown skip reason is dropped rather than stored', () => {
+  assert.equal(normalizeSkipReason('not-a-real-reason'), null)
+  assert.equal(normalizeSkipReason(null), null)
+  assert.equal(normalizeSkipReason('bad-luck'), 'bad-luck')
+
+  // A hand-edited code must not put a bogus reason into a run.
+  const made = createLevelResult({
+    level: { id: 1, name: 'Test' },
+    targetPercent: 5,
+    achievedPercent: null,
+    result: 'skipped',
+    startedAt: Date.now(),
+    skipReason: 'made-up',
+  })
+  assert.equal(made.skipReason, null)
+})
+
+test('a reason is only stored on a skip', () => {
+  const passed = createLevelResult({
+    level: { id: 1, name: 'Test' },
+    targetPercent: 5,
+    achievedPercent: 5,
+    result: 'success',
+    startedAt: Date.now(),
+    skipReason: 'bad-luck',
+  })
+  assert.equal(passed.skipReason, null)
+})
+
+test('the skip tally counts up across skips and survives a missing tally', () => {
+  assert.deepEqual(countSkipReason(undefined, 'too-hard'), { 'too-hard': 1 })
+  assert.deepEqual(countSkipReason({ 'too-hard': 1 }, 'bad-luck'), { 'too-hard': 1, 'bad-luck': 1 })
+  // An unknown reason is not counted, and must not throw on a missing tally.
+  assert.deepEqual(countSkipReason(undefined, 'nope'), {})
+  // Loading an old run has no tally at all.
+  assert.deepEqual(countSkipReason(null, 'too-hard'), { 'too-hard': 1 })
 })

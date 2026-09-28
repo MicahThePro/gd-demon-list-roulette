@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { formatDurationMs } from '../utils/roulette'
+import { formatDurationMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 
 export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit, onSaveRun, savedRunCode }) {
   const [achievedPercent, setAchievedPercent] = useState('')
@@ -7,11 +7,36 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
   const [levelCopyMessage, setLevelCopyMessage] = useState('')
   const [saveCopyMessage, setSaveCopyMessage] = useState('')
   const [isConfirmingQuit, setIsConfirmingQuit] = useState(false)
+  const [isSkipPickerOpen, setIsSkipPickerOpen] = useState(false)
 
   useEffect(() => {
     setAchievedPercent('')
     setValidationMessage('')
+    setIsSkipPickerOpen(false)
   }, [run.currentTarget, run.currentLevel?.id])
+
+  // Escape backs out of the skip picker the same way it backs out of the quit
+  // dialog, and the picker takes priority since it is the later one opened.
+  useEffect(() => {
+    if (!isSkipPickerOpen) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsSkipPickerOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isSkipPickerOpen])
+
+  // A skip has to actually skip. Opening the picker and then leaving the page
+  // with it still up would strand the run, so the reason is chosen and
+  // immediately applied rather than picked and confirmed separately.
+  const chooseSkipReason = (reasonId) => {
+    setIsSkipPickerOpen(false)
+    onSkip(reasonId)
+  }
 
   // Escape cancels, as it should for a dialog. The listener only exists while
   // the dialog is open, and the page's own key handler is left alone because
@@ -72,6 +97,7 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
     thumbnail: round.level?.thumbnail ?? null,
     target: round.targetPercent ?? run?.currentTarget,
     result: round.result,
+    skipReason: round.skipReason,
     achieved: round.achievedPercent,
     elapsedLabel: round.elapsedLabel ?? (Number.isFinite(round.elapsedMs) ? formatDurationMs(round.elapsedMs) : null),
     isCurrent: false,
@@ -236,7 +262,13 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
             >
               Success
             </button>
-            <button className="secondary-button" type="button" onClick={onSkip}>
+            <button
+              className="secondary-button"
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={isSkipPickerOpen}
+              onClick={() => setIsSkipPickerOpen((open) => !open)}
+            >
               Skip
             </button>
             <button className="secondary-button" type="button" onClick={onGiveUp}>
@@ -277,7 +309,9 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
                   <strong>{entry.name}</strong>
                   <span>{entry.creator}</span>
                   <small>
-                    {entry.result === 'skipped' ? `Skipped • ${entry.target}%` : `Target ${entry.target}%`}
+                    {entry.result === 'skipped'
+                      ? `Skipped${entry.skipReason ? ` • ${getSkipReasonLabel(entry.skipReason)}` : ''} • ${entry.target}%`
+                      : `Target ${entry.target}%`}
                     {entry.achieved !== null && entry.achieved !== undefined ? ` • ${entry.achieved}%` : ''}
                     {entry.elapsedLabel ? ` • ${entry.elapsedLabel}` : ''}
                   </small>
@@ -287,6 +321,54 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
           </div>
         </aside>
       </div>
+
+      {isSkipPickerOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setIsSkipPickerOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="modal skip-picker"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="skip-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="skip-dialog-title">Why are you skipping?</h2>
+            <p>This is saved with the run, so you can see how your runs went later.</p>
+            <div className="skip-reason-list">
+              {SKIP_REASONS.map((reason) => (
+                <button
+                  key={reason.id}
+                  type="button"
+                  className="skip-reason-button"
+                  onClick={() => chooseSkipReason(reason.id)}
+                >
+                  {reason.label}
+                </button>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => chooseSkipReason(null)}
+                autoFocus
+              >
+                Skip without a reason
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setIsSkipPickerOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isConfirmingQuit && (
         <div

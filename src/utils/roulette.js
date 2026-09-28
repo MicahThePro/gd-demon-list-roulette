@@ -164,6 +164,7 @@ export const createRun = ({ startingPercent, levels, source, allowDuplicates, pe
     rounds: [],
     endingPercent: seedStart,
     skippedCount: 0,
+    skipReasons: {},
   }
 }
 
@@ -187,7 +188,41 @@ export const pickNextLevel = (levels = [], usedLevelIds = [], allowDuplicates = 
   return repeatPool.length ? repeatPool[Math.floor(Math.random() * repeatPool.length)] : safeLevels[0]
 }
 
-export const createLevelResult = ({ level, targetPercent, achievedPercent, result, startedAt, endedAt = Date.now() }) => {
+// Why a level was skipped. A skip used to be anonymous, so a run full of them
+// gave no clue whether the player was being careful or just rage-quitting. The
+// values are stored in save codes and exported leaderboard codes, so they are
+// treated as a fixed vocabulary: a new value can be added, but changing one
+// would orphan the reasons already in people's histories.
+export const SKIP_REASONS = [
+  { id: 'too-hard', label: 'Too hard' },
+  { id: 'bad-luck', label: 'Bad luck' },
+  { id: 'unfair', label: 'Unfair / glitched' },
+  { id: 'no-time', label: 'No time' },
+  { id: 'not-feeling-it', label: 'Not feeling it' },
+]
+const SKIP_REASON_IDS = new Set(SKIP_REASONS.map((reason) => reason.id))
+export const DEFAULT_SKIP_REASON = 'too-hard'
+
+/* Turns anything into a known reason id, so a hand-edited save code carrying a
+   reason this version has never heard of cannot break the display. */
+export const normalizeSkipReason = (reason) =>
+  SKIP_REASON_IDS.has(reason) ? reason : null
+
+export const getSkipReasonLabel = (reason) =>
+  SKIP_REASONS.find((entry) => entry.id === reason)?.label ?? 'Skipped'
+
+/* Rolls one recorded reason into a per-reason tally stored on the run. An
+   existing run loaded from an older save code has no tally at all, so the
+   missing object is treated as an empty one rather than spread from undefined. */
+export const countSkipReason = (tally, reason) => {
+  const valid = normalizeSkipReason(reason)
+  if (!valid) return tally && typeof tally === 'object' ? tally : {}
+
+  const counts = tally && typeof tally === 'object' ? tally : {}
+  return { ...counts, [valid]: (counts[valid] ?? 0) + 1 }
+}
+
+export const createLevelResult = ({ level, targetPercent, achievedPercent, result, startedAt, endedAt = Date.now(), skipReason = null }) => {
   const elapsedMs = getElapsedLevelTimeMs({ startedAt, now: endedAt })
 
   return {
@@ -195,6 +230,9 @@ export const createLevelResult = ({ level, targetPercent, achievedPercent, resul
     targetPercent,
     achievedPercent,
     result,
+    // Only meaningful on a skip, so every other result stores null rather than
+    // leaving the key absent. A save code round-trip then round-trips exactly.
+    skipReason: result === 'skipped' ? normalizeSkipReason(skipReason) : null,
     level,
     startedAt,
     endedAt,

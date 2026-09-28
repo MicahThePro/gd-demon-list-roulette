@@ -5,7 +5,7 @@ import ResultsPage from './pages/ResultsPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
-import { clampPercent, createRun, createLevelResult, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
+import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
 import './App.css'
 
@@ -245,7 +245,9 @@ function App() {
     [setRun, history],
   )
 
-  const handleSkip = async () => {
+  // The reason is optional: a skip with no reason given still records a skip,
+  // it just has no breakdown in the leaderboard.
+  const handleSkip = async (skipReason = null) => {
     if (!run || !run.currentLevel) return
 
     const endedAt = Date.now()
@@ -256,6 +258,7 @@ function App() {
       result: 'skipped',
       startedAt: run.currentLevelStartedAt ?? endedAt,
       endedAt,
+      skipReason,
     })
 
     const usedLevelIds = [...(run.usedLevelIds || []), run.currentLevel.id]
@@ -264,6 +267,7 @@ function App() {
     const updatedRun = {
       ...run,
       skippedCount: (run.skippedCount || 0) + 1,
+      skipReasons: countSkipReason(run.skipReasons, currentResult.skipReason),
       rounds: [
         ...run.rounds,
         {

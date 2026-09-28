@@ -15,6 +15,19 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v1-9',
+    version: 'v1.9',
+    title: 'Tell us why you skipped',
+    summary: 'Skips now carry a reason, the leaderboard breaks them down, and the site has a new icon.',
+    changes: [
+      'Skipping a level now asks why. Pick Too hard, Bad luck, Unfair / glitched, No time or Not feeling it, and the reason is saved with the level, so you can look back at a run and see what you were actually up against.',
+      'The leaderboard breaks the skips down for each run, so you can see at a glance whether you were being careful or rage quitting.',
+      'Each level in a run\'s detail view now shows its skip reason, and the levels you played during the run show it too.',
+      'You can still skip without picking a reason, and Escape or Cancel backs out without skipping at all.',
+      'New site icon! The old default one is gone, so the tab looks like GD List Roulette instead of a blank page.',
+    ],
+  },
+  {
     id: 'v1-8',
     version: 'v1.8',
     title: 'Everything scrolls when it has to',

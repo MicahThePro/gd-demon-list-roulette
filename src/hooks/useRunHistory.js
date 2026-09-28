@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getElapsedLevelTimeMs } from '../utils/roulette'
+import { getElapsedLevelTimeMs, normalizeSkipReason } from '../utils/roulette'
 
 const STORAGE_KEY = 'demon-roulette-history'
 // Full-fidelity mirror of the history. The cookie is trimmed to fit its ~4 KB
@@ -108,8 +108,8 @@ const readHistory = () => {
 // stays small. Rounds are stored as positional tuples rather than objects,
 // because repeating key names for every level roughly triples the size and a
 // cookie only holds about 4 KB.
-//   [id, name, target, achieved, result, ms, video]
-const ROUND_FIELDS = ['id', 'name', 'target', 'achieved', 'result', 'ms', 'video']
+//   [id, name, target, achieved, result, ms, video, skipReason]
+const ROUND_FIELDS = ['id', 'name', 'target', 'achieved', 'result', 'ms', 'video', 'skipReason']
 // Positions of the fields that are read back off the packed tuples. Summing
 // and counting off object properties would silently read undefined here,
 // because a packed round is an array, not an object.
@@ -126,7 +126,10 @@ const packRound = (round) => [
   round.result ?? 'failure',
   Number.isFinite(round.elapsedMs) ? round.elapsedMs : null,
   round.level?.video ?? null,
+  round.result === 'skipped' ? normalizeSkipReason(round.skipReason) : null,
 ]
+// A give-up round is appended at the end for the results screen, so it has no
+// round object to read a reason off and never has one.
 const packGaveUpRound = ({ level, target, ms }) => [
   level?.id ?? null,
   level?.name ?? 'Unknown level',
@@ -135,6 +138,7 @@ const packGaveUpRound = ({ level, target, ms }) => [
   'gaveup',
   Number.isFinite(ms) ? ms : null,
   level?.video ?? null,
+  null,
 ]
 const summarizeRun = (runState, endedAt) => {
   const rounds = (runState?.rounds ?? []).slice(-MAX_ROUNDS_KEPT).map(packRound)
@@ -162,6 +166,16 @@ const summarizeRun = (runState, endedAt) => {
   const timedRounds = rounds.filter((round) => Number.isFinite(round[ROUND_MS]))
   const totalMs = timedRounds.reduce((total, round) => total + round[ROUND_MS], 0)
 
+  // Counted from the packed rounds rather than read off run.skipReasons, so the
+  // tally and the per-level rows can never disagree, and so a run recorded by
+  // an older version still gets a breakdown from the reasons on its rounds.
+  const skipReasonCounts = rounds.reduce((counts, round) => {
+    if (round[ROUND_RESULT] !== 'skipped') return counts
+    const reason = normalizeSkipReason(round[ROUND_FIELDS.indexOf('skipReason')])
+    if (!reason) return counts
+    return { ...counts, [reason]: counts[reason] + 1 }
+  }, {})
+
   return {
     id: `${endedAt}-${runState?.source ?? 'run'}`,
     at: endedAt,
@@ -174,6 +188,7 @@ const summarizeRun = (runState, endedAt) => {
     roundsPlayed: rounds.length,
     passed: rounds.filter((round) => round[ROUND_RESULT] === 'success').length,
     skipped: runState?.skippedCount ?? 0,
+    skipReasons: skipReasonCounts,
     totalMs,
     avgMs: timedRounds.length ? Math.round(totalMs / timedRounds.length) : null,
     rounds,

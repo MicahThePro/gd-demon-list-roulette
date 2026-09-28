@@ -562,9 +562,10 @@
   grid-template-areas:
     'head'
     'stats'
+    'reasons'
     'label'
     'levels';
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   gap: 18px;
   min-height: 0;
   padding: 22px;
@@ -583,6 +584,12 @@
 
 .lb-detail > .results-section-label {
   grid-area: label;
+}
+
+/* A named area but no explicit row size: the row is `auto`, and a run with no
+   skips has no element in it at all, so the gap is what collapses. */
+.lb-detail > .skip-breakdown {
+  grid-area: reasons;
 }
 
 .lb-detail > .history-list {
@@ -1034,6 +1041,69 @@
   align-items: center;
   justify-content: center;
   line-height: 1;
+}
+
+/* The skip reason picker. Wider than a confirm dialog because the five reasons
+   are full-width buttons in a single column and read badly when they are. */
+.skip-picker {
+  width: min(380px, 100%);
+}
+
+.skip-reason-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.skip-reason-button {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  padding: 12px 16px;
+  background: rgba(2, 6, 23, 0.6);
+  color: #e2e8f0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.skip-reason-button:hover {
+  border-color: rgba(125, 211, 252, 0.5);
+  background: rgba(56, 189, 248, 0.12);
+  color: #e0f2fe;
+}
+
+/* The per-run breakdown in the leaderboard detail: one chip per reason used,
+   with the count in a dimmer weight so the label stays the readable part. */
+.skip-breakdown {
+  display: grid;
+  gap: 10px;
+  margin: -4px 0 -4px;
+}
+
+.skip-reason-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skip-reason-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  color: #bae6fd;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.skip-reason-chip-count {
+  color: #7dd3fc;
+  font-variant-numeric: tabular-nums;
 }
 
 .status-panel,
