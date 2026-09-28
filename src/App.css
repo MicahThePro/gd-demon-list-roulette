@@ -1230,7 +1230,11 @@
   flex-direction: column;
   gap: 14px;
   align-self: stretch;
-  height: 732px;
+  /* Height used to be a hard 732px, so on a short desktop window the panel was
+     taller than the space below the topbar and the action buttons under the
+     list were pushed out of the box. Clamped to the viewport instead: it keeps
+     the 732px look on a normal window and shrinks with the window. */
+  height: clamp(300px, calc(100vh - 250px), 732px);
   min-height: 0;
   padding: 22px 18px 18px;
   width: 100%;
@@ -1996,5 +2000,210 @@
 
   .history-copy strong {
     font-size: 0.92rem;
+  }
+}
+
+/* ==========================================================================
+   Short desktop windows
+   The desktop layout is pinned to the window (height: 100vh, overflow hidden),
+   so a window that is only a few hundred pixels tall has no room to scroll and
+   the trailing buttons simply get clipped out of their panels. These blocks
+   tighten the vertical rhythm in two stages as the window gets shorter, so the
+   controls stay inside their boxes instead of overflowing the bottom edge.
+   ========================================================================== */
+
+/* Mild: a small laptop window with a short taskbar, or a snapped window. */
+@media (min-width: 1025px) and (max-height: 860px) {
+  .app-shell {
+    padding: 16px 0 20px;
+  }
+
+  .topbar {
+    padding: 12px 18px;
+    margin-bottom: 14px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .hero-panel,
+  .status-panel,
+  .results-panel {
+    gap: 20px;
+  }
+
+  .hero-column,
+  .hero-side {
+    gap: 16px;
+  }
+
+  .setup-form,
+  .result-form {
+    gap: 12px;
+  }
+
+  .hero-copy {
+    padding-bottom: 18px;
+  }
+
+  .leaderboard,
+  .lb-detail {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .challenge-panel {
+    padding: 16px 16px 14px;
+    gap: 10px;
+    height: clamp(280px, calc(100vh - 230px), 732px);
+  }
+
+  .level-card {
+    padding: 16px 20px;
+  }
+
+  .level-thumbnail-link {
+    margin-bottom: 12px;
+  }
+
+  .action-row > *,
+  .status-actions > * {
+    height: 40px;
+    min-height: 40px;
+  }
+}
+
+/* Severe: a short window (a half-screen snap, a very wide letterbox). The copy
+   and the card padding shrink hardest, since those are pure decoration. */
+@media (min-width: 1025px) and (max-height: 700px) {
+  .app-shell {
+    padding: 10px 0 12px;
+  }
+
+  .topbar {
+    padding: 8px 16px;
+    margin-bottom: 10px;
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+  }
+
+  .panel {
+    padding: 14px 16px;
+    border-radius: 20px;
+  }
+
+  .hero-panel,
+  .status-panel,
+  .results-panel {
+    gap: 14px;
+  }
+
+  .hero-columns {
+    gap: 18px;
+  }
+
+  .hero-column,
+  .hero-side {
+    gap: 12px;
+  }
+
+  .hero-copy {
+    padding-bottom: 12px;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(1.9rem, 3.2vw, 2.6rem);
+    margin: 4px 0 8px;
+  }
+
+  .lead {
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .setup-form,
+  .result-form {
+    gap: 10px;
+  }
+
+  .setup-form input,
+  .setup-form select {
+    padding: 9px 12px;
+  }
+
+  .status-pill {
+    padding: 6px 12px;
+  }
+
+  .stat-card {
+    padding: 12px 14px;
+  }
+
+  .lb-detail,
+  .leaderboard {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .lb-row,
+  .challenge-item,
+  .history-item {
+    padding: 8px 10px;
+  }
+
+  .challenge-thumb {
+    width: 50px;
+    height: 50px;
+  }
+
+  .challenge-item {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .challenge-panel {
+    padding: 12px 14px 10px;
+    gap: 8px;
+    height: clamp(240px, calc(100vh - 210px), 732px);
+  }
+
+  .challenge-header h3 {
+    font-size: 1.35rem;
+  }
+
+  .level-card {
+    padding: 12px 16px;
+  }
+
+  .level-card h3 {
+    font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+  }
+
+  .level-thumbnail-link {
+    margin-bottom: 8px;
+  }
+
+  .action-row > *,
+  .status-actions > * {
+    height: 34px;
+    min-height: 34px;
+    font-size: 0.85rem;
+    border-radius: 10px;
+  }
+
+  .action-row,
+  .status-actions {
+    gap: 8px;
   }
 }
