@@ -1043,6 +1043,55 @@
   line-height: 1;
 }
 
+.timer-countdown {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The last 30 seconds. The colour change is the warning: nothing else happens
+   on screen at that point, so without it the run ending is a surprise. */
+.timer-countdown-urgent {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.settings-divider {
+  margin: 6px 0;
+  border: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+/* The skip toggle is a label wrapping a checkbox, rather than a styled
+   .toggle-row, so the whole row including the text is one click target. */
+.settings-toggle-row {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 12px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.settings-toggle-row input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+  accent-color: #f97316;
+  cursor: pointer;
+}
+
+.settings-toggle-row span {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-toggle-row small {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 /* The skip reason picker. Wider than a confirm dialog because the five reasons
    are full-width buttons in a single column and read badly when they are. */
 .skip-picker {
@@ -1677,6 +1726,13 @@
 .history-result-gaveup {
   color: #c4b5fd;
   background: rgba(167, 139, 250, 0.16);
+}
+
+/* A level the clock ran out on, which is neither a pass nor a deliberate
+   failure, so it gets its own colour rather than borrowing either one. */
+.history-result-timeout {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.16);
 }
 
 .history-item-final {

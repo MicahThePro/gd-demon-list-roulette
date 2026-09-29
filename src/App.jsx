@@ -4,8 +4,9 @@ import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
+import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
-import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
+import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
 import './App.css'
 
@@ -80,6 +81,7 @@ const hydrateAredlLevel = async (runState, level) => {
 function App() {
   const [screen, setScreen] = useState(SCREEN.HOME)
   const [run, setRun] = usePersistentRun()
+  const gameRules = useGameRules()
   const history = useRunHistory()
   // Identifies the run being played, so an ended run is recorded exactly once
   // even though several code paths reach the results screen.
@@ -146,6 +148,13 @@ function App() {
       source: importedList.sourceTitle,
       allowDuplicates: false,
       percentStep,
+      // The player's current rules are frozen onto the run here. Reading them
+      // again while it is played would mean changing a setting mid-run silently
+      // changed the rules, and a save code loaded on another device would pick
+      // up that device's settings instead of the ones the run started under.
+      allowSkip: gameRules.allowSkip,
+      levelTimeLimitMs: timeLimitMinutesToMs(gameRules.levelTimeLimitMinutes),
+      totalTimeLimitMs: timeLimitMinutesToMs(gameRules.totalTimeLimitMinutes),
     })
 
     const hydratedCurrentLevel = await hydrateLevelForRun(createdRun, createdRun.currentLevel)
@@ -297,6 +306,76 @@ function App() {
     endRun(failedRun)
   }
 
+  /* Ends a run because a time limit ran out, rather than because the player
+     chose to. The level in progress is recorded as a timed-out round so it
+     shows up in the leaderboard detail like any other level, and `timeUp` tells
+     the results screen to explain that nobody pressed anything.
+
+     `overBy` is the limit that expired, since the two can both be true at once
+     and the results screen only has room for one headline. */
+  const endRunOnTimeLimit = useCallback((overBy) => {
+    if (!run || !run.currentLevel) return
+
+    const endedAt = Date.now()
+    const timedOut = createLevelResult({
+      level: run.currentLevel,
+      targetPercent: run.currentTarget,
+      achievedPercent: null,
+      result: 'timeout',
+      startedAt: run.currentLevelStartedAt ?? endedAt,
+      endedAt,
+    })
+
+    const expiredRun = {
+      ...run,
+      status: 'failed',
+      timeUp: overBy,
+      rounds: [...run.rounds, { ...timedOut, roundNumber: run.rounds.length + 1 }],
+      usedLevelIds: [...(run.usedLevelIds || []), run.currentLevel.id],
+      endingPercent: run.currentTarget,
+      currentLevel: null,
+    }
+
+    endRun(expiredRun, endedAt)
+  }, [run, endRun])
+
+  /* Watches both clocks and ends the run when either expires.
+
+     Kept here rather than in the run screen so the rule is enforced by the
+     component that owns the run, and so it still applies after a reload: a
+     saved run carries its own limits, so the timer picks up where it left off.
+     The check runs on an interval rather than only between rounds, so a limit
+     that expires mid-level stops the run promptly. */
+  useEffect(() => {
+    if (screen !== SCREEN.ROULETTE || !run || run.status !== 'active' || !run.currentLevel) {
+      return undefined
+    }
+
+    const levelLimitMs = Number.isFinite(run.levelTimeLimitMs) ? run.levelTimeLimitMs : 0
+    const totalLimitMs = Number.isFinite(run.totalTimeLimitMs) ? run.totalTimeLimitMs : 0
+    if (levelLimitMs <= 0 && totalLimitMs <= 0) return undefined
+
+    const check = () => {
+      const levelElapsed = getElapsedLevelTimeMs({ startedAt: run.currentLevelStartedAt })
+      if (levelLimitMs > 0 && levelElapsed >= levelLimitMs) {
+        endRunOnTimeLimit('level')
+        return
+      }
+
+      const totalElapsed = getRunElapsedMs({
+        rounds: run.rounds,
+        currentLevelStartedAt: run.currentLevelStartedAt,
+      })
+      if (totalLimitMs > 0 && totalElapsed >= totalLimitMs) {
+        endRunOnTimeLimit('total')
+      }
+    }
+
+    check()
+    const intervalId = window.setInterval(check, 500)
+    return () => window.clearInterval(intervalId)
+  }, [screen, run, endRunOnTimeLimit])
+
   const handleRestart = () => {
     setRun(null)
     setSaveCode('')
@@ -386,6 +465,7 @@ function App() {
           onSaveRun={saveCurrentRun}
           run={run}
           savedRunCode={saveCode}
+          gameRules={gameRules}
         />
       )}
       {screen === SCREEN.ROULETTE && run && (

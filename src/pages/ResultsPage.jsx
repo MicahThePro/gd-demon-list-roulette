@@ -29,6 +29,9 @@ export default function ResultsPage({ run, onRestart, onSaveRun, savedRunCode })
   const averageTimeLabel = averageTimeMs == null ? '--:--' : formatDurationMs(averageTimeMs)
 
   const gaveUp = run.gaveUp === true
+  // Set by the time-limit watcher rather than by a button, so the results page
+  // has to explain that the clock ended the run and nobody chose to quit.
+  const timeUp = run.timeUp === 'level' || run.timeUp === 'total'
   const finalLevel = run.currentLevel
 
   const finalLevelElapsedMs =
@@ -47,7 +50,23 @@ export default function ResultsPage({ run, onRestart, onSaveRun, savedRunCode })
     <main className="page-shell results-page">
       <section className="panel results-panel">
         <p className="eyebrow">Run summary</p>
-        <h2>{completed ? 'Roulette complete' : gaveUp ? 'You gave up' : 'Run ended'}</h2>
+        <h2>
+          {completed
+            ? 'Roulette complete'
+            : timeUp
+              ? 'Out of time'
+              : gaveUp
+                ? 'You gave up'
+                : 'Run ended'}
+        </h2>
+
+        {timeUp && (
+          <p className="validation-message">
+            {run.timeUp === 'level'
+              ? 'You ran out of time on that level, so the run ended there.'
+              : 'You ran out of time for the whole run, so it ended there.'}
+          </p>
+        )}
 
         <p className="results-section-label">Outcome</p>
         <div className="stats-grid">
@@ -57,7 +76,9 @@ export default function ResultsPage({ run, onRestart, onSaveRun, savedRunCode })
           </div>
           <div className="stat-card result-card">
             <span>Status</span>
-            <strong>{completed ? 'Cleared' : gaveUp ? 'Gave up' : 'Failed'}</strong>
+            <strong>
+              {completed ? 'Cleared' : timeUp ? 'Out of time' : gaveUp ? 'Gave up' : 'Failed'}
+            </strong>
           </div>
           <div className="stat-card result-card">
             <span>Rounds</span>
@@ -101,9 +122,11 @@ export default function ResultsPage({ run, onRestart, onSaveRun, savedRunCode })
                 : (round.elapsedLabel ?? (round.elapsedMs != null ? formatDurationMs(round.elapsedMs) : '--:--'))
               const detail = isFinal
                 ? `${round.level.targetPercent ?? run.currentTarget}% was required`
-                : round.achievedPercent == null
-                  ? 'No attempt'
-                  : `${round.achievedPercent}% achieved`
+                : result === 'timeout'
+                  ? `Ran out of time at ${round.targetPercent ?? run.currentTarget}%`
+                  : round.achievedPercent == null
+                    ? 'No attempt'
+                    : `${round.achievedPercent}% achieved`
               const resultLabel =
                 result === 'success'
                   ? 'Passed'
@@ -111,7 +134,9 @@ export default function ResultsPage({ run, onRestart, onSaveRun, savedRunCode })
                     ? 'Skipped'
                     : result === 'gaveup'
                       ? 'Gave up'
-                      : 'Failed'
+                      : result === 'timeout'
+                        ? 'Timed out'
+                        : 'Failed'
 
               return (
                 <div

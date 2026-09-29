@@ -27,7 +27,7 @@ const getBoundsForSource = (sourceName) => {
   return fetchAredlListBounds()
 }
 
-export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) {
+export default function HomePage({ onStart, onLoadRun, savedRunCode, history, gameRules }) {
   const [isLoading, setIsLoading] = useState(false)
   const [isBoardOpen, setIsBoardOpen] = useState(false)
   const [isChangelogOpen, setIsChangelogOpen] = useState(false)
@@ -42,6 +42,15 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [percentStep, setPercentStep] = usePersistentPercentStep()
   const [percentStepDraft, setPercentStepDraft] = useState(() => String(percentStep))
+  // The time limits follow the same commit-on-blur pattern as the percentage
+  // step: the draft is free to be empty while typing, and the real value only
+  // lands on blur, so clearing the field is possible at all.
+  const [levelTimeLimitDraft, setLevelTimeLimitDraft] = useState(() =>
+    String(gameRules.levelTimeLimitMinutes),
+  )
+  const [totalTimeLimitDraft, setTotalTimeLimitDraft] = useState(() =>
+    String(gameRules.totalTimeLimitMinutes),
+  )
   const estimatedRounds = Math.ceil(100 / percentStep)
   const isRankable = RANKABLE_SOURCES.includes(source)
 
@@ -150,6 +159,18 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
   const commitPercentStep = () => {
     const committed = setPercentStep(percentStepDraft)
     setPercentStepDraft(String(committed))
+  }
+
+  // An empty field means off, not zero-as-typed-and-uncommitted, so an emptied
+  // box clears the limit rather than leaving the last committed one in place.
+  const commitLevelTimeLimit = () => {
+    const committed = gameRules.setLevelTimeLimitMinutes(levelTimeLimitDraft === '' ? 0 : levelTimeLimitDraft)
+    setLevelTimeLimitDraft(String(committed))
+  }
+
+  const commitTotalTimeLimit = () => {
+    const committed = gameRules.setTotalTimeLimitMinutes(totalTimeLimitDraft === '' ? 0 : totalTimeLimitDraft)
+    setTotalTimeLimitDraft(String(committed))
   }
 
   const handleSubmit = async (event) => {
@@ -416,6 +437,14 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history }) 
         onDraftChange={handlePercentStepChange}
         onCommit={commitPercentStep}
         estimatedRounds={estimatedRounds}
+        allowSkip={gameRules.allowSkip}
+        onAllowSkipChange={gameRules.setAllowSkip}
+        levelTimeLimitDraft={levelTimeLimitDraft}
+        onLevelTimeLimitDraftChange={setLevelTimeLimitDraft}
+        onCommitLevelTimeLimit={commitLevelTimeLimit}
+        totalTimeLimitDraft={totalTimeLimitDraft}
+        onTotalTimeLimitDraftChange={setTotalTimeLimitDraft}
+        onCommitTotalTimeLimit={commitTotalTimeLimit}
       />
       <ChangelogDialog
         isOpen={isChangelogOpen}

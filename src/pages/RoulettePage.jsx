@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { formatDurationMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
+import { formatDurationMs, getRunElapsedMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 
-export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit, onSaveRun, savedRunCode }) {
+export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit, onSaveRun }) {
   const [achievedPercent, setAchievedPercent] = useState('')
   const [validationMessage, setValidationMessage] = useState('')
   const [levelCopyMessage, setLevelCopyMessage] = useState('')
@@ -33,8 +33,11 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
   // A skip has to actually skip. Opening the picker and then leaving the page
   // with it still up would strand the run, so the reason is chosen and
   // immediately applied rather than picked and confirmed separately.
+  // Guarded on canSkip as well as the button being hidden, so a picker left
+  // open across a settings change cannot smuggle a skip through.
   const chooseSkipReason = (reasonId) => {
     setIsSkipPickerOpen(false)
+    if (!canSkip) return
     onSkip(reasonId)
   }
 
@@ -74,6 +77,12 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
     return () => window.clearTimeout(timeoutId)
   }, [saveCopyMessage])
 
+  // Defaults to allowed: a run started before the setting existed, or a save
+  // code from another device, simply skips as it always did.
+  const canSkip = run?.allowSkip !== false
+  const levelLimitMs = Number.isFinite(run?.levelTimeLimitMs) ? run.levelTimeLimitMs : 0
+  const totalLimitMs = Number.isFinite(run?.totalTimeLimitMs) ? run.totalTimeLimitMs : 0
+
   const [displayElapsed, setDisplayElapsed] = useState(0)
 
   useEffect(() => {
@@ -89,6 +98,18 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
 
     return () => window.clearInterval(intervalId)
   }, [run.currentLevel?.id, run.currentLevelStartedAt])
+
+  // Both countdowns are driven by the same tick as the level clock, so the three
+  // numbers on screen can never disagree by a frame.
+  const [limitsNow, setLimitsNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (levelLimitMs <= 0 && totalLimitMs <= 0) return undefined
+
+    const tick = () => setLimitsNow(Date.now())
+    const intervalId = window.setInterval(tick, 250)
+    return () => window.clearInterval(intervalId)
+  }, [levelLimitMs, totalLimitMs, run.currentLevel?.id, run.rounds.length])
 
   const challengeEntries = (run?.rounds ?? []).map((round, index) => ({
     id: `${round.level?.id ?? 'round'}-${index}`,
@@ -210,6 +231,27 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
             <h3>{run.currentLevel.name}</h3>
             <p>{run.currentLevel.creator ? `By ${run.currentLevel.creator}` : 'Community pick'}</p>
             <div className="timer-badge">Time: {formatDurationMs(displayElapsed)}</div>
+            {/* Only the clock that is actually running is shown. The level
+                countdown turns red in the last 30 seconds so the end of a run
+                is visible before it happens rather than announced. */}
+            {levelLimitMs > 0 && (
+              <div className={`timer-badge timer-countdown${displayElapsed >= levelLimitMs - 30000 ? ' timer-countdown-urgent' : ''}`}>
+                Level time left: {formatDurationMs(Math.max(0, levelLimitMs - displayElapsed))}
+              </div>
+            )}
+            {totalLimitMs > 0 && (() => {
+              const totalUsed = getRunElapsedMs({
+                rounds: run.rounds,
+                currentLevelStartedAt: run.currentLevelStartedAt,
+                now: limitsNow,
+              })
+              const totalLeft = Math.max(0, totalLimitMs - totalUsed)
+              return (
+                <div className={`timer-badge timer-countdown${totalLeft <= 30000 ? ' timer-countdown-urgent' : ''}`}>
+                  Run time left: {formatDurationMs(totalLeft)}
+                </div>
+              )
+            })()}
             {run.currentLevel.levelId != null ? (
               <button
                 className="level-id-link level-id-button"
@@ -262,15 +304,17 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
             >
               Success
             </button>
-            <button
-              className="secondary-button"
-              type="button"
-              aria-haspopup="dialog"
-              aria-expanded={isSkipPickerOpen}
-              onClick={() => setIsSkipPickerOpen((open) => !open)}
-            >
-              Skip
-            </button>
+            {canSkip && (
+              <button
+                className="secondary-button"
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={isSkipPickerOpen}
+                onClick={() => setIsSkipPickerOpen((open) => !open)}
+              >
+                Skip
+              </button>
+            )}
             <button className="secondary-button" type="button" onClick={onGiveUp}>
               Give up
             </button>
@@ -322,7 +366,7 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
         </aside>
       </div>
 
-      {isSkipPickerOpen && (
+      {isSkipPickerOpen && canSkip && (
         <div
           className="modal-backdrop"
           onClick={() => setIsSkipPickerOpen(false)}

@@ -21,6 +21,23 @@ export const getNextTargetPercent = (achievedPercent, step = 1) => {
   return Math.min(100, (Math.floor(achieved / safeStep) + 1) * safeStep)
 }
 
+/* Total play time for a run in progress: the time already banked on finished
+   rounds plus the time on the level being played right now.
+
+   Deliberately NOT measured from the run's start timestamp. A save code that
+   sits in a clipboard overnight, or a tab closed for a few hours, must not
+   burn a time limit the player was never actually playing against, and the
+   level clock is already rebased on load to pause across such a gap. Summing
+   the recorded rounds gives the same answer without that special case. */
+export const getRunElapsedMs = ({ rounds = [], currentLevelStartedAt, now = Date.now() } = {}) => {
+  const banked = (Array.isArray(rounds) ? rounds : []).reduce(
+    (total, round) => (Number.isFinite(round?.elapsedMs) ? total + round.elapsedMs : total),
+    0,
+  )
+  const live = getElapsedLevelTimeMs({ startedAt: currentLevelStartedAt, now })
+  return banked + live
+}
+
 export const formatDurationMs = (durationMs = 0) => {
   const safeMilliseconds = Number.isFinite(durationMs) ? Math.max(0, Math.round(durationMs)) : 0
   const totalSeconds = Math.floor(safeMilliseconds / 1000)
@@ -143,7 +160,7 @@ export const decodeHistory = (encoded) => {
   }
 }
 
-export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1 }) => {
+export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1, allowSkip = true, levelTimeLimitMs = 0, totalTimeLimitMs = 0 }) => {
   const safeStep = normalizePercentStep(percentStep)
   const seedStart = clampPercent(Math.max(safeStep, startingPercent ?? safeStep))
   const currentLevel = pickNextLevel(levels, [], allowDuplicates)
@@ -165,6 +182,16 @@ export const createRun = ({ startingPercent, levels, source, allowDuplicates, pe
     endingPercent: seedStart,
     skippedCount: 0,
     skipReasons: {},
+    // Copied onto the run rather than read from settings while it is played, so
+    // a save code carries the rules it was started under. A run started before
+    // these settings existed has none of these fields, so each has to be treated
+    // as absent rather than assumed, which is why the reads below default them.
+    allowSkip,
+    levelTimeLimitMs,
+    totalTimeLimitMs,
+    // The clock the total limit counts down from. Separate from startedAt, which
+    // is the run's own start and is also written into every history entry.
+    rulesStartedAt: startedAt,
   }
 }
 

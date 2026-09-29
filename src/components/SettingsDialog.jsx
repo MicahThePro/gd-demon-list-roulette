@@ -20,9 +20,18 @@ export default function SettingsDialog({
   onDraftChange,
   onCommit,
   estimatedRounds,
+  allowSkip,
+  onAllowSkipChange,
+  levelTimeLimitDraft,
+  onLevelTimeLimitDraftChange,
+  onCommitLevelTimeLimit,
+  totalTimeLimitDraft,
+  onTotalTimeLimitDraftChange,
+  onCommitTotalTimeLimit,
 }) {
   const inputRef = useRef(null)
   const closeRef = useRef(null)
+  const dialogRef = useRef(null)
   // The dialog is the same component across opens, so a ref carries whether the
   // user has already dismissed the "what's new" hint for this visit. It is not
   // worth being told twice, but it is worth being told at least once.
@@ -31,10 +40,14 @@ export default function SettingsDialog({
   useEffect(() => {
     if (!isOpen) return undefined
 
-    // Escape commits and closes.
+    // Escape commits and closes. Every control commits on the way out, not just
+    // the percentage step, so closing the dialog never silently discards a time
+    // limit that was typed but not yet blurred.
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         onCommit()
+        onCommitLevelTimeLimit()
+        onCommitTotalTimeLimit()
         onClose()
       }
     }
@@ -47,7 +60,7 @@ export default function SettingsDialog({
     inputRef.current?.focus()
 
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose, onCommit])
+  }, [isOpen, onClose, onCommit, onCommitLevelTimeLimit, onCommitTotalTimeLimit])
 
   // Roving focus inside the dialog: Tab and Shift+Tab cycle the input and the
   // close button instead of escaping to the page behind. Native dialogs trap
@@ -55,7 +68,15 @@ export default function SettingsDialog({
   const handleKeyDownForFocus = (event) => {
     if (event.key !== 'Tab') return
 
-    const focusables = [inputRef.current, closeRef.current].filter(Boolean)
+    // Collected from the live DOM rather than a hand-kept list of refs, so a
+    // control added later is trapped automatically instead of needing to be
+    // remembered in two places. Only genuinely focusable, visible controls
+    // count, which is why disabled and hidden elements are filtered out.
+    const focusables = Array.from(
+      dialogRef.current?.querySelectorAll(
+        'input:not([type="checkbox"]), button:not([disabled])',
+      ) ?? [],
+    )
     if (!focusables.length) return
 
     const first = focusables[0]
@@ -75,6 +96,7 @@ export default function SettingsDialog({
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
+        ref={dialogRef}
         className="modal settings-dialog"
         role="dialog"
         aria-modal="true"
@@ -85,7 +107,7 @@ export default function SettingsDialog({
         <div className="changelog-head">
           <div>
             <p className="eyebrow">Settings</p>
-            <h2 id="settings-title">Percentage increment</h2>
+            <h2 id="settings-title">Run settings</h2>
           </div>
           <button
             ref={closeRef}
@@ -130,6 +152,69 @@ export default function SettingsDialog({
               typed.
             </p>
           )}
+
+          <hr className="settings-divider" />
+
+          <label className="settings-toggle-row">
+            <input
+              type="checkbox"
+              checked={allowSkip}
+              onChange={(event) => onAllowSkipChange(event.target.checked)}
+            />
+            <span>
+              <strong>Allow skipping</strong>
+              <small>
+                When this is off, the Skip button is gone and a level you cannot
+                beat ends the run.
+              </small>
+            </span>
+          </label>
+
+          <hr className="settings-divider" />
+
+          <label className="settings-field">
+            Time limit per level (minutes)
+            <input
+              type="text"
+              inputMode="numeric"
+              value={levelTimeLimitDraft}
+              onChange={(event) => onLevelTimeLimitDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
+              onBlur={onCommitLevelTimeLimit}
+              placeholder="0"
+              aria-describedby="settings-level-limit-hint"
+            />
+          </label>
+
+          <p className="settings-hint" id="settings-level-limit-hint">
+            {levelTimeLimitDraft === '' || Number(levelTimeLimitDraft) === 0
+              ? 'Off. You can spend as long as you like on each level.'
+              : 'Running out of time on a level ends the run right there.'}
+          </p>
+
+          <label className="settings-field">
+            Time limit for the whole run (minutes)
+            <input
+              type="text"
+              inputMode="numeric"
+              value={totalTimeLimitDraft}
+              onChange={(event) => onTotalTimeLimitDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
+              onBlur={onCommitTotalTimeLimit}
+              placeholder="0"
+              aria-describedby="settings-total-limit-hint"
+            />
+          </label>
+
+          <p className="settings-hint" id="settings-total-limit-hint">
+            {totalTimeLimitDraft === '' || Number(totalTimeLimitDraft) === 0
+              ? 'Off. The run only ends when you finish, fail or give up.'
+              : 'A speedrun: see how many levels you can clear before the clock runs out.'}
+          </p>
+
+          <p className="settings-note">
+            These rules are saved to this browser and are locked in when a run
+            starts, so changing them mid-run will not affect the run you are
+            playing.
+          </p>
         </div>
       </div>
     </div>

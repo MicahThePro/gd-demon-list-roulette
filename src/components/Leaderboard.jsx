@@ -13,6 +13,8 @@ const RESULT_LABELS = {
   skipped: 'Skipped',
   failure: 'Failed',
   gaveup: 'Gave up',
+  // A round the clock ran out on, rather than one the player ended.
+  timeout: 'Timed out',
 }
 
 const formatWhen = (timestamp) => {
@@ -133,11 +135,13 @@ const RunDetail = ({ entry, onClose, onDelete }) => {
                   <small>
                     {round.result === 'gaveup'
                       ? `${round.target}% was required`
-                      : round.result === 'skipped'
-                        ? `Skipped${round.skipReason ? ` • ${getSkipReasonLabel(round.skipReason)}` : ''}`
-                        : round.achieved == null
-                          ? 'No attempt'
-                          : `${round.achieved}% achieved`}
+                      : round.result === 'timeout'
+                        ? `Ran out of time at ${round.target}%`
+                        : round.result === 'skipped'
+                          ? `Skipped${round.skipReason ? ` • ${getSkipReasonLabel(round.skipReason)}` : ''}`
+                          : round.achieved == null
+                            ? 'No attempt'
+                            : `${round.achieved}% achieved`}
                   </small>
                 </span>
                 <em className={`history-result history-result-${round.result}`}>
