@@ -15,6 +15,19 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v2-2',
+    version: 'v2.2',
+    title: 'Submit a run whenever you like, and codes that actually paste',
+    summary: 'Send a run to the global leaderboard from your own leaderboard, stop the same run being sent twice, fix AREDL runs being unsubmitable, and make save codes survive being copied.',
+    changes: [
+      'You can now submit a run to the global leaderboard from your own leaderboard, not just from the results screen right after you finish. Open any run in Your runs, and the same submit form is there: paste a link to a video, pick the file type, and send it. If you finished a run and walked away from it, you can still put it up later without playing it again.',
+      'A run can only be sent once. Sending the same run again is refused, whether it is still waiting to be checked, was turned down, or is already on the leaderboard, so nothing can be submitted twice by accident. If you think a video was judged unfairly, send a different run rather than sending the same one again.',
+      'Runs on the AREDL list could not be submitted at all, and were told they were not one of the five ranked lists even though AREDL is one of them. This is fixed, and AREDL runs now also show up under AREDL in the global leaderboard’s list filter rather than only under All lists.',
+      'Save codes and leaderboard codes now load even if the copy wrapped onto more than one line. A full run is a very long code, and a long code gets wrapped by text boxes, phones and chat apps, which used to make a perfectly copied code report itself as invalid. A code that is genuinely broken is still rejected.',
+      'The site now has one list of the five ranked list names instead of three copies of it, so a list cannot be playable but unsubmittable again.',
+    ],
+  },
+  {
     id: 'v2-1',
     version: 'v2.1',
     title: 'Video proof, and runs that are checked before they count',
