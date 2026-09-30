@@ -127,6 +127,22 @@ export const register = async ({ username, password, displayName }) => {
 export const login = async ({ username, password }) => {
   const result = await request('/api/login', { method: 'POST', body: { username, password } })
   saveToken(result.token)
+
+  /* A code used as a password is a moderator previewing somebody, and has to be
+     marked as one. Without this the sign in looked exactly like an ordinary
+     session: the same header, the same name, no banner -- so a moderator could
+     upload a run as a player without ever being told they were acting as them.
+     /api/redeem already did this; this is the same rule for the other door into
+     the same outcome. */
+  if (result.viaCode) {
+    try {
+      localStorage.setItem('demon-roulette-preview', result.user.username)
+    } catch {
+      // Without storage the banner is gone, but the session is held in memory by
+      // the app, so the preview still works for this visit.
+    }
+  }
+
   return result.user
 }
 

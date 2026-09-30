@@ -98,10 +98,20 @@ export const redeemLoginCodeByHash = async (db, supplied, now, expectedUsername 
      time and an old bookmark must keep working. But when one IS given it has to
      match: otherwise a code pasted into the wrong account's row would sign in as
      the code's real owner and say nothing about it. Compared before the claim, so
-     a mistyped username does not cost anybody the code. */
+     a mistyped username does not cost anybody the code.
+
+     This is the one place a failure names itself, which is safe precisely because
+     it is only reached once the code hash has already matched. Holding a valid
+     code IS the credential at that point, so naming the account it belongs to
+     tells an attacker nothing they did not already have -- and it is the
+     difference between "your code is dead" and "your code is for somebody else",
+     which are otherwise the same unhelpful sentence. */
   const wanted = String(expectedUsername ?? '').trim().toLowerCase()
   if (wanted && wanted !== row.username) {
-    return { error: 'That login code is not valid', status: 401 }
+    return {
+      error: `That code was issued for @${row.username}, not @${wanted}. Check which account you issued it on.`,
+      status: 401,
+    }
   }
 
   const claimed = await db

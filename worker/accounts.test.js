@@ -492,6 +492,12 @@ console.log('a login code works as a password')
   const bobCode = await issue(bobId)
   const mismatch = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: bobCode } })
   check('a code cannot sign in as somebody else', mismatch.response.status === 401, JSON.stringify(mismatch.data))
+  // The message names the account the code was actually issued for, because a
+  // wrong username and a wrong code are otherwise the same dead end, and only
+  // the first of those is fixable by typing carefully. Safe to name: this is only
+  // reached once the code hash has matched, so holding the code already proved
+  // everything this would say.
+  check('a mismatch names the right account', String(mismatch.data.error).includes('@bob'), JSON.stringify(mismatch.data))
   // And the mismatch still spent nothing, so the rightful owner can use it.
   const rightOwner = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'bob', password: bobCode } })
   check('the rightful owner can still use it', rightOwner.response.status === 200, JSON.stringify(rightOwner.data))
@@ -500,6 +506,7 @@ console.log('a login code works as a password')
   const carolCode = await issue(aliceId)
   const wrongOnRedeem = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'bob', code: carolCode } })
   check('a mismatched username is refused on /api/redeem too', wrongOnRedeem.response.status === 401, JSON.stringify(wrongOnRedeem.data))
+  check('and it names the account there as well', String(wrongOnRedeem.data.error).includes('@alice'), JSON.stringify(wrongOnRedeem.data))
   const rightOnRedeem = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'alice', code: carolCode } })
   check('and the matching one works', rightOnRedeem.response.status === 200, JSON.stringify(rightOnRedeem.data.user))
 
