@@ -6,6 +6,9 @@ import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
 import { useAuth } from './hooks/useAuth'
 import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
+import PreviewBanner from './components/PreviewBanner'
+import RedeemCodePage from './pages/RedeemCodePage'
+import { getPreviewUser, syncPlayerData } from './services/adminService'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
@@ -15,7 +18,31 @@ const SCREEN = {
   HOME: 'home',
   ROULETTE: 'roulette',
   RESULTS: 'results',
+  REDEEM: 'redeem',
 }
+
+/* The player's own settings, read straight out of the cookies the rules hook
+   writes, for the mirror a moderator can see.
+ *
+ * Read from the cookie rather than from the hook because the mirror is about what
+ * is actually stored for the account, not about what the current page happens to
+ * have in memory, and a missing cookie is simply a rule left at its default. */
+const readCookieValue = (name) => {
+  if (typeof document === 'undefined') return null
+  const match = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null
+}
+
+const readStoredSettings = () => ({
+  allowSkip: readCookieValue('demon-roulette-allow-skip'),
+  levelTimeLimit: readCookieValue('demon-roulette-level-time-limit'),
+  totalTimeLimit: readCookieValue('demon-roulette-total-time-limit'),
+  listSource: readCookieValue('demon-roulette-list-source'),
+  percentStep: readCookieValue('demon-roulette-percent-step'),
+})
 
 // The moderation panel is NOT a route in this app. It is its own entry point at
 // /admin, built from admin/index.html into admin/index.html in the output,
@@ -86,7 +113,17 @@ const hydrateAredlLevel = async (runState, level) => {
 }
 
 function App() {
-  const [screen, setScreen] = useState(SCREEN.HOME)
+  // The redeem page is reached as /redeem, a real path rather than a state, so a
+  // moderator can bookmark it or have the admin panel link straight to it. GitHub
+  // Pages cannot rewrite an unknown path into this app, so it is only honoured
+  // when the file was actually served -- which is why it has to be its own
+  // directory like the admin panel is. Read once at startup rather than in an
+  // effect, so the right screen is on the first paint instead of a frame later.
+  const [screen, setScreen] = useState(() =>
+    typeof window !== 'undefined' && /\/redeem\/?$/.test(window.location.pathname)
+      ? SCREEN.REDEEM
+      : SCREEN.HOME,
+  )
   const [run, setRun] = usePersistentRun()
   const gameRules = useGameRules()
   const history = useRunHistory()
@@ -409,8 +446,56 @@ function App() {
     setScreen(SCREEN.HOME)
   }
 
+  /* Previewing another account.
+   *
+   * A moderator redeems a one-time code and is signed in as that player. Every
+   * screen then shows that player's data under that player's name, which is the
+   * point, and also a way to be deceived by it, so the banner is pinned over the
+   * whole app and stays up until the preview is explicitly ended.
+   *
+   * The username is read from localStorage rather than kept in state, because a
+   * reload happens -- opening a redeem code in a new tab lands here first -- and
+   * the banner must not quietly disappear across one. */
+  const [previewUser, setPreviewUser] = useState(() => getPreviewUser())
+
+  // The player data mirror. A signed-in player uploads their history and settings
+  // so a moderator can see what the account holds; the browser stays the source
+  // of truth and this is a copy, so a failure is logged and otherwise ignored.
+  useEffect(() => {
+    if (!auth.user) {
+      return undefined
+    }
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      syncPlayerData({
+        history: history.entries,
+        settings: readStoredSettings(),
+      }).catch(() => {
+        // A preview's data is a moderator's own upload going to another account,
+        // and a mirror that did not write is not worth interrupting anyone over.
+      })
+    }, 1500)
+
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+    // Re-runs when the history or the signed-in player changes, so the mirror is
+    // not left holding whatever it had at sign in.
+  }, [auth.user, history.entries])
+
   return (
-    <div className="app-shell">
+    <div className={previewUser ? 'app-shell preview-active' : 'app-shell'}>
+      <PreviewBanner
+        username={previewUser}
+        onEnded={() => {
+          setPreviewUser(null)
+          // The session went with the preview, so the app's own copy of the
+          // player has to go too or the header keeps showing a dead account.
+          auth.forgetUser()
+        }}
+      />
       <header className="topbar">
         <div className="brand-wrap">
           <span className="brand-mark">DLR</span>
@@ -472,6 +557,15 @@ function App() {
         )}
       </header>
 
+      {screen === SCREEN.REDEEM && (
+        <RedeemCodePage
+          onExit={() => setScreen(SCREEN.HOME)}
+          onRedeemed={(user) => {
+            setPreviewUser(user.username)
+            setScreen(SCREEN.HOME)
+          }}
+        />
+      )}
       {screen === SCREEN.HOME && (
         <HomePage
           onStart={startRun}

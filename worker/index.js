@@ -33,6 +33,11 @@
 
 import { handleAccountRoutes } from './api.js'
 import { handleSubmissionRoutes } from './submissions.js'
+import {
+  handleAdminAccountRoutes,
+  handleLoginCodeRoutes,
+  handlePlayerDataRoutes,
+} from './accounts.js'
 
 const IMPOSSIBLE_LEVELS_API = 'https://api.impossiblelevels.com/api/levels'
 const CHALLENGE_LIST_URL = 'https://challengelist.gd/challenges/'
@@ -343,9 +348,26 @@ export default {
       }
 
       try {
-        // The video routes come first because they own /api/submissions and
-        // /api/admin; anything they do not match falls through to the account
-        // routes below.
+        // The account administration routes, matched before the submission queue
+        // because that one claims the whole "admin/" prefix and would answer
+        // "Unknown admin endpoint" for an account path.
+        const account = await handleAdminAccountRoutes({
+          db: env.DB,
+          request,
+          url,
+          key,
+          adminPasscode: env.ADMIN_PASSCODE,
+        })
+        if (account) {
+          return json(account.error ? { error: account.error } : (account.body ?? {}), {
+            status: account.status ?? 200,
+            headers: { 'cache-control': 'no-store' },
+          })
+        }
+
+        // The video routes come next because they own /api/submissions and
+        // /api/admin/submissions; anything they do not match falls through to the
+        // account routes below.
         const submission = await handleSubmissionRoutes({
           db: env.DB,
           request,
@@ -357,6 +379,22 @@ export default {
           const headers = { 'cache-control': 'no-store' }
           return json(submission.error ? { error: submission.error } : (submission.body ?? {}), {
             status: submission.status ?? 200,
+            headers,
+          })
+        }
+
+        // The player's own mirrored data, and redeeming a one-time login code.
+        // Neither is an admin route, so both are checked the other way round: by
+        // the caller's own session, or by the code itself.
+        const selfService = (await handlePlayerDataRoutes({ db: env.DB, request, key })) ??
+          (await handleLoginCodeRoutes({ db: env.DB, request, key }))
+        if (selfService) {
+          const headers = { 'cache-control': 'no-store' }
+          if (selfService.setCookie) {
+            headers['set-cookie'] = SESSION_COOKIE(selfService.setCookie, 60 * 60 * 24 * 30)
+          }
+          return json(selfService.error ? { error: selfService.error } : (selfService.body ?? {}), {
+            status: selfService.status ?? 200,
             headers,
           })
         }

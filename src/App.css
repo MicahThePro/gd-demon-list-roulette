@@ -2937,3 +2937,266 @@
   font-size: 0.8rem;
   color: #94a3b8;
 }
+
+/* --- admin: the accounts tab --------------------------------------------- */
+
+/* The search box sits above the list it filters, so it reads as a filter rather
+   than as another field. */
+.admin-search {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #cbd5f5;
+  margin-bottom: 14px;
+}
+
+.admin-search input {
+  padding: 11px 13px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.6);
+  color: #e2e8f0;
+  font: inherit;
+}
+
+.admin-account-list {
+  display: grid;
+  gap: 8px;
+}
+
+/* A row, not a link: it opens a detail view in place rather than navigating, so
+   it is a button and is styled like the queue rows beside it. */
+.admin-account-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.45);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.admin-account-row:hover {
+  border-color: rgba(249, 115, 22, 0.5);
+  background: rgba(2, 6, 23, 0.7);
+}
+
+.admin-account-row strong {
+  color: #f8fafc;
+}
+
+.admin-account-username,
+.admin-account-stats,
+.admin-account-when {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+/* A separate block per concern rather than one long form, so a destructive
+   action is never sitting immediately under something that invites a click. */
+.admin-account-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.admin-account-section h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  color: #f8fafc;
+}
+
+.admin-danger-zone {
+  border-top-color: rgba(239, 68, 68, 0.35);
+}
+
+.admin-danger-zone h3 {
+  color: #fca5a5;
+}
+
+/* The one-time code. Deliberately the largest, most isolated thing on the
+   screen: it is shown once, cannot be read back, and has to be copied then. */
+.admin-code-box {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  border-radius: 14px;
+  background: rgba(249, 115, 22, 0.08);
+}
+
+.admin-code {
+  display: block;
+  margin: 10px 0;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.75);
+  color: #fdba74;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+  word-break: break-all;
+  user-select: all;
+}
+
+/* The mirrored browser data. Tabular, because it is a list of records rather
+   than prose, and aligned so a run's numbers line up down the column. */
+.admin-data-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.admin-data-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.4);
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.admin-data-row strong {
+  color: #f8fafc;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 720px) {
+  .admin-data-row {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .admin-data-row > *:nth-child(n + 3) {
+    grid-column: 2;
+  }
+}
+
+.admin-audit-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.admin-audit-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 9px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.4);
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.admin-audit-list strong {
+  color: #fdba74;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.admin-audit-when {
+  margin-left: auto;
+  color: #64748b;
+}
+
+/* --- the preview banner ---------------------------------------------------- */
+
+/* A fixed ring over the whole viewport, drawn with a box-shadow rather than a
+   border so it does not push the layout around and so it sits above the page
+   content without being scrollable itself. `inset: 0` on a fixed element covers
+   the visible area; the negative offsets keep the shadow outside it. */
+.preview-outline {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 3px #f97316,
+    inset 0 0 26px rgba(249, 115, 22, 0.35);
+}
+
+/* The bar itself, pinned to the top and above the ring, so it is the first thing
+   on screen and cannot be scrolled past. */
+.preview-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2147483001;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, #9a3412, #c2410c);
+  color: #fff7ed;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.preview-banner strong {
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.preview-note {
+  color: #fed7aa;
+  font-size: 0.83rem;
+}
+
+.preview-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.28);
+  animation: preview-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes preview-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* The banner is a fixed overlay, so the page underneath needs to start below it
+   or it hides the top of the app while a preview is on. */
+.preview-active {
+  padding-top: 58px;
+}
+
+.preview-exit {
+  margin-left: auto;
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 247, 237, 0.5);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff7ed;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.preview-exit:hover {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-dot {
+    animation: none;
+  }
+}

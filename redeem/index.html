@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Use a login code — GD List Roulette</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      Its own directory with its own html, for the same reason as /admin: GitHub
+      Pages is a static host with no server to rewrite an unknown path into the
+      main index.html, so a client-side route at /redeem would 404 there. What is
+      served here is the main app, which reads the path on load and shows the code
+      page. The assets are referenced relatively so the same built files work from
+      either directory.
+    -->
+    <script type="module" src="../src/main.jsx"></script>
+  </body>
+</html>

@@ -14,14 +14,16 @@ export default defineConfig({
   // the main page's assets resolve. The admin entry overrides it per input, so
   // its own assets are absolute under /admin/ instead.
   base: './',
-  // Two HTML files, because the site is served from a static host that does no
-  // URL rewriting. See admin/index.html: a client-side /admin route 404s there,
-  // so the panel is built as its own entry with its own real directory.
+  // Three HTML files, because the site is served from a static host that does no
+  // URL rewriting. See admin/index.html and redeem/index.html: a client-side route
+  // at /admin or /redeem 404s there, so each is built as its own entry with its own
+  // real directory.
   build: {
     rollupOptions: {
       input: {
         main: fromRoot('./index.html'),
         admin: fromRoot('./admin/index.html'),
+        redeem: fromRoot('./redeem/index.html'),
       },
     },
   },

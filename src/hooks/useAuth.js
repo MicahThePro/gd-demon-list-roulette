@@ -88,5 +88,13 @@ export const useAuth = () => {
     setError('')
   }, [])
 
-  return { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut }
+  // A preview is ended from outside the auth UI -- the banner's own button -- so
+  // the session has to be droppable without going through signOut, which also
+  // revokes the session server side and the preview page already does that.
+  const forgetUser = useCallback(() => {
+    setUser(null)
+    setError('')
+  }, [])
+
+  return { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut, forgetUser }
 }

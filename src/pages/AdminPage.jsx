@@ -2,12 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
 import { adminDecide, fetchAdminSubmissions } from '../services/submissionService'
 import { PLAYABLE, getHostLabel } from '../utils/videoFile'
+import AccountsTab from '../components/AccountsTab'
 
 const FILTERS = [
   { id: 'pending', label: 'Waiting' },
   { id: 'approved', label: 'Approved' },
   { id: 'rejected', label: 'Rejected' },
   { id: 'all', label: 'All' },
+]
+
+/* The panel's two halves, kept as top-level tabs rather than one long page: the
+   queue is a stream of decisions to work through, while an account is a single
+   thing to look at, and mixing them put a destructive button a few scrolls away
+   from a list of runs being judged. */
+const SECTIONS = [
+  { id: 'queue', label: 'Queue' },
+  { id: 'accounts', label: 'Accounts' },
 ]
 
 /* The passcode is kept in a cookie so the panel does not ask for it on every
@@ -66,10 +76,28 @@ export default function AdminPage({ onExit }) {
   const [isLoading, setIsLoading] = useState(false)
   const [note, setNote] = useState('')
   const [remember, setRemember] = useState(true)
+  // Which half of the panel is open. The queue is the default, because that is
+  // what a moderator opens the panel to do.
+  const [section, setSection] = useState('queue')
+  // The redeem page lives in the main app, not in this bundle, because redeeming
+  // produces an ordinary player session. Opening it in a new tab is deliberate:
+  // it replaces whatever session this browser held, and doing that in the tab
+  // holding the passcode would throw away the panel's own unlock on every preview.
+  const [redeemUrl] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    // The site is served from a subpath on GitHub Pages, so this is derived from
+    // the current path rather than assumed to be the domain root.
+    return new URL('redeem', window.location.href.replace(/\/?admin\/?$/, '/')).toString()
+  })
   // Starts from the cookie, so a return visit goes straight to the queue
   // instead of asking for the passcode again.
   const [isUnlocked, setIsUnlocked] = useState(() => Boolean(readCookie(PASSCODE_COOKIE)))
   const activePasscode = useRef(readCookie(PASSCODE_COOKIE) ?? '')
+  // The same passcode in state, for the accounts tab. A ref cannot be read during
+  // render, and the tab is rendered rather than reached through a callback, so it
+  // needs the value as a plain value. Kept in step with the ref at sign in and
+  // sign out; the ref remains what the queue calls use, since those are effects.
+  const [passcode, setPasscode] = useState(() => readCookie(PASSCODE_COOKIE) ?? '')
 
   const load = useCallback(async (code, status) => {
     setIsLoading(true)
@@ -99,6 +127,7 @@ export default function AdminPage({ onExit }) {
     try {
       const list = await fetchAdminSubmissions(entered, filter)
       activePasscode.current = entered
+      setPasscode(entered)
       // Only kept if the box was ticked, and cleared again by signing out, so
       // a shared computer does not stay unlocked.
       if (remember) {
@@ -117,6 +146,7 @@ export default function AdminPage({ onExit }) {
   const handleSignOut = () => {
     writeCookie(PASSCODE_COOKIE, '', 0)
     activePasscode.current = ''
+    setPasscode('')
     setIsUnlocked(false)
     setSubmissions([])
     setSelected(null)
@@ -209,20 +239,41 @@ export default function AdminPage({ onExit }) {
           </button>
         </header>
 
-        <div className="board-view-tabs" role="tablist" aria-label="Queue">
-          {FILTERS.map((entry) => (
+        <div className="board-view-tabs" role="tablist" aria-label="Panel section">
+          {SECTIONS.map((entry) => (
             <button
               key={entry.id}
               type="button"
               role="tab"
-              aria-selected={filter === entry.id}
-              className={filter === entry.id ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
-              onClick={() => setFilter(entry.id)}
+              aria-selected={section === entry.id}
+              className={section === entry.id ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
+              onClick={() => setSection(entry.id)}
             >
               {entry.label}
             </button>
           ))}
         </div>
+
+        {section === 'accounts' ? (
+          <div className="admin-detail">
+            <AccountsTab passcode={passcode} redeemUrl={redeemUrl} />
+          </div>
+        ) : (
+          <>
+            <div className="board-view-tabs" role="tablist" aria-label="Queue">
+              {FILTERS.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === entry.id}
+                  className={filter === entry.id ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
+                  onClick={() => setFilter(entry.id)}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
 
         {error && <div className="validation-message">{error}</div>}
 
@@ -365,8 +416,10 @@ export default function AdminPage({ onExit }) {
                 </div>
               </>
             )}
+            </div>
           </div>
-        </div>
+          </>
+        )}
       </section>
     </main>
   )
