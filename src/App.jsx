@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import HomePage from './pages/HomePage'
 import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
-import AdminPage from './pages/AdminPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
 import { useAuth } from './hooks/useAuth'
@@ -18,12 +17,11 @@ const SCREEN = {
   RESULTS: 'results',
 }
 
-/* The moderation panel lives at /admin. The route is not a secret, and does
-   not need to be: every admin endpoint re-checks the passcode, and the data
-   it protects is not readable without it. Detected from the path on load and
-   on every navigation, so it survives a reload or a shared link. */
-const isAdminPath = () =>
-  typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '').endsWith('/admin')
+// The moderation panel is NOT a route in this app. It is its own entry point at
+// /admin, built from admin/index.html into admin/index.html in the output,
+// because GitHub Pages is a static host with no server to rewrite a path into
+// the main page: a client-side route there returns GitHub's 404. See
+// src/adminMain.jsx.
 
 // The AREDL list endpoint returns no creator or video, only publisher_id, so
 // those come from the per-level detail endpoint. That is fetched on demand for
@@ -89,7 +87,6 @@ const hydrateAredlLevel = async (runState, level) => {
 
 function App() {
   const [screen, setScreen] = useState(SCREEN.HOME)
-  const [isAdmin, setIsAdmin] = useState(isAdminPath)
   const [run, setRun] = usePersistentRun()
   const gameRules = useGameRules()
   const history = useRunHistory()
@@ -105,15 +102,6 @@ function App() {
   // changelog entry as the on-page heading.
   useEffect(() => {
     document.title = `${SITE_NAME} ${LATEST_VERSION}`
-  }, [])
-
-  // Leaves the admin route without a full reload, so going back to the site
-  // does not tear down the run in progress behind it.
-  const exitAdmin = useCallback(() => {
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
-      window.history.replaceState({}, '', window.location.pathname.replace(/\/admin\/?$/, '/') || '/')
-    }
-    setIsAdmin(false)
   }, [])
 
   const saveCurrentRun = () => {
@@ -416,7 +404,6 @@ function App() {
 
   return (
     <div className="app-shell">
-      {!isAdmin && (
       <header className="topbar">
         <div className="brand-wrap">
           <span className="brand-mark">DLR</span>
@@ -477,12 +464,7 @@ function App() {
           </div>
         )}
       </header>
-      )}
 
-      {isAdmin ? (
-        <AdminPage onExit={exitAdmin} />
-      ) : (
-        <>
       {screen === SCREEN.HOME && (
         <HomePage
           onStart={startRun}
@@ -516,8 +498,6 @@ function App() {
           savedRunCode={saveCode}
           auth={auth}
         />
-      )}
-        </>
       )}
     </div>
   )
