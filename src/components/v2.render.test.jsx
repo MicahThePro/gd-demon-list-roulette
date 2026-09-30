@@ -150,7 +150,6 @@ console.log('GlobalLeaderboard')
   // message in a grid area that does not exist on this page, which is why it
   // drifted off to the right instead of sitting under the board.
   check('the empty message does not reuse the leaderboard grid class', !html.includes('lb-empty'))
-}
 
   const boardHtml = renderToStaticMarkup(
     <div className="panel board-page">
@@ -172,6 +171,7 @@ console.log('GlobalLeaderboard')
   const directChildren = boardHtml.match(/<section class="panel board-page">([\s\S]*?)<\/header>[\s\S]*?<\/section>/)?.[1] ?? ''
   check('the tab strip is not a direct child of the three row grid', !/<div class="board-view-tabs">/.test(directChildren))
   check('the tab strip sits inside the list row', boardHtml.includes('<div class="board-body">'))
+}
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)
 process.exit(failures === 0 ? 0 : 1)

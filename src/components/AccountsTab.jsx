@@ -87,13 +87,19 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
   const [issuedCode, setIssuedCode] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [isWorking, setIsWorking] = useState(false)
-  // The run currently being trashed, so only that row shows a spinner and its
-  // button is disabled. A single flag for the whole panel would lock every row
-  // while one of them was in flight.
-  // The run whose trash box is open, or null. Null rather than a boolean so the
-  // confirm box belongs to exactly one run and the row it came from can show it.
+  // The run whose trash box is open, or null. This answers "which run is the
+  // moderator part way through trashing", and nothing else -- it is null whenever
+  // no box is open, which is the normal case.
+  //
+  // It is deliberately NOT the run list's condition. That list is gated on
+  // `account.runs.length`, and reading this state as the gate made every account
+  // report "no saved runs" except one that happened to be mid-trash. Two
+  // different questions, two different answers; keep them apart.
   const [trashRunId, setTrashRunId] = useState(null)
   const [trashReason, setTrashReason] = useState('')
+  // The run with a request in flight, or null. Separate from trashRunId: a row
+  // stays "busy" after its box closes, and one flag for the whole panel would
+  // lock every row while a single one was being trashed.
   const [busyRunId, setBusyRunId] = useState(null)
 
   // Fetching in the effect itself rather than through a callback that the effect
@@ -367,7 +373,7 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
           back restores all of it.
         </p>
 
-        {trashRunId === null ? (
+        {account.runs.length === 0 ? (
           <p className="settings-hint">
             This account has no saved runs. Runs reach an account when the player
             signs in on the results screen and keeps the run they just finished.
