@@ -14,7 +14,11 @@ import process from 'node:process'
 import worker from './index.js'
 import { createPasswordRecord } from './auth.js'
 
-const SCHEMA = ['./migrations/0001_init.sql', './migrations/0002_submissions.sql']
+const SCHEMA = [
+  './migrations/0001_init.sql',
+  './migrations/0002_submissions.sql',
+  './migrations/0004_trashed_runs.sql',
+]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')
 

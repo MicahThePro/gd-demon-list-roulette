@@ -10,12 +10,13 @@
  *                              level's page
  *
  *   /api/register /api/login /api/logout /api/me
- *   /api/runs (GET, POST) /api/runs/:id (DELETE)
+ *   /api/runs (GET, POST) /api/runs/:id (DELETE) /api/my-entries (GET)
  *   /api/leaderboard
  *
  *   /api/submissions (POST) /api/submissions/mine (GET)
  *   /api/admin/submissions (GET) /api/admin/submissions/:id (GET)
  *   /api/admin/submissions/:id/approve | /reject | /delete (POST)
+ *   /api/admin/accounts/:id/runs/:runId/trash | /untrash (POST)
  *
  *   env.ADMIN_PASSCODE  PBKDF2 hash of the moderation passcode
  *

@@ -107,9 +107,15 @@ const submissionSummary = (row) => ({
   reviewNote: row.review_note,
 })
 
-// The queue row plus enough of the run for a moderator to judge it without a
-// second request: who, how far, how long, and the round list to check against
-// what the video shows.
+/* The queue row plus enough of the run for a moderator to judge it without a
+   second request: who, how far, how long, and the round list to check against
+   what the video shows.
+
+   A trashed run is not in the queue. Trashing is the decision that the run does
+   not belong on this site, and leaving its submission in the queue would put one
+   click away from putting it back -- approving a run somebody had already thrown
+   away. The row itself is untouched, so un-trashing brings the submission back
+   with it. */
 const queueRow = (row) => ({
   ...submissionSummary(row),
   videoUrl: row.video_url,
@@ -155,6 +161,7 @@ const QUEUE_SQL = `
     FROM submissions s
     JOIN runs r ON r.id = s.run_id
     JOIN users u ON u.id = r.user_id
+   WHERE NOT EXISTS (SELECT 1 FROM trashed_runs t WHERE t.run_id = r.id)
 `
 
 /* The whole queue, or just one submission. A single query rather than a page of
@@ -162,12 +169,12 @@ const QUEUE_SQL = `
    submission and having it in hand avoids a click per item. */
 const listSubmissions = async (db, { status, id } = {}) => {
   if (id) {
-    const row = await db.prepare(`${QUEUE_SQL} WHERE s.id = ?`).bind(id).first()
+  const row = await db.prepare(`${QUEUE_SQL} AND s.id = ?`).bind(id).first()
     return row ? [queueRow(row)] : []
   }
 
   const statement = status
-    ? db.prepare(`${QUEUE_SQL} WHERE s.status = ? ORDER BY s.created_at DESC LIMIT 200`).bind(status)
+    ? db.prepare(`${QUEUE_SQL} AND s.status = ? ORDER BY s.created_at DESC LIMIT 200`).bind(status)
     : db.prepare(`${QUEUE_SQL} ORDER BY s.created_at DESC LIMIT 200`)
 
   const result = await statement.all()
@@ -283,6 +290,7 @@ export const handleSubmissionRoutes = async ({ db, request, url, key, adminPassc
            FROM submissions s
            JOIN runs r ON r.id = s.run_id
           WHERE r.user_id = ?
+            AND NOT EXISTS (SELECT 1 FROM trashed_runs t WHERE t.run_id = r.id)
           ORDER BY s.created_at DESC
           LIMIT 50`,
       )

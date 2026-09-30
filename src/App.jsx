@@ -9,6 +9,7 @@ import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
 import PreviewBanner from './components/PreviewBanner'
 import RedeemCodePage from './pages/RedeemCodePage'
 import { getPreviewUser, syncPlayerData } from './services/adminService'
+import { fetchMyEntries } from './services/apiService'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
@@ -485,6 +486,49 @@ function App() {
     // not left holding whatever it had at sign in.
   }, [auth.user, history.entries])
 
+  /* A signed-in player's leaderboard is the account's, not the device's.
+   *
+   * Signing in replaces what is on screen with the runs the account holds, so
+   * the same account on another device shows the same board; and the server also
+   * reports the keys of any runs a moderator has trashed, which are removed from
+   * this browser's copy too. Signing out does nothing here on purpose: the board
+   * falls back to the runs this browser recorded itself, and quietly emptying
+   * somebody's leaderboard because they signed out would be a worse surprise than
+   * leaving their last board up.
+   *
+   * `nonce` is bumped by the results screen after it saves a run, so the run just
+   * added to the account shows up on the board without a reload. The request
+   * itself is the only thing that changes what the hook holds, and it is applied
+   * from its own callback rather than from the effect body. */
+  const [accountNonce, setAccountNonce] = useState(0)
+  // The apply function in a ref rather than in the dependency list: the hook
+  // returns a new callback object on every render, so depending on it directly
+  // would re-read the account after every unrelated render.
+  const applyAccountEntries = useRef(history.applyAccountEntries)
+
+  useEffect(() => {
+    applyAccountEntries.current = history.applyAccountEntries
+  }, [history.applyAccountEntries])
+
+  useEffect(() => {
+    if (!auth.user) {
+      return undefined
+    }
+
+    const controller = new AbortController()
+    fetchMyEntries(controller.signal)
+      .then((payload) => {
+        if (controller.signal.aborted) return
+        applyAccountEntries.current(payload)
+      })
+      .catch(() => {
+        // A sync that did not write is not worth interrupting anybody over: the
+        // board keeps whatever it had, and the next sign-in tries again.
+      })
+
+    return () => controller.abort()
+  }, [auth.user, accountNonce])
+
   return (
     <div className={previewUser ? 'app-shell preview-active' : 'app-shell'}>
       <PreviewBanner
@@ -599,6 +643,7 @@ function App() {
           onLoadRun={loadRunFromCode}
           savedRunCode={saveCode}
           auth={auth}
+          onAccountChanged={() => setAccountNonce((value) => value + 1)}
         />
       )}
     </div>

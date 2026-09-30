@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
-import { formatDurationMs, decodeHistory, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
+import { formatDurationMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
 import { submitEntry } from '../services/submissionService'
 import { hasSubmitted } from '../utils/submittedRuns'
@@ -202,62 +202,10 @@ const FILTERS = {
   ],
 }
 
-export default function Leaderboard({ entries, onDelete, onClear, onExport, onImport, auth }) {
+export default function Leaderboard({ entries, onDelete, onClear, auth }) {
   const [tab, setTab] = useState('cleared')
   const [filter, setFilter] = useState(FILTERS.gaveup[0].key)
   const [openId, setOpenId] = useState(null)
-  const [isImportOpen, setIsImportOpen] = useState(false)
-  const [importCode, setImportCode] = useState('')
-  const [importMessage, setImportMessage] = useState('')
-  const [importError, setImportError] = useState(false)
-
-  useEffect(() => {
-    if (!isImportOpen) return undefined
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setIsImportOpen(false)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isImportOpen])
-
-  const closeImport = () => {
-    setIsImportOpen(false)
-    setImportCode('')
-    setImportMessage('')
-    setImportError(false)
-  }
-
-  const handleImport = () => {
-    const decoded = decodeHistory(importCode.trim())
-    if (!decoded) {
-      setImportError(true)
-      setImportMessage('That does not look like a leaderboard code. Copy the whole code, starting with DLRH1:.')
-      return
-    }
-
-    const result = onImport(decoded)
-
-    if (result.added === 0) {
-      // Keep the dialog open so the reason is visible instead of the window
-      // closing with no explanation.
-      setImportError(false)
-      setImportMessage(
-        result.skipped > 0
-          ? `All ${result.skipped} run${result.skipped === 1 ? '' : 's'} in that code are already on this device.`
-          : 'Nothing in that code was valid.',
-      )
-      return
-    }
-
-    setTab(decoded[0]?.status === 'gaveup' ? 'gaveup' : 'cleared')
-    setImportError(false)
-    setImportMessage(`Imported ${result.added} run${result.added === 1 ? '' : 's'}.`)
-    window.setTimeout(closeImport, 900)
-  }
 
   const tabs = useMemo(
     () => [
@@ -323,7 +271,7 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
       {activeTab.items.length === 0 ? (
         <p className="lb-empty">
           {entries.length === 0
-            ? 'No runs yet. Hit a 100% level to make this list, or import a leaderboard code from another device.'
+            ? 'No runs yet. Hit a 100% level to make this list, or sign in to pick up the runs saved on your account.'
             : tab === 'cleared'
               ? 'No cleared runs yet. Hit a 100% level to make this list.'
               : 'No runs given up yet.'}
@@ -367,71 +315,15 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
         </p>
       )}
 
-      {/* Import stays available with an empty history, since restoring a
-          backup onto a fresh device is exactly when it is needed. Export and
-          clear are pointless with nothing to export or clear. */}
-      <div className="action-row">
-        {entries.length > 0 && (
-          <button type="button" className="secondary-button" onClick={onExport}>
-            Copy leaderboard code
-          </button>
-        )}
-        <button type="button" className="secondary-button" onClick={() => setIsImportOpen(true)}>
-          Import leaderboard code
-        </button>
-        {entries.length > 0 && (
+      {/* No export and no import: a signed-in account is where runs are kept now,
+          so moving to another device is a matter of signing in rather than of
+          copying a code between browsers. Clear stays, because it is about this
+          board rather than about moving it. */}
+      {entries.length > 0 && (
+        <div className="action-row">
           <button type="button" className="secondary-button" onClick={onClear}>
             Clear all runs
           </button>
-        )}
-      </div>
-
-      {isImportOpen && (
-        <div
-          className="modal-backdrop"
-          onClick={closeImport}
-          role="presentation"
-        >
-          <div
-            className="modal modal-wide"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="import-dialog-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 id="import-dialog-title">Import leaderboard</h2>
-            <p>
-              Paste a leaderboard code to add its runs to this device. Existing
-              runs are kept, and anything already here is skipped rather than
-              duplicated.
-            </p>
-            <label className="modal-field">
-              <span className="visually-hidden">Leaderboard code</span>
-              <textarea
-                rows="4"
-                value={importCode}
-                onChange={(event) => {
-                  setImportCode(event.target.value)
-                  setImportMessage('')
-                }}
-                placeholder="Paste your DLRH1: code here"
-                autoFocus
-              />
-            </label>
-            {importMessage && (
-              <div className={importError ? 'validation-message' : 'import-success'}>
-                {importMessage}
-              </div>
-            )}
-            <div className="modal-actions">
-              <button className="secondary-button" type="button" onClick={closeImport}>
-                Cancel
-              </button>
-              <button className="primary-button" type="button" onClick={handleImport}>
-                Import runs
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

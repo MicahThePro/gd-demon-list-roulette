@@ -1,16 +1,34 @@
 import { useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
-import { submitRun } from '../services/submissionService'
-import { hasSubmitted } from '../utils/submittedRuns'
+import { saveRunToAccount, submitRun } from '../services/submissionService'
+import { hasSavedToAccount, hasSubmitted, markSavedToAccount } from '../utils/submittedRuns'
+import AccountDialog from '../components/AccountDialog'
 import SubmitRunForm from '../components/SubmitRunForm'
 
-export default function ResultsPage({ run, runKey, onRestart, auth }) {
+/**
+ * The end-of-run panel: sign in to keep the run, then submit it for the board.
+ *
+ * The order is deliberate. Signing in is the first thing offered because it is
+ * what makes the run survive -- a run held only in this browser is lost with the
+ * browser, and a run on the account is on whichever device signs in next. The
+ * dialog is the same one the home screen uses, and it carries the choice of
+ * whether to attach this run, so a player who signs in from here does not have
+ * to go and find the run afterwards.
+ */
+export default function ResultsPage({ run, runKey, onRestart, auth, onAccountChanged }) {
   // The key the server groups a run under. Passed down rather than derived
   // here, because it has to be the same string the run was recorded under in the
   // local leaderboard: anything recomputed on this render (a fresh Date.now(),
   // say) would differ every time and the guard would never match.
   const [isSubmitted, setIsSubmitted] = useState(() => Boolean(runKey) && hasSubmitted(runKey))
+  // Whether this run is on the account. Asked of local storage rather than the
+  // server, because the answer only changes through this panel: signing in
+  // offers to save it, and saving it is the only other thing that can.
+  const [isSavedToAccount, setIsSavedToAccount] = useState(() => Boolean(runKey) && hasSavedToAccount(runKey))
+  const [isAccountOpen, setIsAccountOpen] = useState(false)
+  const [saveState, setSaveState] = useState({ state: 'idle', message: '' })
+  const [isSaving, setIsSaving] = useState(false)
   if (!run) {
     return null
   }
@@ -53,6 +71,33 @@ export default function ResultsPage({ run, runKey, onRestart, auth }) {
   // the run body rather than being handed one, because the leaderboard holds a
   // trimmed entry and only this page still has the live run.
   const getPayload = () => submitRun(run, Date.now())
+
+  /* Puts the run on the signed-in account, with nothing else attached. A run on
+     the account is stored like any other run: it is on the player's board on
+     every device, and it can be submitted for the global leaderboard later. The
+     same endpoint the submission form posts to, so the two cannot produce
+     different rows for the same run. */
+  const handleSaveToAccount = async () => {
+    if (isSaving) return
+    setIsSaving(true)
+    setSaveState({ state: 'idle', message: 'Saving this run to your account...' })
+    try {
+      await saveRunToAccount(run, Date.now())
+      if (runKey) markSavedToAccount(runKey)
+      setIsSavedToAccount(true)
+      setSaveState({
+        state: 'done',
+        message: 'Saved. This run is on your account, so it is here on any device you sign in on.',
+      })
+      // Tells the app to re-read the account's runs, so the board on the home
+      // screen includes this one without a reload.
+      onAccountChanged?.()
+    } catch (error) {
+      setSaveState({ state: 'error', message: error?.message ?? 'Could not save this run.' })
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   return (
     <main className="page-shell results-page">
@@ -172,6 +217,63 @@ export default function ResultsPage({ run, runKey, onRestart, auth }) {
           )}
         </div>
 
+        <p className="results-section-label">Keep this run</p>
+        <div className="submit-panel">
+          {auth.user ? (
+            isSavedToAccount ? (
+              <p className="export-status">
+                This run is on your account as <strong>@{auth.user.username}</strong>. It appears on
+                your board here and on any other device you sign in on.
+              </p>
+            ) : (
+              <>
+                <p>
+                  Save this run to <strong>@{auth.user.username}</strong> so it follows you to
+                  other devices. It is not on the global leaderboard until you send it for review
+                  below.
+                </p>
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={handleSaveToAccount}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Save to my account'}
+                  </button>
+                </div>
+                {saveState.message && (
+                  <p className={saveState.state === 'done' ? 'export-status' : 'validation-message'}>
+                    {saveState.message}
+                  </p>
+                )}
+              </>
+            )
+          ) : (
+            <>
+              <p>
+                <strong>Sign in to save this run.</strong> An account is what keeps your runs:
+                sign in on another device and everything you have played is there, instead of
+                only in this browser.
+              </p>
+              <p className="settings-hint">
+                You can sign in or create an account right here, and choose whether this run goes
+                on it. Either way the run is already recorded on this device, so nothing is lost
+                if you do not.
+              </p>
+              <div className="action-row">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => setIsAccountOpen(true)}
+                >
+                  Sign in or create an account
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
         <p className="results-section-label">Global leaderboard</p>
         <div className="submit-panel">
           <SubmitRunForm
@@ -190,6 +292,32 @@ export default function ResultsPage({ run, runKey, onRestart, auth }) {
           </button>
         </div>
       </section>
+
+      {/* The same account dialog the home screen opens, given the choice about
+          this run. `onAuthenticated` runs after a successful sign in or sign up,
+          which is where the run gets offered rather than saved automatically:
+          attaching somebody else's finished run to an account they just made is
+          their call, not ours. */}
+      <AccountDialog
+        isOpen={isAccountOpen}
+        onClose={() => setIsAccountOpen(false)}
+        auth={auth}
+        pendingRun={run}
+        onAuthenticated={async (_user, { attachRun }) => {
+          setIsAccountOpen(false)
+          // Signing in with the box unticked saves nothing, and says so rather
+          // than leaving the player wondering whether the run made it.
+          if (!attachRun) {
+            setSaveState({
+              state: 'done',
+              message: `Signed in. This run is still only on this device \u2014 use "Save to my account" above to keep it.`,
+            })
+            onAccountChanged?.()
+            return
+          }
+          await handleSaveToAccount()
+        }}
+      />
     </main>
   )
 }

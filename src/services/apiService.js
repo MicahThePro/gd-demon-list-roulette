@@ -179,6 +179,23 @@ export const fetchMyRuns = async (signal) => {
 
 export const deleteRun = async (id) => request(`/api/runs/${id}`, { method: 'DELETE', auth: true })
 
+/**
+ * The signed-in player's own runs, in the same shape the local leaderboard
+ * stores them, plus the keys of the runs a moderator has trashed.
+ *
+ * This is what makes the leaderboard follow the account rather than the device:
+ * signing in on another device replaces the board with the account's runs, and
+ * the trashed keys are what stops a hidden run reappearing from this device's
+ * own copy of it.
+ */
+export const fetchMyEntries = async (signal) => {
+  const result = await request('/api/my-entries', { auth: true, signal })
+  return {
+    entries: result.entries ?? [],
+    trashedRunKeys: result.trashedRunKeys ?? [],
+  }
+}
+
 export const fetchLeaderboard = async ({ board = 'farthest', source = 'all', limit = 50, signal } = {}) => {
   const params = new URLSearchParams({ board, source, limit: String(limit) })
   const result = await request(`/api/leaderboard?${params.toString()}`, { signal })

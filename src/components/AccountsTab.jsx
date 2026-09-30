@@ -6,6 +6,8 @@ import {
   issueLoginCode,
   revokeLoginCode,
   searchAccounts,
+  trashRun,
+  untrashRun,
 } from '../services/adminService'
 
 /* The two things a moderator does with an account, and the two ways they can go
@@ -85,6 +87,14 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
   const [issuedCode, setIssuedCode] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [isWorking, setIsWorking] = useState(false)
+  // The run currently being trashed, so only that row shows a spinner and its
+  // button is disabled. A single flag for the whole panel would lock every row
+  // while one of them was in flight.
+  // The run whose trash box is open, or null. Null rather than a boolean so the
+  // confirm box belongs to exactly one run and the row it came from can show it.
+  const [trashRunId, setTrashRunId] = useState(null)
+  const [trashReason, setTrashReason] = useState('')
+  const [busyRunId, setBusyRunId] = useState(null)
 
   // Fetching in the effect itself rather than through a callback that the effect
   // then calls: the state updates then belong to the subscription's own callback,
@@ -169,6 +179,39 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
     }
   }
 
+  /* Trashing and un-trashing a run. Both are one request and one re-read of the
+     account, rather than a local edit of the row: the server is what decides
+     whether the run is hidden from the leaderboard, the player's own board and
+     the queue, and a row that merely looked trashed on this screen would be a
+     lie the moment the page was reloaded. */
+  const handleTrash = async (run, reason) => {
+    setBusyRunId(run.id)
+    setError('')
+    try {
+      await trashRun(passcode, accountId, run.id, reason)
+      await reload()
+      onChanged?.()
+    } catch (caught) {
+      setError(caught?.message ?? 'Could not trash that run.')
+    } finally {
+      setBusyRunId(null)
+    }
+  }
+
+  const handleUntrash = async (run) => {
+    setBusyRunId(run.id)
+    setError('')
+    try {
+      await untrashRun(passcode, accountId, run.id)
+      await reload()
+      onChanged?.()
+    } catch (caught) {
+      setError(caught?.message ?? 'Could not put that run back.')
+    } finally {
+      setBusyRunId(null)
+    }
+  }
+
   if (isLoading && !account) {
     return <p className="global-board-message">Loading...</p>
   }
@@ -211,6 +254,7 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
 
       <div className="admin-facts">
         <span>Runs<strong>{account.runCount}</strong></span>
+        <span>Hidden<strong>{account.trashedCount}</strong></span>
         <span>Submitted<strong>{account.submissionCount}</strong></span>
         <span>Waiting<strong>{account.pendingCount}</strong></span>
         <span>Last seen<strong>{formatAgo(account.syncedAt)}</strong></span>
@@ -278,9 +322,9 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
         <h3>Their browser data</h3>
         {!account.syncedAt ? (
           <p className="settings-hint">
-            This account has not uploaded anything. Their run history lives in
-            their own browser and has never been sent here, so there is nothing to
-            show.
+            This account has not uploaded a copy of their browser. The runs
+            listed above come from the account itself, not from here, so they are
+            the same on every device they sign in on.
           </p>
         ) : (
           <>
@@ -314,22 +358,104 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
       </div>
 
       <div className="admin-account-section">
-        <h3>Runs they submitted</h3>
-        {account.runs.length === 0 ? (
-          <p className="settings-hint">This account has not submitted anything.</p>
+        <h3>All their runs</h3>
+        <p className="settings-hint">
+          Every run saved to this account, whether or not it was ever sent for
+          review, newest first. Trashing hides one everywhere at once: off the
+          global leaderboard, out of their own runs, and out of the queue. The run
+          is not destroyed, it keeps its statistics and its rank, and putting it
+          back restores all of it.
+        </p>
+
+        {trashRunId === null ? (
+          <p className="settings-hint">
+            This account has no saved runs. Runs reach an account when the player
+            signs in on the results screen and keeps the run they just finished.
+          </p>
         ) : (
           <div className="admin-data-list">
             {account.runs.map((run) => (
-              <div key={run.id} className="admin-data-row">
+              <div
+                key={run.id}
+                className={run.trashed ? 'admin-data-row admin-data-row-trashed' : 'admin-data-row'}
+              >
                 <strong>{run.score}%</strong>
                 <span>{run.source}</span>
-                <span>{run.passed} passed · {run.roundsPlayed} levels</span>
+                <span>{run.passed} passed &middot; {run.roundsPlayed} levels</span>
                 <em className={`lb-sub ${run.submission ? `admin-status-${run.submission.status}` : ''}`}>
                   {run.submission ? (SUBMISSION_LABELS[run.submission.status] ?? run.submission.status) : 'Not submitted'}
                 </em>
                 <span>{formatWhen(run.createdAt)}</span>
+
+                {run.trashed ? (
+                  <span className="admin-run-actions">
+                    <em className="admin-trash-flag">
+                      Trashed{run.trashedAt ? ` ${formatAgo(run.trashedAt)}` : ''}
+                    </em>
+                    <button
+                      type="button"
+                      className="secondary-button small-button"
+                      onClick={() => handleUntrash(run)}
+                      disabled={busyRunId === run.id}
+                    >
+                      {busyRunId === run.id ? 'Working...' : 'Put it back'}
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-button small-button"
+                    onClick={() => {
+                      setTrashRunId(run.id)
+                      setTrashReason('')
+                    }}
+                    disabled={busyRunId !== null}
+                  >
+                    Trash
+                  </button>
+                )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* The confirm box replaces the row's own button rather than sitting under
+            the whole list, so the reason for trashing one particular run is typed
+            next to that run and there is never a question of which one it refers
+            to. */}
+        {trashRunId !== null && (
+          <div className="admin-trash-box">
+            <label className="admin-note">
+              Why are you trashing this run? (optional, goes in the log)
+              <input
+                value={trashReason}
+                onChange={(event) => setTrashReason(event.target.value)}
+                maxLength={200}
+                autoComplete="off"
+              />
+            </label>
+            <div className="action-row">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  const run = account.runs.find((entry) => entry.id === trashRunId)
+                  setTrashRunId(null)
+                  if (run) handleTrash(run, trashReason)
+                }}
+                disabled={busyRunId !== null}
+              >
+                Trash this run
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setTrashRunId(null)}
+                disabled={busyRunId !== null}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -470,6 +596,7 @@ export default function AccountsTab({ passcode, redeemUrl }) {
               <span className="admin-account-stats">
                 {account.runCount} runs · {account.submissionCount} submitted
                 {account.pendingCount > 0 && ` · ${account.pendingCount} waiting`}
+                {account.trashedCount > 0 && ` · ${account.trashedCount} trashed`}
               </span>
               <span className="admin-account-when">
                 {account.syncedAt ? `data ${formatAgo(account.syncedAt)}` : 'no data uploaded'}

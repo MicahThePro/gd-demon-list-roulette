@@ -87,6 +87,26 @@ export const submitRun = async (run, endedAt) => {
   return result.run
 }
 
+/**
+ * Stores a finished run on the signed-in account, with nothing attached to it.
+ *
+ * The same call the submission form makes, deliberately: a run is a run
+ * whatever it is for, so there is one row per run rather than two kinds of run
+ * that a moderator later has to tell apart. What changes without a video is that
+ * it is simply not on the public board -- it sits on the player's own account
+ * until they choose to send it for review.
+ *
+ * Because the Worker upserts on the client's run id, calling this for a run that
+ * is already on the account updates that run rather than adding a second copy of
+ * it, which is what makes it safe to offer after a sign in the player may or may
+ * not have needed.
+ */
+export const saveRunToAccount = async (run, endedAt) => {
+  const payload = buildRunPayload(run, endedAt)
+  const result = await jsonRequest('/api/runs', { method: 'POST', body: payload, auth: true })
+  return result.run
+}
+
 export const uploadRecording = async ({ runId, videoUrl, container, note }) => {
   const result = await submitProof({ runId, videoUrl, container, note })
   return result.submission

@@ -137,49 +137,6 @@ export const decodeRunState = (encoded) => {
   }
 }
 
-// Prefixed so a history code can never be mistaken for a run save code, and so
-// a future format change can be detected instead of being parsed as garbage.
-// The "1" is the format version.
-const HISTORY_PREFIX = 'DLRH1:'
-
-/**
- * Encodes the whole leaderboard into a portable string.
- *
- * Every stored field travels, including each level's id, name, target and
- * achieved percentages, result, time and thumbnail. Nothing is summarised or
- * dropped, so an imported history renders exactly like the exported one.
- */
-export const encodeHistory = (entries) => {
-  if (!Array.isArray(entries) || !entries.length) {
-    return ''
-  }
-  return HISTORY_PREFIX + toBase64Url(JSON.stringify({ v: 1, entries }))
-}
-
-export const decodeHistory = (encoded) => {
-  if (typeof encoded !== 'string') {
-    return null
-  }
-
-  // Whitespace is stripped first, so a wrapped or newline-terminated paste is
-  // read the same as an untouched one. See stripWhitespace.
-  const cleaned = stripWhitespace(encoded)
-  if (!cleaned.startsWith(HISTORY_PREFIX)) {
-    return null
-  }
-
-  try {
-    const parsed = JSON.parse(fromBase64Url(cleaned.slice(HISTORY_PREFIX.length)))
-    const entries = parsed?.entries
-    if (!Array.isArray(entries) || !entries.length) {
-      return null
-    }
-    return entries
-  } catch {
-    return null
-  }
-}
-
 // allowSkip defaults to false, matching the settings default: a run has to
 // opt in to skipping rather than out of it. App always passes the player's own
 // setting, so this only covers a caller that does not.

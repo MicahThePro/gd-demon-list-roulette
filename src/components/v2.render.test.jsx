@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import process from 'node:process'
 import AccountDialog from './AccountDialog.jsx'
 import GlobalLeaderboard from './GlobalLeaderboard.jsx'
+import Leaderboard from './Leaderboard.jsx'
 
 let failures = 0
 const check = (name, condition, detail = '') => {
@@ -70,6 +71,55 @@ console.log('AccountDialog')
     <AccountDialog isOpen onClose={() => {}} auth={{ ...signedOut, isRestoring: true }} />,
   )
   check('a restored session says so instead of flashing a form', restoring.includes('Checking your saved sign in'))
+
+  // The results screen opens this same dialog with a run in hand, so the choice
+  // about that run has to live here rather than in a second form on the results
+  // page. Absent without a run, present with one.
+  const withoutRun = renderToStaticMarkup(<AccountDialog isOpen onClose={() => {}} auth={signedOut} />)
+  check('with no run in hand the attach choice is not offered', !withoutRun.includes('Put the run I just finished'))
+
+  const withRun = renderToStaticMarkup(
+    <AccountDialog isOpen onClose={() => {}} auth={signedOut} pendingRun={{ rounds: [] }} />,
+  )
+  check('with a run in hand the attach choice is offered', withRun.includes('Put the run I just finished'))
+  check('and it is a checkbox, ticked by default', withRun.includes('type="checkbox"') && withRun.includes('checked=""'))
+}
+
+console.log('Leaderboard, with no import and no export')
+{
+  const anEntry = {
+    id: '1700000000000-AREDL',
+    at: 1700000000000,
+    source: 'AREDL',
+    step: 1,
+    status: 'completed',
+    score: 100,
+    roundsPlayed: 2,
+    passed: 2,
+    skipped: 0,
+    skipReasons: {},
+    totalMs: 60000,
+    avgMs: 30000,
+    rounds: [
+      ['a', 'Level A', 1, 100, 'success', 30000, null, null],
+      ['b', 'Level B', 2, 100, 'success', 30000, null, null],
+    ],
+  }
+
+  const props = { onDelete: () => {}, onClear: () => {}, auth: signedOut }
+  const withRuns = renderToStaticMarkup(<Leaderboard {...props} entries={[anEntry]} />)
+  check('a run is listed', withRuns.includes('100%') && withRuns.includes('AREDL'))
+  check('there is no export button', !withRuns.includes('Copy leaderboard code'))
+  check('there is no import button', !withRuns.includes('Import leaderboard code'))
+  check('and no dialog for one either', !withRuns.includes('DLRH1:'))
+  check('clearing the board is still offered', withRuns.includes('Clear all runs'))
+  // With nothing on the board there is nothing to clear, so the button goes
+  // rather than sitting there doing nothing.
+  const empty = renderToStaticMarkup(<Leaderboard {...props} entries={[]} />)
+  check('an empty board offers no clear either', !empty.includes('Clear all runs'))
+  // The empty message points at signing in rather than at a code that no longer
+  // exists, because that is now how a run reaches another device.
+  check('the empty message points at the account', empty.includes('sign in') && !empty.includes('leaderboard code'))
 }
 
 console.log('GlobalLeaderboard')

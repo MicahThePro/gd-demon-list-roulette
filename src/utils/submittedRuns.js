@@ -46,3 +46,48 @@ export const markSubmitted = (runId) => {
     write([...ids, runId])
   }
 }
+
+/* --- runs saved to the account, not just to this device -------------------- */
+
+/* A separate list from the submitted one, and deliberately so. "Sent for review"
+   and "kept on the account" are different facts about a run: a run can be saved
+   without ever being submitted, and a run that was submitted is on the account
+   too. Keeping them in one list would make the results screen claim a run was
+   saved simply because it had been submitted -- true, but for the wrong reason,
+   and it would hide the fact that a run had never been kept.
+
+   The same shape and the same cap as the submitted list, for the same reasons:
+   keyed on the run key so the guard works before the server id is known, and
+   capped so it cannot grow without bound. This one is a pure convenience -- the
+   server is the authority on what is on the account, and the app re-reads that
+   on every sign in. */
+const SAVED_KEY = 'demon-roulette-saved-to-account'
+
+const readSaved = () => {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SAVED_KEY))
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+const writeSaved = (ids) => {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(ids.slice(-100)))
+  } catch {
+    // As above: losing this only means the button is offered again, and saving
+    // the same run twice updates one row rather than making two.
+  }
+}
+
+export const hasSavedToAccount = (runId) => readSaved().includes(runId)
+
+export const markSavedToAccount = (runId) => {
+  const ids = readSaved()
+  if (!ids.includes(runId)) {
+    writeSaved([...ids, runId])
+  }
+}

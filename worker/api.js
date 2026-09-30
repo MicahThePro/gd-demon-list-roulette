@@ -8,9 +8,14 @@
  *   POST /api/logout
  *   GET  /api/me
  *   POST /api/runs       a finished run
- *   GET  /api/runs       that player's submitted runs
- *   DELETE /api/runs/:id one submitted run
+ *   GET  /api/runs       that player's stored runs
+ *   DELETE /api/runs/:id one stored run
+ *   GET  /api/my-entries that player's runs in the site's own leaderboard shape
  *   GET  /api/leaderboard?board=&source=&limit=&you
+ *
+ * A trashed run is a run a moderator has hidden. It is not deleted: it is left
+ * out of every read above, and comes back in full if it is un-trashed. See
+ * migrations/0004_trashed_runs.sql.
  *
  * The run payload is validated here rather than trusted, because a run is a
  * score claim: every number the leaderboards rank on is re-derived from the
@@ -227,20 +232,102 @@ const normalizeRun = (payload, now) => {
   }
 }
 
+/* A trashed run is hidden from every read that ranks or lists runs. Written once
+   here as a fragment so a new query cannot forget it: a leaderboard that ranked
+   trashed runs would be the exact failure the table exists to prevent. */
+const NOT_TRASHED = 'NOT EXISTS (SELECT 1 FROM trashed_runs t WHERE t.run_id = r.id)'
+
 const listRuns = async (db, userId, limit) => {
   const result = await db
     .prepare(
-      `SELECT id, run_key, source, percent_step, status, timed_out, score, target_reached,
-              rounds_played, passed, skipped, total_ms, avg_ms, skip_reasons, created_at
-         FROM runs
-        WHERE user_id = ?
-        ORDER BY score DESC, passed DESC, created_at DESC
+      `SELECT r.id, r.run_key, r.source, r.percent_step, r.status, r.timed_out, r.score,
+              r.target_reached, r.rounds_played, r.passed, r.skipped, r.total_ms, r.avg_ms,
+              r.skip_reasons, r.created_at
+         FROM runs r
+        WHERE r.user_id = ? AND ${NOT_TRASHED}
+        ORDER BY r.score DESC, r.passed DESC, r.created_at DESC
         LIMIT ?`,
     )
     .bind(userId, limit)
     .all()
 
   return (result.results ?? []).map(toRunRow)
+}
+
+/** The keys of the player's trashed runs, so their own browser can hide them too. */
+const listTrashedRunKeys = async (db, userId) => {
+  const result = await db
+    .prepare('SELECT r.run_key FROM trashed_runs t JOIN runs r ON r.id = t.run_id WHERE t.user_id = ?')
+    .bind(userId)
+    .all()
+  return (result.results ?? []).map((row) => row.run_key)
+}
+
+/* The packed round tuple, in the order the site's local leaderboard stores it.
+   Kept here rather than derived from the rounds so a run synced onto another
+   device renders identically to one recorded in that device's own browser --
+   the ordering is a contract between the two, not a display detail. */
+const PACKED_ROUND = (round) => [
+  round.level_id ?? null,
+  round.level_name ?? 'Unknown level',
+  round.target_percent ?? null,
+  round.achieved_percent ?? null,
+  round.result ?? 'failure',
+  Number.isFinite(round.elapsed_ms) ? round.elapsed_ms : null,
+  round.video ?? null,
+  round.result === 'skipped' ? (round.skip_reason ?? null) : null,
+]
+
+/**
+ * The player's own runs in the shape the local leaderboard stores them.
+ *
+ * This is what makes the leaderboard follow the account rather than the device:
+ * the browser sends nothing and receives every run the account holds, packed the
+ * same way its own entries are, so signing in on another device shows the same
+ * board. Trashed runs are excluded from the list and reported separately as keys,
+ * which is how a run hidden by a moderator stops being visible in the player's
+ * own board as well as the public one.
+ */
+const getMyEntries = async (db, userId) => {
+  const [runs, trashed] = await Promise.all([listRuns(db, userId, 500), listTrashedRunKeys(db, userId)])
+
+  if (!runs.length) {
+    return { entries: [], trashedRunKeys: trashed }
+  }
+
+  // The rounds are read per run rather than in one joined query, because a
+  // single query returning every round of every run would be a very large result
+  // for a player with a long history, and most of the board never shows them.
+  const withRounds = await Promise.all(
+    runs.map(async (run) => {
+      const rows = await db
+        .prepare('SELECT * FROM run_rounds WHERE run_id = ? ORDER BY round_number')
+        .bind(run.id)
+        .all()
+
+      return {
+        id: run.runKey,
+        at: run.createdAt,
+        source: run.source,
+        step: run.percentStep,
+        status: run.status,
+        score: run.score,
+        targetReached: run.targetReached,
+        roundsPlayed: run.roundsPlayed,
+        passed: run.passed,
+        skipped: run.skipped,
+        skipReasons: safeParseJson(run.skipReasons),
+        totalMs: run.totalMs,
+        avgMs: run.avgMs,
+        rounds: (rows.results ?? []).map(PACKED_ROUND),
+        // The site's stored id, so an entry that came from the server can be
+        // deleted or re-synced by the same key the server knows it by.
+        serverId: run.id,
+      }
+    }),
+  )
+
+  return { entries: withRounds, trashedRunKeys: trashed }
 }
 
 const toRunRow = (row) => ({
@@ -370,9 +457,11 @@ const getLeaderboard = async (db, url) => {
   // Only approved runs reach the public board. A run sits out of sight until
   // somebody has watched the recording, so the leaderboard can never show a
   // score nobody has checked. A run that was never submitted at all is also
-  // excluded, which is what keeps the board honest about being curated.
+  // excluded, which is what keeps the board honest about being curated. A
+  // trashed run is excluded here too, so hiding one takes it off the board for
+  // everybody at once rather than only from the account it belongs to.
   const baseSql = `
-    SELECT r.id, r.source, r.percent_step, r.status, r.timed_out, r.score, target_reached,
+    SELECT r.id, r.source, r.percent_step, r.status, r.timed_out, r.score, r.target_reached,
            r.rounds_played, r.passed, r.skipped, r.total_ms, r.avg_ms, r.created_at,
            u.username, u.display_name
       FROM runs r
@@ -381,6 +470,7 @@ const getLeaderboard = async (db, url) => {
        SELECT 1 FROM submissions s
         WHERE s.run_id = r.id AND s.status = 'approved'
      )
+       AND ${NOT_TRASHED}
   `
 
   const rows = hasSource
@@ -435,7 +525,8 @@ const getPersonalStanding = async (db, user, url) => {
          FROM runs r
         WHERE r.user_id = ?
           AND EXISTS (SELECT 1 FROM submissions s WHERE s.run_id = r.id AND s.status = 'approved')
-        ORDER BY ${board.order.replaceAll('r.', 'r.')}
+          AND ${NOT_TRASHED}
+        ORDER BY ${board.order}
         LIMIT 1`,
     )
     .bind(user.id)
@@ -460,6 +551,7 @@ const getPersonalStanding = async (db, user, url) => {
       `SELECT COUNT(*) AS n FROM runs r
         WHERE (r.score > ? OR (r.score = ? AND r.passed > ?))
           AND EXISTS (SELECT 1 FROM submissions s WHERE s.run_id = r.id AND s.status = 'approved')
+          AND ${NOT_TRASHED}
         ${filter}`,
     )
     .bind(...args)
@@ -668,12 +760,25 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
           `SELECT COUNT(*) AS runs, MAX(r.score) AS best, MAX(r.passed) AS bestPassed
              FROM runs r
             WHERE r.user_id = ?
-              AND EXISTS (SELECT 1 FROM submissions s WHERE s.run_id = r.id AND s.status = 'approved')`,
+              AND EXISTS (SELECT 1 FROM submissions s WHERE s.run_id = r.id AND s.status = 'approved')
+              AND ${NOT_TRASHED}`,
         )
         .bind(user.id)
         .first()
     }
     return { status: 200, body: board }
+  }
+
+  // GET /api/my-entries -- the player's own runs, in the shape the site's local
+  // leaderboard stores them. Signed in only, and it is the call that makes the
+  // leaderboard follow the account: the browser keeps its own copy but this is
+  // what it merges in, so another device signs in and sees the same board.
+  if (request.method === 'GET' && route === 'my-entries') {
+    const user = await requireUser(db, request)
+    if (!user) {
+      return { error: 'Sign in to do that', status: 401 }
+    }
+    return { status: 200, body: await getMyEntries(db, user.id) }
   }
 
   return null

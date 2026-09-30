@@ -18,6 +18,7 @@ const SCHEMA = [
   './migrations/0001_init.sql',
   './migrations/0002_submissions.sql',
   './migrations/0003_admin.sql',
+  './migrations/0004_trashed_runs.sql',
 ]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')
@@ -368,6 +369,87 @@ console.log('a players own data can be mirrored')
   // A mirror is a copy, so deleting the account must take it with the account.
   await jsonCall(env, `/api/admin/accounts/${id}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'alice' } })
   check('deleting the account takes its mirrored data', (await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: '258456' })).response.status === 404)
+}
+
+console.log('trashing a run, submitted or not')
+{
+  const { env, alice, bob } = await setup()
+  const accountId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
+
+  // Two runs: one that was sent for review and one that was never sent anywhere.
+  // The second is the point -- a run only reaches an account by being saved
+  // there, and a moderator has to be able to get at it without it having been
+  // submitted first.
+  const submitted = (await jsonCall(env, '/api/runs', { method: 'POST', token: alice.token, body: aRun({ runId: 'alice-1' }) })).data.run
+  const unsubmitted = (await jsonCall(env, '/api/runs', { method: 'POST', token: alice.token, body: aRun({ runId: 'alice-2' }) })).data.run
+  const bobsRun = (await jsonCall(env, '/api/runs', { method: 'POST', token: bob.token, body: aRun({ runId: 'bob-1' }) })).data.run
+
+  const before = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: '258456' })).data.account
+  check('every run is listed, submitted or not', before.runs.length === 2, JSON.stringify(before.runs.map((r) => r.runId)))
+  check('one has no submission', before.runs.some((r) => r.runId === 'alice-2' && r.submission === null), JSON.stringify(before.runs))
+  check('nothing is trashed to begin with', before.runs.every((r) => r.trashed === false))
+
+  check('trashing needs the passcode', (await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, { method: 'POST' })).response.status === 401)
+  check('a wrong passcode is refused', (await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, { method: 'POST', passcode: '000000' })).response.status === 401)
+
+  const trashed = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, {
+    method: 'POST',
+    passcode: '258456',
+    body: { reason: 'not this account\'s run' },
+  })
+  check('trashing succeeds', trashed.response.status === 200 && trashed.data.trashed === true, JSON.stringify(trashed.data))
+
+  const after = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: '258456' })).data.account
+  check('a trashed run is still on the account', after.runs.length === 2, JSON.stringify(after.runs.map((r) => r.runId)))
+  check('and it is marked as trashed', after.runs.find((r) => r.id === unsubmitted.id)?.trashed === true, JSON.stringify(after.runs))
+  check('the reason is kept for the log', after.runs.find((r) => r.id === unsubmitted.id)?.trashReason === "not this account's run", JSON.stringify(after.runs.find((r) => r.id === unsubmitted.id)))
+  check('the hidden count is reported', after.account?.trashedCount === 1 || after.trashedCount === 1, JSON.stringify(after))
+  check('the other run is untouched', after.runs.find((r) => r.id === submitted.id)?.trashed === false)
+
+  // Trashing twice is not an error and does not make a second row: the primary
+  // key is what stops it, and the second call just refreshes the reason.
+  const twice = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, {
+    method: 'POST',
+    passcode: '258456',
+    body: { reason: 'still not theirs' },
+  })
+  check('trashing twice is fine', twice.response.status === 200, JSON.stringify(twice.data))
+  const markers = await env.DB.prepare('SELECT COUNT(*) AS n FROM trashed_runs WHERE run_id = ?').bind(unsubmitted.id).first()
+  check('and leaves one marker', markers?.n === 1, JSON.stringify(markers))
+
+  // The run row itself was never touched, so putting it back is exact.
+  const row = await env.DB.prepare('SELECT score, run_key FROM runs WHERE id = ?').bind(unsubmitted.id).first()
+  check('the run row is untouched', row?.score === 100 && row?.run_key === 'alice-2', JSON.stringify(row))
+
+  // A run belonging to another account is not reachable through this one, so a
+  // wrong id in the path cannot trash somebody else's run.
+  const crossAccount = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${bobsRun.id}/trash`, { method: 'POST', passcode: '258456' })
+  check("another account's run is not reachable here", crossAccount.response.status === 404, JSON.stringify(crossAccount.data))
+  const bobStillFine = await env.DB.prepare('SELECT COUNT(*) AS n FROM trashed_runs WHERE run_id = ?').bind(bobsRun.id).first()
+  check("and their run is not trashed", bobStillFine?.n === 0, JSON.stringify(bobStillFine))
+
+  const untrashed = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/untrash`, { method: 'POST', passcode: '258456' })
+  check('un-trashing succeeds', untrashed.response.status === 200 && untrashed.data.trashed === false, JSON.stringify(untrashed.data))
+  const restored = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: '258456' })).data.account
+  check('the run comes back', restored.runs.find((r) => r.id === unsubmitted.id)?.trashed === false, JSON.stringify(restored.runs))
+  check('with its reason cleared', restored.runs.find((r) => r.id === unsubmitted.id)?.trashReason === null)
+
+  // Un-trashing something that was never trashed is a no-op rather than an
+  // error, so a double click cannot turn into a spurious error on screen.
+  const again = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/untrash`, { method: 'POST', passcode: '258456' })
+  check('un-trashing an untrashed run is not an error', again.response.status === 200, JSON.stringify(again.data))
+
+  const audit = (await jsonCall(env, '/api/admin/audit', { passcode: '258456' })).data.entries
+  check('the trashing is in the log', audit.some((entry) => entry.action === 'run.trash' && entry.targetName === 'alice'), JSON.stringify(audit.map((e) => e.action)))
+  check('the reason is in the log', audit.some((entry) => entry.action === 'run.trash' && String(entry.detail).includes('still not theirs')), JSON.stringify(audit))
+  check('the un-trashing is in the log', audit.some((entry) => entry.action === 'run.untrash'), JSON.stringify(audit.map((e) => e.action)))
+
+  // Deleting the account takes the markers with it, or the table would keep rows
+  // pointing at runs that no longer exist.
+  await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${submitted.id}/trash`, { method: 'POST', passcode: '258456' })
+  await jsonCall(env, `/api/admin/accounts/${accountId}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'alice' } })
+  const orphans = await env.DB.prepare('SELECT COUNT(*) AS n FROM trashed_runs').first()
+  check('deleting the account clears its trash markers', orphans?.n === 0, JSON.stringify(orphans))
 }
 
 if (failures > 0) {

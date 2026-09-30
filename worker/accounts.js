@@ -79,6 +79,10 @@ const recordAudit = async (db, { action, target, now, detail }) => {
 const ACCOUNT_SQL = `
   SELECT u.id, u.username, u.display_name, u.created_at,
          (SELECT COUNT(*) FROM runs r WHERE r.user_id = u.id) AS run_count,
+         (SELECT COUNT(*) FROM runs r WHERE r.user_id = u.id
+            AND NOT EXISTS (SELECT 1 FROM trashed_runs t WHERE t.run_id = r.id)) AS visible_run_count,
+         (SELECT COUNT(*) FROM runs r JOIN trashed_runs t ON t.run_id = r.id
+            WHERE r.user_id = u.id) AS trashed_count,
          (SELECT COUNT(*) FROM submissions s JOIN runs r2 ON r2.id = s.run_id
            WHERE r2.user_id = u.id) AS submission_count,
          (SELECT COUNT(*) FROM submissions s JOIN runs r2 ON r2.id = s.run_id
@@ -92,7 +96,12 @@ const accountSummary = (row) => ({
   username: row.username,
   displayName: row.display_name,
   createdAt: row.created_at,
+  // Every run the account holds, trashed included, because that is the number a
+  // moderator is about to go through. The visible count and the trashed count
+  // are reported beside it so a panel full of hidden runs is obvious at a glance.
   runCount: row.run_count ?? 0,
+  visibleRunCount: row.visible_run_count ?? row.run_count ?? 0,
+  trashedCount: row.trashed_count ?? 0,
   submissionCount: row.submission_count ?? 0,
   pendingCount: row.pending_count ?? 0,
   // Null rather than 0: the panel has to be able to say "this player has not
@@ -100,15 +109,25 @@ const accountSummary = (row) => ({
   syncedAt: row.synced_at ?? null,
 })
 
-/** The list of runs a player submitted, newest first, with its review state. */
+/* Every run the account holds -- submitted or not -- newest first, with its
+   review state and whether it is currently trashed.
+ *
+   "All of their runs" means all of them: a run a player finished and saved to
+   their account is on this list even though it was never sent for review, which
+   is the whole reason a moderator needs a way to get at it. Left joins
+   throughout, so a run with no submission and a run whose submission was deleted
+   both still appear; the trashed marker is a left join too, so trashing never
+   removes a run from this list. */
 const listUserRuns = async (db, userId) => {
   const result = await db
     .prepare(
       `SELECT r.id, r.run_key, r.source, r.status, r.score, r.percent_step,
               r.passed, r.rounds_played, r.skipped, r.total_ms, r.created_at,
-              s.id AS submission_id, s.status AS submission_status, s.review_note
+              s.id AS submission_id, s.status AS submission_status, s.review_note,
+              t.run_id AS trashed_id, t.reason AS trashed_reason, t.trashed_at
          FROM runs r
          LEFT JOIN submissions s ON s.run_id = r.id
+         LEFT JOIN trashed_runs t ON t.run_id = r.id
         WHERE r.user_id = ?
         ORDER BY r.created_at DESC
         LIMIT 200`,
@@ -137,6 +156,9 @@ const listUserRuns = async (db, userId) => {
           reviewNote: row.review_note,
         }
       : null,
+    trashed: row.trashed_id != null,
+    trashedAt: row.trashed_at ?? null,
+    trashReason: row.trashed_reason ?? null,
   }))
 }
 
@@ -368,6 +390,78 @@ export const handleAdminAccountRoutes = async ({ db, request, url, key, adminPas
 
   const path = rest.slice('accounts'.length).replace(/^\//, '')
 
+  // POST /api/admin/accounts/:id/runs/:runId/trash | /untrash -- hide or restore
+  // one run belonging to this account.
+  //
+  // Matched before the single-segment account pattern below, which would read
+  // "runs" as a missing account id. The run id is scoped to the account in the
+  // WHERE, so a run id belonging to somebody else is reported as not found here
+  // rather than trashed.
+  const runAction = path.match(/^(\d+)\/runs\/(\d+)\/(trash|untrash)$/)
+  if (runAction) {
+    if (request.method !== 'POST') {
+      return { error: 'Method not allowed', status: 405 }
+    }
+
+    const accountId = Number(runAction[1])
+    const runId = Number(runAction[2])
+    const action = runAction[3]
+
+    const run = await db
+      .prepare('SELECT id, run_key, user_id FROM runs WHERE id = ? AND user_id = ?')
+      .bind(runId, accountId)
+      .first()
+    if (!run) {
+      return { error: 'That account has no such run', status: 404 }
+    }
+
+    const owner = await db
+      .prepare('SELECT id, username, display_name, created_at FROM users WHERE id = ?')
+      .bind(accountId)
+      .first()
+
+    if (action === 'trash') {
+      // Insert or replace rather than insert-or-fail: trashing an already
+      // trashed run is not an error, it just refreshes the reason and the time,
+      // and the primary key is what stops a run being trashed twice.
+      const body = (await readBody(request)) ?? {}
+      const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 200) || null : null
+
+      await db
+        .prepare(
+          `INSERT INTO trashed_runs (run_id, user_id, reason, trashed_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(run_id) DO UPDATE SET
+             reason = excluded.reason,
+             trashed_at = excluded.trashed_at`,
+        )
+        .bind(runId, accountId, reason, now)
+        .run()
+
+      await recordAudit(db, {
+        action: 'run.trash',
+        target: owner,
+        now,
+        detail: `run ${run.run_key}${reason ? `: ${reason}` : ''}`,
+      })
+
+      return { status: 200, body: { ok: true, trashed: true, runId } }
+    }
+
+    // Un-trashing only removes the marker. The run row and its rounds were never
+    // touched, so an approved run comes back on the leaderboard with its
+    // statistics and its rank exactly as they were.
+    await db.prepare('DELETE FROM trashed_runs WHERE run_id = ?').bind(runId).run()
+    await recordAudit(db, {
+      action: 'run.untrash',
+      target: owner,
+      now,
+      detail: `run ${run.run_key}`,
+    })
+
+    return { status: 200, body: { ok: true, trashed: false, runId } }
+  }
+
   // GET /api/admin/accounts?q=... -- the search.
   if (path === '' && request.method === 'GET') {
     const query = String(url.searchParams.get('q') ?? '').trim().slice(0, MAX_SEARCH_LENGTH)
@@ -447,7 +541,12 @@ export const handleAdminAccountRoutes = async ({ db, request, url, key, adminPas
         account: {
           ...accountSummary({
             ...target,
+            // Counted from the run list rather than re-queried, since the list
+            // is already every run there is: the detail page's numbers cannot
+            // disagree with the list printed under them.
             run_count: runs.length,
+            visible_run_count: runs.filter((run) => !run.trashed).length,
+            trashed_count: runs.filter((run) => run.trashed).length,
             submission_count: runs.filter((run) => run.submission).length,
             pending_count: runs.filter((run) => run.submission?.status === 'pending').length,
           }),

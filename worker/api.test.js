@@ -17,8 +17,13 @@ import worker from './index.js'
 
 // Both migrations, because the leaderboard now reads the submissions table to
 // decide which runs have been vetted. Loading only the first would leave the
-// board querying a table that does not exist.
-const SCHEMA = ['./migrations/0001_init.sql', './migrations/0002_submissions.sql']
+// board querying a table that does not exist. The third is the trash table,
+// which every leaderboard and run-list query now filters through.
+const SCHEMA = [
+  './migrations/0001_init.sql',
+  './migrations/0002_submissions.sql',
+  './migrations/0004_trashed_runs.sql',
+]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')
 
@@ -430,6 +435,83 @@ console.log('global leaderboard')
 
   const top = (await (await call(env, '/api/leaderboard?board=farthest&token=x')).json())
   check('a junk board parameter is ignored', top.board === 'farthest')
+
+  // A trashed run leaves the board. Not deleted -- the row, its rounds and its
+  // statistics are all still there -- but ranked on nothing and counted in
+  // nobody's totals, which is what "hidden" has to mean to be worth anything.
+  await env.DB
+    .prepare('INSERT INTO trashed_runs (run_id, user_id, reason, trashed_at) VALUES (?, ?, NULL, 1)')
+    .bind(clearedRun.data.run.id, a.user.id)
+    .run()
+
+  const afterTrash = (await (await call(env, '/api/leaderboard')).json())
+  check('a trashed run is off the board', !afterTrash.entries.some((entry) => entry.displayName === 'Alpha'), JSON.stringify(afterTrash.entries.map((e) => e.displayName)))
+  check('the other run keeps its rank', afterTrash.entries.length === 1 && afterTrash.entries[0].rank === 1, JSON.stringify(afterTrash.entries))
+
+  const asTrashedPlayer = (await (await call(env, '/api/leaderboard', { token: a.token })).json())
+  check('a trashed run is not your standing', asTrashedPlayer.you === null, JSON.stringify(asTrashedPlayer.you))
+  check('a trashed run is not in your totals', asTrashedPlayer.personal?.runs === 0, JSON.stringify(asTrashedPlayer.personal))
+
+  await env.DB.prepare('DELETE FROM trashed_runs WHERE run_id = ?').bind(clearedRun.data.run.id).run()
+  const afterRestore = (await (await call(env, '/api/leaderboard')).json())
+  check('un-trashing puts the run back on the board', afterRestore.entries[0]?.displayName === 'Alpha', JSON.stringify(afterRestore.entries.map((e) => e.displayName)))
+  check('and it is first again', afterRestore.entries[0]?.rank === 1)
+}
+
+console.log('your runs follow the account, and a trashed one stops showing')
+{
+  const env = { DB: createDb() }
+  const one = (await post(env, '/api/register', { username: 'keeper', password: 'a good password' })).data
+  const two = (await post(env, '/api/register', { username: 'other', password: 'a good password' })).data
+
+  const mine = await post(env, '/api/runs', aRun({ runId: 'keep-1' }), one.token)
+  const theirs = await post(env, '/api/runs', aRun({ runId: 'keep-2' }), two.token)
+
+  const entries = await (await call(env, '/api/my-entries', { token: one.token })).json()
+  check('your runs are readable as leaderboard entries', entries.entries?.length === 1, JSON.stringify(entries.entries?.length))
+  check('an entry keeps its run key as its id', entries.entries?.[0]?.id === 'keep-1', entries.entries?.[0]?.id)
+  check('an entry keeps its score', entries.entries?.[0]?.score === 3, String(entries.entries?.[0]?.score))
+  check('an entry keeps its source and step', entries.entries?.[0]?.source === 'AREDL' && entries.entries?.[0]?.step === 1)
+  check('an entry keeps its rounds, packed', entries.entries?.[0]?.rounds?.length === 3, String(entries.entries?.[0]?.rounds?.length))
+  // The packed tuple is a contract with the browser's own storage: id, name,
+  // target, achieved, result, ms, video, skip reason, in that order.
+  check('a packed round is in the order the browser stores', Array.isArray(entries.entries?.[0]?.rounds?.[0]) && entries.entries[0].rounds[0][1] === 'A', JSON.stringify(entries.entries?.[0]?.rounds?.[0]))
+  check('a packed round keeps its time', entries.entries?.[0]?.rounds?.[0]?.[5] === 30000, String(entries.entries?.[0]?.rounds?.[0]?.[5]))
+  check('nothing is trashed to begin with', entries.trashedRunKeys?.length === 0)
+
+  const anonymous = await call(env, '/api/my-entries')
+  check('your runs need a sign in', anonymous.status === 401, String(anonymous.status))
+
+  // Trashed directly, because the admin route needs the passcode and this file
+  // is about the reads. What matters here is that every read honours the marker.
+  await env.DB
+    .prepare('INSERT INTO trashed_runs (run_id, user_id, reason, trashed_at) VALUES (?, ?, ?, ?)')
+    .bind(mine.data.run.id, one.user.id, 'a test', 1)
+    .run()
+
+  const afterTrash = await (await call(env, '/api/my-entries', { token: one.token })).json()
+  check('a trashed run is off your own list', afterTrash.entries?.length === 0, JSON.stringify(afterTrash.entries))
+  check('a trashed run is reported by key', afterTrash.trashedRunKeys?.includes('keep-1'), JSON.stringify(afterTrash.trashedRunKeys))
+
+  const runs = (await (await call(env, '/api/runs', { token: one.token })).json())?.runs ?? []
+  check('a trashed run is off the stored run list', runs.length === 0, `got ${runs.length}`)
+
+  // The run row itself was never touched, which is what makes putting it back
+  // exact rather than approximate.
+  const stillThere = await env.DB.prepare('SELECT COUNT(*) AS n FROM runs WHERE id = ?').bind(mine.data.run.id).first()
+  check('trashing keeps the run row', stillThere?.n === 1, JSON.stringify(stillThere))
+
+  await env.DB.prepare('DELETE FROM trashed_runs WHERE run_id = ?').bind(mine.data.run.id).run()
+  const restored = (await (await call(env, '/api/my-entries', { token: one.token })).json())
+  check('un-trashing brings the run back', restored.entries?.length === 1, JSON.stringify(restored.entries?.length))
+  check('un-trashing clears the key list', restored.trashedRunKeys?.length === 0)
+
+  // Another player's trashing is not the one being reported: the list is scoped
+  // by token, so a run belonging to somebody else is not in it either way.
+  const otherEntries = await (await call(env, '/api/my-entries', { token: two.token })).json()
+  check("you only get your own runs", otherEntries.entries?.length === 1 && otherEntries.entries[0].id === 'keep-2', JSON.stringify(otherEntries.entries?.map((e) => e.id)))
+  check('another trashed run does not leak into your keys', !otherEntries.trashedRunKeys?.includes('keep-1'))
+  void theirs
 }
 
 console.log('the list proxy still works')

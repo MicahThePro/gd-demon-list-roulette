@@ -7,7 +7,6 @@ import SettingsDialog from '../components/SettingsDialog'
 import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds } from '../services/listService'
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
-import { encodeHistory } from '../utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from '../data/changelog'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
@@ -44,8 +43,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
   const [rangeMax, setRangeMax] = useState(DEFAULT_MAX)
   const [loadCode, setLoadCode] = useState(savedRunCode || '')
   const [loadError, setLoadError] = useState('')
-  const [exportMessage, setExportMessage] = useState('')
-  const [exportCode, setExportCode] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [percentStep, setPercentStep] = usePersistentPercentStep()
   const [percentStepDraft, setPercentStepDraft] = useState(() => String(percentStep))
@@ -219,36 +216,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
     setLoadError('')
   }
 
-  // Exports the full leaderboard and copies it. The status line and the code
-  // are separate states: overloading one for both meant a successful copy
-  // replaced the code with its own message and left an empty box on screen.
-  const handleExportHistory = async () => {
-    const code = encodeHistory(history.entries)
-    if (!code) {
-      setExportCode('')
-      setExportMessage('There is nothing to copy yet.')
-      return
-    }
-
-    setExportCode(code)
-    try {
-      await navigator.clipboard?.writeText(code)
-      setExportMessage('Copied. Paste it on the other device with Import leaderboard code.')
-    } catch {
-      setExportMessage('Copying was blocked, so the code is shown below. Select it and copy manually.')
-    }
-  }
-
-  useEffect(() => {
-    if (!exportMessage) return undefined
-
-    const timeoutId = window.setTimeout(() => {
-      setExportMessage('')
-      setExportCode('')
-    }, 15000)
-    return () => window.clearTimeout(timeoutId)
-  }, [exportMessage])
-
   return (
     <main className="page-shell home-page">
       {/* The leaderboard replaces the start form rather than overlaying it.
@@ -316,25 +283,8 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
                 entries={history.entries}
                 onDelete={history.deleteEntry}
                 onClear={history.clearHistory}
-                onExport={handleExportHistory}
-                onImport={history.importEntries}
                 auth={auth}
               />
-
-              {exportMessage && (
-                <div className="export-box">
-                  <p className="export-status">{exportMessage}</p>
-                  {exportCode && (
-                    <textarea
-                      readOnly
-                      rows="3"
-                      value={exportCode}
-                      aria-label="Exported leaderboard code"
-                      onFocus={(event) => event.target.select()}
-                    />
-                  )}
-                </div>
-              )}
             </div>
           )}
           </div>

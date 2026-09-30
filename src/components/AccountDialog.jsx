@@ -13,20 +13,29 @@ const MIN_PASSWORD_LENGTH = 8
  * The fields are cleared when the dialog closes rather than in an effect on
  * open, so closing and reopening does not run a render-then-update cycle, and a
  * stale error from a failed attempt never greets the next attempt.
+ *
+ * `pendingRun` and `onAuthenticated` are how the results screen uses it: the
+ * player is told the run they just finished can go on the account they are about
+ * to make, and says yes or no there. The attachment is never automatic -- signing
+ * in to look at something should not quietly put a run on an account.
  */
-export default function AccountDialog({ isOpen, onClose, auth }) {
+export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null, onAuthenticated }) {
   const { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut } = auth
   const [mode, setMode] = useState('signin')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
+  // Whether to put the run the player just finished on the account. Defaults to
+  // yes, because the whole reason the results screen offers to sign in there is
+  // that the run is otherwise only in this browser -- and it is a checkbox, so
+  // saying no is one click and never a lost run.
+  const [attachRun, setAttachRun] = useState(true)
 
   const handleClose = () => {
     setPassword('')
     setError('')
     onClose()
   }
-
   if (!isOpen) {
     return null
   }
@@ -48,6 +57,15 @@ export default function AccountDialog({ isOpen, onClose, auth }) {
       : await signIn({ username: username.trim(), password })
 
     if (result.ok) {
+      // The attachment happens after the session exists, because saving the run
+      // is a call made as the signed-in player. Doing it here rather than in the
+      // caller's own submit handler is what makes every entry point -- the home
+      // screen and the results screen -- behave the same way.
+      if (pendingRun && attachRun) {
+        onAuthenticated?.(result.user, { attachRun: true, run: pendingRun })
+        return
+      }
+      onAuthenticated?.(result.user, { attachRun: false, run: pendingRun })
       handleClose()
     }
   }
@@ -134,6 +152,17 @@ export default function AccountDialog({ isOpen, onClose, auth }) {
                 Your password is hashed on the server and never stored in readable form. The
                 session is a token in this browser only, so there is no email address to lose.
               </p>
+            )}
+
+            {pendingRun && (
+              <label className="admin-remember">
+                <input
+                  type="checkbox"
+                  checked={attachRun}
+                  onChange={(event) => setAttachRun(event.target.checked)}
+                />
+                Put the run I just finished on this account
+              </label>
             )}
 
             {error && <div className="validation-message">{error}</div>}

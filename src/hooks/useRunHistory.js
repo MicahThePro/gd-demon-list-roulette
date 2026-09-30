@@ -274,36 +274,43 @@ export const useRunHistory = () => {
     setEntries([])
   }, [])
 
-  // Merges imported entries into the existing history. Entries are matched on
-  // id, and `at` is part of that id, so re-importing the same code is a no-op
-  // rather than a way to flood the leaderboard with duplicates.
-  const importEntries = useCallback((incoming) => {
-    if (!Array.isArray(incoming) || !incoming.length) {
-      return { added: 0, skipped: 0, total: incoming?.length ?? 0 }
-    }
+  /* Replaces the local board with the account's runs, and hides the ones a
+     moderator has trashed.
 
-    const valid = incoming.filter(isValidEntry)
-    let added = 0
-    let skipped = 0
+     A signed-in player's leaderboard is the account's, not the device's: signing
+     in on another device brings the same board, and signing out of an account
+     leaves that device's own runs alone rather than mixing the two. The
+     replacement rather than a merge is the point -- a run that was trashed and
+     deleted on one device must not survive on another.
+
+     Server entries are merged in place of local ones by id, so a run played
+     here and synced there keeps one row. `trashedRunKeys` comes back as keys
+     rather than entries, and a trashed run is also removed from the local copy:
+     a run hidden on the account is hidden here, whether or not this device was
+     the one that recorded it. */
+  const applyAccountEntries = useCallback(({ entries: incoming = [], trashedRunKeys = [] } = {}) => {
+    const hidden = new Set(trashedRunKeys)
 
     setEntries((current) => {
-      const seen = new Set(current.map((entry) => entry.id))
-      const merged = [...current]
-
-      for (const entry of valid) {
-        if (seen.has(entry.id)) {
-          skipped += 1
-          continue
-        }
-        seen.add(entry.id)
-        merged.push(entry)
-        added += 1
+      const merged = new Map(current.map((entry) => [entry.id, entry]))
+      for (const entry of incoming) {
+        if (!isValidEntry(entry) || hidden.has(entry.id)) continue
+        merged.set(entry.id, entry)
       }
-
-      return merged.sort(compareEntries).slice(0, MAX_ENTRIES)
+      return [...merged.values()]
+        .filter((entry) => !hidden.has(entry.id))
+        .sort(compareEntries)
+        .slice(0, MAX_ENTRIES)
     })
+  }, [])
 
-    return { added, skipped, total: incoming.length }
+  /** Locally hides every run the account reports as trashed, without a re-read
+   *  of the whole account. Used right after a moderator's action changes things
+   *  and the server already told us which runs are affected. */
+  const hideEntries = useCallback((ids) => {
+    const hidden = new Set(ids)
+    if (!hidden.size) return
+    setEntries((current) => current.filter((entry) => !hidden.has(entry.id)))
   }, [])
 
   const bestScore = entries.length ? Math.max(...entries.map((entry) => entry.score)) : 0
@@ -314,7 +321,8 @@ export const useRunHistory = () => {
     recordRun,
     deleteEntry,
     clearHistory,
-    importEntries,
+    applyAccountEntries,
+    hideEntries,
     bestScore,
     completedCount,
   }

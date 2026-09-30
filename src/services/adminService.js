@@ -190,6 +190,29 @@ export const revokeLoginCode = async (passcode, id) =>
 export const deleteAccount = async (passcode, id, confirm) =>
   request(`/api/admin/accounts/${id}/delete`, { method: 'POST', passcode, body: { confirm } })
 
+/**
+ * Hides one of an account's runs, submitted or not.
+ *
+ * Trashing is not deleting. The run keeps its row, its rounds and its statistics
+ * on the account, and stops appearing on the public leaderboard, in the player's
+ * own run list and in the moderation queue. That is what lets a wrong call be
+ * taken back with `untrashRun` rather than being gone for good, and it is why the
+ * leaderboard rank comes back exactly as it was.
+ *
+ * `reason` is a note for the audit log; it is not required and the Worker does
+ * not act on it.
+ */
+export const trashRun = async (passcode, accountId, runId, reason) =>
+  request(`/api/admin/accounts/${accountId}/runs/${runId}/trash`, {
+    method: 'POST',
+    passcode,
+    body: { reason: reason ?? null },
+  })
+
+/** Puts a trashed run back, everywhere, as it was. */
+export const untrashRun = async (passcode, accountId, runId) =>
+  request(`/api/admin/accounts/${accountId}/runs/${runId}/untrash`, { method: 'POST', passcode })
+
 export const fetchAuditLog = async (passcode, signal) => {
   const result = await request('/api/admin/audit', { passcode, signal })
   return result.entries ?? []

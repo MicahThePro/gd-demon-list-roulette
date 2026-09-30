@@ -3055,7 +3055,7 @@
 
 .admin-data-row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.2fr) auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 9px 12px;
@@ -3069,6 +3069,46 @@
 .admin-data-row strong {
   color: #f8fafc;
   font-size: 0.95rem;
+}
+
+/* A trashed run stays in the list rather than disappearing from it: it is
+   hidden from the leaderboard and from the player, but a moderator still has to
+   be able to see what is hidden and put it back. Dimmed and struck rather than
+   greyed to invisibility, so it reads as present-but-off. */
+.admin-data-row-trashed {
+  border-color: rgba(248, 113, 113, 0.25);
+  background: rgba(127, 29, 29, 0.16);
+  opacity: 0.75;
+}
+
+.admin-data-row-trashed strong {
+  text-decoration: line-through;
+}
+
+.admin-run-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.admin-trash-flag {
+  color: #fca5a5;
+  font-style: normal;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* The reason box for trashing. Bordered and tinted rather than floating, so it
+   reads as belonging to the row above it and not to the whole section. */
+.admin-trash-box {
+  margin: 10px 0 4px;
+  padding: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 10px;
+  background: rgba(127, 29, 29, 0.14);
+  display: grid;
+  gap: 10px;
 }
 
 @media (max-width: 720px) {
