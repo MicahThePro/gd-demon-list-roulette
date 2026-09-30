@@ -300,9 +300,10 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
         <p className="settings-hint">
           A code signs this browser in as {account.username} once. There is no
           password to see and none to change &mdash; passwords are stored as
-          one-way hashes, so they cannot be read back by anybody. Redeeming the
-          code gives an ordinary session: it can do anything that account can do,
-          and signing out ends it. The code stops working the moment it is used.
+          one-way hashes, so they cannot be read back by anybody. Open the code
+          page and enter this username with the code: it gives an ordinary
+          session that can do anything that account can do, and signing out ends
+          it. The code stops working the moment it is used.
         </p>
 
         {issuedCode ? (
@@ -692,8 +693,9 @@ export default function AccountsTab({ passcode, redeemUrl }) {
           <a href={redeemUrl} target="_blank" rel="noopener noreferrer">
             the code page
           </a>{' '}
-          and paste it in. It opens in a new tab, and redeeming replaces whatever
-          session that browser had &mdash; so keep this panel&rsquo;s tab to yourself.
+          and enter that username with the code. It opens in a new tab, and
+          signing in replaces whatever session that browser had &mdash; so keep
+          this panel&rsquo;s tab to yourself.
         </p>
       )}
     </div>

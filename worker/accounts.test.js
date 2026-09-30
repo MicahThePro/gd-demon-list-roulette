@@ -452,6 +452,79 @@ console.log('trashing a run, submitted or not')
   check('deleting the account clears its trash markers', orphans?.n === 0, JSON.stringify(orphans))
 }
 
+console.log('a login code works as a password')
+{
+  // Only bob is needed here, and only so there is a second account to issue a
+  // code for; alice is reached through the admin search like any other moderator
+  // would.
+  const { env, bob } = await setup()
+  const aliceId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
+
+  const issue = async (id) => (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })).data.code
+  const aliceCode = await issue(aliceId)
+  check('a code is issued', typeof aliceCode === 'string' && aliceCode.length === 15, aliceCode)
+
+  // The point of the change: username and code at the sign in form, rather than
+  // a separate redemption page that only wanted the code.
+  const signedIn = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: aliceCode } })
+  check('a code signs in at the password field', signedIn.response.status === 200, JSON.stringify(signedIn.data))
+  check('and it signs in as that account', signedIn.data.user?.username === 'alice', JSON.stringify(signedIn.data.user))
+  check('a session token comes back', typeof signedIn.data.token === 'string' && signedIn.data.token.length === 64)
+  check('the client is told it was a code', signedIn.data.viaCode === true, JSON.stringify(signedIn.data))
+  check('the cookie is set as for any sign in', (signedIn.response.headers.get('set-cookie') ?? '').includes('dlr_session='))
+
+  // The session is real: it is not a special preview token, it is the same thing
+  // a password sign in produces and can do everything the account can do.
+  const me = await jsonCall(env, '/api/me', { token: signedIn.data.token })
+  check('the session identifies the player', me.data.user?.username === 'alice', JSON.stringify(me.data))
+
+  // Single use, and it survives the change of entry point: the same code cannot
+  // be spent again, and the error says which case this is.
+  const reuse = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: aliceCode } })
+  check('the code cannot be used twice', reuse.response.status === 409, JSON.stringify(reuse.data))
+  const afterUse = await jsonCall(env, '/api/redeem', { method: 'POST', body: { code: aliceCode } })
+  check('and it is spent for the redemption route too', afterUse.response.status === 409, JSON.stringify(afterUse.data))
+
+  // A code for one account must not sign in as another, even when the caller
+  // asks for the other account by name. Without this, a code pasted into the
+  // wrong row would sign in as the code's real owner and say nothing.
+  const bobId = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: '258456' })).data.accounts[0].id
+  const bobCode = await issue(bobId)
+  const mismatch = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: bobCode } })
+  check('a code cannot sign in as somebody else', mismatch.response.status === 401, JSON.stringify(mismatch.data))
+  // And the mismatch still spent nothing, so the rightful owner can use it.
+  const rightOwner = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'bob', password: bobCode } })
+  check('the rightful owner can still use it', rightOwner.response.status === 200, JSON.stringify(rightOwner.data))
+
+  // The same check on the redemption route, which is where the username is new.
+  const carolCode = await issue(aliceId)
+  const wrongOnRedeem = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'bob', code: carolCode } })
+  check('a mismatched username is refused on /api/redeem too', wrongOnRedeem.response.status === 401, JSON.stringify(wrongOnRedeem.data))
+  const rightOnRedeem = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'alice', code: carolCode } })
+  check('and the matching one works', rightOnRedeem.response.status === 200, JSON.stringify(rightOnRedeem.data.user))
+
+  // A username is still optional on /api/redeem, which worked without one for a
+  // long time, so an old bookmark keeps working.
+  const lastCode = await issue(aliceId)
+  const noUsername = await jsonCall(env, '/api/redeem', { method: 'POST', body: { code: lastCode } })
+  check('a code with no username still redeems', noUsername.response.status === 200, JSON.stringify(noUsername.data.user))
+
+  // Passwords are untouched. A real password must not be treated as a code, and
+  // the wrong password must still be refused.
+  const wrongPassword = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: 'a good password' } })
+  check('a real password still signs in', wrongPassword.response.status === 200, JSON.stringify(wrongPassword.data.user))
+  const badPassword = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: 'not the password' } })
+  check('a wrong password is still refused', badPassword.response.status === 401, JSON.stringify(badPassword.data))
+  check('and it says username and password, not code', String(badPassword.data.error).includes('username and password'), JSON.stringify(badPassword.data))
+
+  // A password of exactly code shape is treated as a code and refused as one. It
+  // cannot have been a real password, so nothing is lost, and the message must
+  // not claim to be a code error for a credential that is not one.
+  const shaped = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: 'ABCDEFGHJKLMNPQ' } })
+  check('a password of code shape is refused as a code', shaped.response.status === 401, JSON.stringify(shaped.data))
+  void bob
+}
+
 if (failures > 0) {
   console.log(`\n${failures} check(s) failed.`)
   process.exit(1)

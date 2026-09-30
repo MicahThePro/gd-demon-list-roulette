@@ -23,12 +23,111 @@ const MAX_SEARCH_LENGTH = 60
 const PAGE_SIZE = 50
 // Enough characters that guessing one is hopeless, few enough to read aloud
 // over a call and type by hand. Grouped in threes so it can be said in chunks.
-const LOGIN_CODE_LENGTH = 15
-const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-// How long an issued code stays redeemable if it is never used. Long enough to
+// Enough characters that guessing one is hopeless, few enough to read aloud
+// over a call and type by hand. Grouped in threes so it can be said in chunks.
+const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'// How long an issued code stays redeemable if it is never used. Long enough to
 // hand over in person, short enough that a forgotten code on an unattended
 // screen stops working.
 const LOGIN_CODE_TTL_MS = 24 * 60 * 60 * 1000
+
+/* Exported so the login route can accept a code in place of a password, which
+   needs exactly the same rules -- same normalisation, same digest, same
+   single-use claim. Two copies of that would be two chances to get the
+   single-use part subtly different, and getting it wrong would mean a code
+   works twice. */
+export const LOGIN_CODE_LENGTH = 15
+export const normalizeLoginCode = (value) =>
+  String(value ?? '')
+    .replace(/[\s-]/g, '')
+    .toUpperCase()
+
+/* Spends a login code and returns the user it belongs to, or an error.
+ *
+ * Shared by /api/redeem and by /api/login's code branch, so a code behaves
+ * identically whichever way it is presented: one use, one account, one session.
+ *
+ * `expectedUsername` is checked BEFORE the code is claimed, and that order is the
+ * whole point. Claiming first and comparing the account afterwards looked fine
+ * and was not: a code presented with the wrong username was already spent by the
+ * time the mismatch was noticed, so the rightful owner could never use it. A
+ * wrong guess cost the code, which is exactly the wrong thing for a wrong guess
+ * to cost. A code is a deliberate act by somebody holding it, so a failed
+ * username is a typo, not an attack, and the fix is to make them type it again.
+ *
+ * The claim itself is a conditional UPDATE rather than a read-then-write, which
+ * is what makes it genuinely single-use: two simultaneous redemptions produce one
+ * session, because the loser of the race updates zero rows. */
+export const redeemLoginCodeByHash = async (db, supplied, now, expectedUsername = null) => {
+  const cleaned = normalizeLoginCode(supplied)
+  if (cleaned.length !== LOGIN_CODE_LENGTH) {
+    return { error: 'That is not a login code', status: 400 }
+  }
+
+  const hash = await digest(cleaned)
+  // Every column is aliased because `id` exists on both tables: left unaliased
+  // SQLite refuses the query outright, and the failure reads as a login code
+  // that is not valid rather than as a broken statement.
+  const row = await db
+    .prepare(
+      `SELECT l.id AS code_id, l.user_id, l.created_at, l.used_at, u.username
+         FROM login_codes l
+         JOIN users u ON u.id = l.user_id
+        WHERE l.code_hash = ?`,
+    )
+    .bind(hash)
+    .first()
+
+  // The same message for a code that does not exist, one that has been replaced,
+  // and one that is simply wrong. Telling them apart would confirm that a
+  // particular code was ever real.
+  if (!row) {
+    return { error: 'That login code is not valid', status: 401 }
+  }
+
+  if (row.used_at) {
+    return { error: 'That login code has already been used', status: 409 }
+  }
+
+  if (row.created_at + LOGIN_CODE_TTL_MS <= now) {
+    return { error: 'That login code has expired', status: 410 }
+  }
+
+  /* A username is optional, because /api/redeem worked without one for a long
+     time and an old bookmark must keep working. But when one IS given it has to
+     match: otherwise a code pasted into the wrong account's row would sign in as
+     the code's real owner and say nothing about it. Compared before the claim, so
+     a mistyped username does not cost anybody the code. */
+  const wanted = String(expectedUsername ?? '').trim().toLowerCase()
+  if (wanted && wanted !== row.username) {
+    return { error: 'That login code is not valid', status: 401 }
+  }
+
+  const claimed = await db
+    .prepare('UPDATE login_codes SET used_at = ? WHERE id = ? AND used_at IS NULL RETURNING user_id')
+    .bind(now, row.code_id)
+    .first()
+
+  if (!claimed) {
+    return { error: 'That login code has already been used', status: 409 }
+  }
+
+  /* The id comes from the claim rather than from the row read above. The join
+     that brought the username in has its own `users.id`, which shadows
+     login_codes.user_id, so the id on that row is whichever column SQLite
+     happened to surface first -- and reading it as row.user_id found nothing.
+     The claim is the authoritative statement of which code was spent, so its
+     RETURNING is the right place to take the id from anyway. */
+  const user = await db
+    .prepare('SELECT id, username, display_name, created_at FROM users WHERE id = ?')
+    .bind(claimed.user_id)
+    .first()
+
+  if (!user) {
+    return { error: 'That account no longer exists', status: 404 }
+  }
+
+  return { user }
+}
 
 const encoder = new TextEncoder()
 
@@ -253,7 +352,10 @@ export const handlePlayerDataRoutes = async ({ db, request, key }) => {
 }
 
 /* The redemption side, which a player calls and which is deliberately not an
-   admin route: the code itself is the credential, and it only works once. */
+   admin route: the code itself is the credential, and it only works once.
+   Redeemed here on its own, with no username. The login route accepts a code in
+   the password field instead, and both go through the same claim in
+   redeemLoginCodeByHash so a code cannot be spent twice between them. */
 export const handleLoginCodeRoutes = async ({ db, request, key }) => {
   const route = key.replace(/^api\//, '')
 
@@ -266,63 +368,23 @@ export const handleLoginCodeRoutes = async ({ db, request, key }) => {
     return { error: 'Could not read that request', status: 400 }
   }
 
-  // Spaces and dashes are stripped rather than rejected, because a code read
-  // aloud and typed back in will have them. Case is not ignored: the alphabet is
-  // already unambiguous, so folding case would only add a way to get it wrong.
-  const supplied = String(body.code ?? '')
-    .replace(/[\s-]/g, '')
-    .toUpperCase()
-
-  if (supplied.length !== LOGIN_CODE_LENGTH) {
-    return { error: 'That is not a login code', status: 400 }
+  const result = await redeemLoginCodeByHash(db, body.code, Date.now(), body.username)
+  if (result.error) {
+    return { error: result.error, status: result.status }
   }
 
-  const now = Date.now()
-  const hash = await digest(supplied)
-
-  const row = await db
-    .prepare('SELECT id, user_id, created_at, used_at FROM login_codes WHERE code_hash = ?')
-    .bind(hash)
-    .first()
-
-  // The same message for a code that does not exist, one that has been replaced,
-  // and one that is simply wrong. Telling them apart would confirm that a
-  // particular code was ever real.
-  if (!row) {
+  /* The username is optional here, because /api/redeem worked without one for a
+     long time. But when one IS sent it is checked, and a mismatch is refused the
+     same way a wrong code is: otherwise a code pasted into the wrong account's
+     row would sign you in as the code's real owner, and nothing on screen would
+     say so. */
+  const claimed = String(body.username ?? '').trim().toLowerCase()
+  if (claimed && claimed !== result.user.username) {
     return { error: 'That login code is not valid', status: 401 }
   }
 
-  if (row.used_at) {
-    return { error: 'That login code has already been used', status: 409 }
-  }
-
-  if (row.created_at + LOGIN_CODE_TTL_MS <= now) {
-    return { error: 'That login code has expired', status: 410 }
-  }
-
-  // Marked used before the session is made, and the update is conditional on it
-  // still being unused. Two simultaneous redemptions of the same code therefore
-  // produce one session: the loser of the race updates zero rows and is turned
-  // away, which is what makes it single-use rather than merely usually unused.
-  const claimed = await db
-    .prepare('UPDATE login_codes SET used_at = ? WHERE id = ? AND used_at IS NULL RETURNING user_id')
-    .bind(now, row.id)
-    .first()
-
-  if (!claimed) {
-    return { error: 'That login code has already been used', status: 409 }
-  }
-
-  const user = await db
-    .prepare('SELECT id, username, display_name, created_at FROM users WHERE id = ?')
-    .bind(row.user_id)
-    .first()
-
-  if (!user) {
-    return { error: 'That account no longer exists', status: 404 }
-  }
-
-  const session = await createSession(db, user.id, now)
+  const user = result.user
+  const session = await createSession(db, user.id, Date.now())
   return {
     status: 200,
     body: {

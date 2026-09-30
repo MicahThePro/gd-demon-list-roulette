@@ -31,6 +31,7 @@ import {
   revokeSession,
   verifyPassword,
 } from './auth.js'
+import { LOGIN_CODE_LENGTH, normalizeLoginCode, redeemLoginCodeByHash } from './accounts.js'
 
 const MIN_PASSWORD_LENGTH = 8
 const MAX_PASSWORD_LENGTH = 200
@@ -86,6 +87,17 @@ const asInteger = (value) => {
 }
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value))
+
+/* Whether a password field holds a login code rather than a password.
+ *
+ * A shape test, not a lookup: the code's alphabet and length are what separate
+ * it from every real password, so this decides which check to run without
+ * touching the database. A password that happens to be 15 characters of that
+ * alphabet would be treated as a code and then refused, which is the correct
+ * outcome anyway -- it is not a password anybody set, because registration
+ * takes anything and the codes are far too long to have been chosen.
+ */
+const looksLikeLoginCode = (value) => normalizeLoginCode(value).length === LOGIN_CODE_LENGTH
 
 /** Handles are the login name, so they are kept to a small safe alphabet. */
 const normalizeUsername = (value) =>
@@ -643,6 +655,46 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
     }
 
     const username = normalizeUsername(body.username)
+    const supplied = String(body.password ?? '')
+
+    /* A login code in the password field.
+     *
+     * A code is a credential, so presenting it here is the same act as redeeming
+     * it, and it goes through the same claim in redeemLoginCodeByHash: one use,
+     * one account, one session. The username is sent with it and checked against
+     * the code's own account, so a code pasted into the wrong row is refused
+     * rather than signing in as whoever the code really belongs to.
+     *
+     * Not a fallback tried after the password: a code is 15 characters and never
+     * a valid password, so a wrong password simply is not a code and the password
+     * check below stands alone. */
+    if (looksLikeLoginCode(supplied)) {
+      const result = await redeemLoginCodeByHash(db, supplied, now, username)
+      if (result.error) {
+        return { error: result.error, status: result.status }
+      }
+
+      const session = await createSession(db, result.user.id, now)
+      return {
+        status: 200,
+        body: {
+          token: session.token,
+          expiresAt: session.expiresAt,
+          user: {
+            id: result.user.id,
+            username: result.user.username,
+            displayName: result.user.display_name,
+            createdAt: result.user.created_at,
+          },
+          // So the client can raise the preview banner exactly as it does after
+          // a redeemed code. A code login is a preview whether it arrived at
+          // /api/login or /api/redeem, and the two must not differ in the UI.
+          viaCode: true,
+        },
+        setCookie: session.token,
+      }
+    }
+
     const user = await db
       .prepare(
         `SELECT id, username, display_name, password_hash, salt, created_at
@@ -658,7 +710,7 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
       return { error: 'That username and password do not match', status: 401 }
     }
 
-    const matches = await verifyPassword(String(body.password ?? ''), user.password_hash)
+    const matches = await verifyPassword(supplied, user.password_hash)
     if (!matches) {
       return { error: 'That username and password do not match', status: 401 }
     }

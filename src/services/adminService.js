@@ -86,18 +86,26 @@ export const syncPlayerData = async ({ history, settings }) => {
 }
 
 /**
- * Redeems a one-time login code and signs in as the account it belongs to.
+ * Uses a one-time login code to sign in as the account it belongs to.
  *
  * Deliberately replaces whatever session was already in this browser: this is
  * what a moderator uses to look at the site as a player, and quietly keeping the
  * old account signed in alongside it would be a trap. The caller is told who it
  * signed in as so it can say so on screen.
  *
+ * `username` is sent as well as the code. The Worker checks the two against each
+ * other, so a code pasted into the wrong account's row is refused rather than
+ * signing in as whoever the code really belongs to. Sending it costs nothing and
+ * turns a silent mistake into a clear error.
+ *
  * Returns the user, and the session is stored like any other sign in -- so
  * signing out is ordinary signing out, and the code is spent either way.
  */
-export const redeemLoginCode = async (code) => {
-  const result = await request('/api/redeem', { method: 'POST', body: { code } })
+export const redeemLoginCode = async ({ username, code }) => {
+  const result = await request('/api/redeem', {
+    method: 'POST',
+    body: { username: username ?? null, code },
+  })
   saveToken(result.token)
   // Remembered in this browser only, so a reload does not quietly drop the
   // banner and make a preview look like an ordinary session.
