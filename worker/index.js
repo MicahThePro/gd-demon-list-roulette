@@ -55,7 +55,13 @@ const DETAIL_CONCURRENCY = 4
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+  // PUT is here because the player data mirror is a PUT. It was missing for the
+  // whole life of that route, so every upload was refused at the preflight and
+  // the mirror a moderator reads in the admin panel was permanently empty. A
+  // browser checks this list before the request is ever sent, so the failure was
+  // invisible server-side: no route ran, no error was logged, and the console
+  // said only "Failed to load resource".
+  'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'access-control-allow-headers': 'Content-Type, Authorization, X-Admin-Passcode',
   // A browser is only allowed to read a response with a custom header on it if
   // the response opts in, so the leaderboard needs this to be readable at all.

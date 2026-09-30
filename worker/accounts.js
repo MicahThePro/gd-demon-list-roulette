@@ -25,7 +25,9 @@ const PAGE_SIZE = 50
 // over a call and type by hand. Grouped in threes so it can be said in chunks.
 // Enough characters that guessing one is hopeless, few enough to read aloud
 // over a call and type by hand. Grouped in threes so it can be said in chunks.
-const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'// How long an issued code stays redeemable if it is never used. Long enough to
+const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+// How long an issued code stays redeemable if it is never used. Long enough to
 // hand over in person, short enough that a forgotten code on an unattended
 // screen stops working.
 const LOGIN_CODE_TTL_MS = 24 * 60 * 60 * 1000
