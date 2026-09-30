@@ -77,6 +77,15 @@ const fromBase64Url = (value) => {
   return decodeURIComponent(escape(atob(padded)))
 }
 
+/* Codes are long -- a full 100 level run is around 20 KB on one line -- so a
+   copy almost never arrives intact. A textarea, a phone keyboard, or any chat
+   app will have wrapped it, and a trailing newline comes with almost every
+   paste. atob then fails on a character it should never have been given, and
+   the code is reported as invalid even though the person copied it perfectly.
+   Every space is therefore removed before decoding, not just the ends: the
+   wrap can land anywhere along the line. */
+const stripWhitespace = (value) => value.replace(/\s+/g, '')
+
 // Prefixed and versioned like the leaderboard code, for the same reason: a bare
 // base64 blob can be re-encoded by hand into any run anyone likes, and a code
 // that carries no type marker cannot tell a run save from a history export. The
@@ -106,10 +115,14 @@ export const decodeRunState = (encoded) => {
     return null
   }
 
+  // Whitespace is stripped first, so a wrapped or newline-terminated paste is
+  // read the same as an untouched one. See stripWhitespace.
+  const cleaned = stripWhitespace(encoded)
+
   // Codes shared before the prefix existed are still accepted, since people have
   // those in their clipboard history, but the app never produces one any more.
-  const prefix = KNOWN_RUN_PREFIXES.find((candidate) => encoded.startsWith(candidate))
-  const payload = prefix ? encoded.slice(prefix.length) : encoded.trim()
+  const prefix = KNOWN_RUN_PREFIXES.find((candidate) => cleaned.startsWith(candidate))
+  const payload = prefix ? cleaned.slice(prefix.length) : cleaned
   const isLegacy = !prefix
 
   try {
@@ -144,12 +157,19 @@ export const encodeHistory = (entries) => {
 }
 
 export const decodeHistory = (encoded) => {
-  if (typeof encoded !== 'string' || !encoded.startsWith(HISTORY_PREFIX)) {
+  if (typeof encoded !== 'string') {
+    return null
+  }
+
+  // Whitespace is stripped first, so a wrapped or newline-terminated paste is
+  // read the same as an untouched one. See stripWhitespace.
+  const cleaned = stripWhitespace(encoded)
+  if (!cleaned.startsWith(HISTORY_PREFIX)) {
     return null
   }
 
   try {
-    const parsed = JSON.parse(fromBase64Url(encoded.slice(HISTORY_PREFIX.length)))
+    const parsed = JSON.parse(fromBase64Url(cleaned.slice(HISTORY_PREFIX.length)))
     const entries = parsed?.entries
     if (!Array.isArray(entries) || !entries.length) {
       return null
