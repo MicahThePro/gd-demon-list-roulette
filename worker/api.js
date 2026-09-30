@@ -44,9 +44,16 @@ const SKIP_REASONS = new Set([
   'no-time',
   'not-feeling-it',
 ])
+/* The list names a run may be submitted under. These are the exact `source`
+ * strings the client sends, which are the display names the list loader gives a
+ * run, so a typo here rejects a run the site itself produced.
+ *
+ * AREDL was the one that drifted: it is 'AREDL', not 'All Rated Extreme Demons
+ * List', and the long name here meant every AREDL run was refused -- twice over,
+ * once by the client's own submittable check and again by this guard. */
 const SOURCE_NAMES = new Set([
   'Pointercrate Demon List',
-  'All Rated Extreme Demons List',
+  'AREDL',
   'Global Shitty List',
   'Challenge List',
   'Impossible Levels List',

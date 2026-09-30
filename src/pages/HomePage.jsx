@@ -407,7 +407,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
               onChange={(event) => setSource(event.target.value)}
             >
               <option value="pointercrate">Pointercrate Demon List</option>
-              <option value="aredl">All Rated Extreme Demons List</option>
+              <option value="aredl">All Rated Extreme Demons List (AREDL)</option>
               <option value="gsl">Global Shitty List</option>
               <option value={CHALLENGE_LIST_SOURCE}>Challenge List</option>
               <option value={IMPOSSIBLE_LEVELS_SOURCE}>Impossible Levels List</option>

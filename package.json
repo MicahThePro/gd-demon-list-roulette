@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
-    "worker:test": "node --experimental-sqlite worker/auth.test.js && node --experimental-sqlite worker/api.test.js && node --experimental-sqlite worker/submissions.test.js",
+    "worker:test": "node --experimental-sqlite worker/auth.test.js && node --experimental-sqlite worker/api.test.js && node --experimental-sqlite worker/submissions.test.js && node src/services/sourceNames.test.js",
     "test:render": "node scripts/render-test.mjs",
     "test": "npm run worker:test && npm run test:render",
     "db:migrate": "wrangler d1 migrations apply demon-roulette --remote",

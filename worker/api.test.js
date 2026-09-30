@@ -101,7 +101,7 @@ const post = async (env, path, body, token) => {
 
 const aRun = (over = {}) => ({
   runId: 'run-1',
-  source: 'All Rated Extreme Demons List',
+  source: 'AREDL',
   percentStep: 1,
   status: 'failed',
   endedAt: 1_700_000_000_000,

@@ -1,3 +1,5 @@
+import { LIST_SOURCES } from './listService.js'
+
 /**
  * The client half of the Worker's accounts and global leaderboard API.
  *
@@ -15,16 +17,18 @@
 const API_URL = 'https://demon-roulette-list-proxy.micah-nordlund.workers.dev'
 const TOKEN_KEY = 'demon-roulette-session'
 
-// The lists a run can be submitted for. The value is the display name the run
-// screen shows, which is what the Worker validates against, so a renamed list
-// is a one-line change in one place.
-export const SUBMITTABLE_SOURCES = [
-  'Pointercrate Demon List',
-  'All Rated Extreme Demons List',
-  'Global Shitty List',
-  'Challenge List',
-  'Impossible Levels List',
-]
+/* The lists a run can be submitted for.
+ *
+ * Derived from LIST_SOURCES rather than retyped. A run's `source` is the
+ * display name the list loader gave it, and the Worker stores and groups by that
+ * string, so this has to be the same set of strings -- not a parallel copy that
+ * can drift. It did once: AREDL was 'All Rated Extreme Demons List' here while
+ * the loader produced 'AREDL', so every AREDL run was silently treated as an
+ * unranked list and could not be submitted at all.
+ *
+ * The Worker itself applies no allowlist; this is the site choosing not to offer
+ * a button for a run it will not rank. */
+export const SUBMITTABLE_SOURCES = Object.values(LIST_SOURCES)
 
 /** The boards the global leaderboard can be sorted by. */
 export const LEADERBOARD_BOARDS = [

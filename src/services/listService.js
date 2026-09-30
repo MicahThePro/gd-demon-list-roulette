@@ -36,7 +36,36 @@ const IMPOSSIBLE_LEVELS_URLS = [
   withBase('public/impossible-levels.json'),
   withBase('dist/impossible-levels.json'),
 ]
-const IMPOSSIBLE_LEVELS_NAME = 'Impossible Levels List'
+/* The display name of every list the site can play, in one place.
+ *
+ * This string is not cosmetic: it is stored on each run as `source`, and it is
+ * what the global leaderboard groups and filters by. Anything that decides
+ * whether a run is submittable has to compare against exactly these values, so
+ * they are defined once here and derived everywhere else. They used to be
+ * retyped in two other files, and AREDL drifted: the loader produced 'AREDL'
+ * while the submission check and the global board's list filter expected
+ * 'All Rated Extreme Demons List', so an AREDL run could be played but never
+ * submitted, and never shown under its own list.
+ *
+ * The short labels below are for the buttons; the names are for the data. */
+export const LIST_SOURCES = {
+  POINTERCRATE: 'Pointercrate Demon List',
+  AREDL: 'AREDL',
+  GSL: 'Global Shitty List',
+  CHALLENGE: 'Challenge List',
+  IMPOSSIBLE: 'Impossible Levels List',
+}
+
+/** Short labels for the list buttons, keyed by the same display names. */
+export const LIST_SOURCE_LABELS = {
+  [LIST_SOURCES.POINTERCRATE]: 'Pointercrate',
+  [LIST_SOURCES.AREDL]: 'AREDL',
+  [LIST_SOURCES.GSL]: 'GSL',
+  [LIST_SOURCES.CHALLENGE]: 'Challenge List',
+  [LIST_SOURCES.IMPOSSIBLE]: 'Impossible Levels',
+}
+
+const IMPOSSIBLE_LEVELS_NAME = LIST_SOURCES.IMPOSSIBLE
 const IMPOSSIBLE_LEVELS_SIZE = 2116
 const CHALLENGE_LIST_MAIN_SIZE = 100
 const AREDL_MAX_RETRIES = 5
@@ -133,9 +162,9 @@ export const normalizeListRequest = ({ source = 'pointercrate', start, end } = {
     const safeEnd = normalizedEnd ?? 150
     const sourceName =
       resolvedSource === 'gsl'
-        ? 'GSL'
+        ? LIST_SOURCES.GSL
         : resolvedSource === 'challengelist'
-          ? 'Challenge List'
+          ? LIST_SOURCES.CHALLENGE
           : resolvedSource === 'impossiblelevels'
             ? IMPOSSIBLE_LEVELS_NAME
             : 'AREDL'
@@ -184,7 +213,7 @@ const fetchPointercrateList = async () => {
 
   return {
     source: 'pointercrate',
-    sourceTitle: 'Pointercrate Demon List',
+    sourceTitle: LIST_SOURCES.POINTERCRATE,
     count: finalLevels.length,
     levels: finalLevels.slice(0, 150),
   }
@@ -347,7 +376,7 @@ const fetchAredlList = async ({ start, end } = {}) => {
 
   return {
     source: 'aredl',
-    sourceTitle: 'AREDL',
+    sourceTitle: LIST_SOURCES.AREDL,
     count: filteredLevels.length,
     levels: filteredLevels,
   }
@@ -442,7 +471,7 @@ const fetchGslList = async ({ start, end } = {}, fetcher = fetch) => {
   }
   return {
     source: 'gsl',
-    sourceTitle: 'Global Shitty List',
+    sourceTitle: LIST_SOURCES.GSL,
     count: filteredLevels.length,
     totalCount: uniqueLevels.length,
     levels: filteredLevels,
@@ -528,7 +557,7 @@ export const fetchChallengeList = async ({ start, end } = {}, fetcher = fetch) =
 
   return {
     source: 'challengelist',
-    sourceTitle: 'Challenge List',
+    sourceTitle: LIST_SOURCES.CHALLENGE,
     count: filtered.length,
     totalCount: parsed.levels.length,
     levels: filtered,

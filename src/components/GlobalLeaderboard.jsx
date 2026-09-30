@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LEADERBOARD_BOARDS, fetchLeaderboard } from '../services/apiService'
+import { LIST_SOURCES, LIST_SOURCE_LABELS } from '../services/listService'
 import { formatDurationMs } from '../utils/roulette'
 
+/* The list filter, built from the same names the list loader gives a run.
+ * These were retyped here and drifted once: this filter expected 'All Rated
+ * Extreme Demons List' while runs were stored as 'AREDL', so selecting AREDL
+ * matched nothing and its runs were only ever visible under "All lists". */
 const SOURCES = [
   { id: 'all', label: 'All lists' },
-  { id: 'Pointercrate Demon List', label: 'Pointercrate' },
-  { id: 'All Rated Extreme Demons List', label: 'AREDL' },
-  { id: 'Global Shitty List', label: 'GSL' },
-  { id: 'Challenge List', label: 'Challenge List' },
-  { id: 'Impossible Levels List', label: 'Impossible Levels' },
+  ...Object.values(LIST_SOURCES).map((name) => ({
+    id: name,
+    label: LIST_SOURCE_LABELS[name] ?? name,
+  })),
 ]
 
 const STATUS_LABELS = {
