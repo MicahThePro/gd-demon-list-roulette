@@ -3071,11 +3071,14 @@
   font-size: 0.95rem;
 }
 
-/* A trashed run stays in the list rather than disappearing from it: it is
-   hidden from the leaderboard and from the player, but a moderator still has to
-   be able to see what is hidden and put it back. Dimmed and struck rather than
-   greyed to invisibility, so it reads as present-but-off. */
+/* A trashed run, in the trashed section. Struck through so it reads as
+   present-but-off rather than as an ordinary run someone forgot about.
+
+   Its own column count: the row has no date cell, because "trashed 2 hours ago"
+   says that, and inheriting the live list's six columns left the button sitting
+   in the date column and a gap beside it. */
 .admin-data-row-trashed {
+  grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
   border-color: rgba(248, 113, 113, 0.25);
   background: rgba(127, 29, 29, 0.16);
   opacity: 0.75;
@@ -3090,6 +3093,20 @@
   align-items: center;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* The trashed section's heading row, so the Show/Hide button sits beside the
+   title rather than under it as a stray full-width control. */
+.admin-trash-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-trash-head h3 {
+  margin: 0;
 }
 
 .admin-trash-flag {

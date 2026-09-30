@@ -252,20 +252,21 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
   // at the wrong row. The Worker checks it again against its own record.
   const canDelete = deleteConfirm.trim().toLowerCase() === account.username.toLowerCase()
 
-  /* The run list, split.
+  /* The run list, split in two.
    *
-   * Trashed runs are held back rather than dropped: the list a moderator reads is
-   * the account's runs, and a run that is hidden is a run that can no longer be
-   * seen, checked, or taken back. So they are still fetched, still counted, and
-   * still one click from being restored -- they are just not on screen unless
-   * asked for.
+   * The runs on screen and the trashed runs are separate lists, not one list
+   * with the trashed ones greyed out. A trashed run leaves the list -- that is
+   * what trashing is for, and it was still the thing you saw when you opened the
+   * account -- and it is kept in its own section, collapsed, so a decision can be
+   * taken back without it competing with the runs that are actually on the
+   * account.
    *
-   * `showTrashed` is checked only for the trashed ones, so opening an account
-   * with nothing trashed shows exactly the live list and no extra note. */
+   * The split is derived rather than tracked, so it cannot fall out of step with
+   * the runs themselves after a trash, an un-trash, or a re-read. */
   const allRuns = Array.isArray(account.runs) ? account.runs : []
   const trashedRuns = allRuns.filter((run) => run.trashed)
   const trashedCount = trashedRuns.length
-  const visibleRuns = showTrashed ? allRuns : allRuns.filter((run) => !run.trashed)
+  const liveRuns = allRuns.filter((run) => !run.trashed)
 
   return (
     <>
@@ -284,8 +285,11 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
       {error && <div className="validation-message">{error}</div>}
 
       <div className="admin-facts">
-        <span>Runs<strong>{account.runCount}</strong></span>
-        <span>Hidden<strong>{account.trashedCount}</strong></span>
+        {/* The live count, not the lifetime total. A trashed run is no longer a
+            run on this account, and leaving it in the headline number is the
+            same mistake as leaving it in the list. */}
+        <span>Runs<strong>{liveRuns.length}</strong></span>
+        {trashedCount > 0 && <span>Trashed<strong>{trashedCount}</strong></span>}
         <span>Submitted<strong>{account.submissionCount}</strong></span>
         <span>Waiting<strong>{account.pendingCount}</strong></span>
         <span>Last seen<strong>{formatAgo(account.syncedAt)}</strong></span>
@@ -392,40 +396,21 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
         <h3>All their runs</h3>
         <p className="settings-hint">
           Every run saved to this account, whether or not it was ever sent for
-          review, newest first. Trashing hides one everywhere at once: off the
-          global leaderboard, out of their own runs, and out of the queue. The run
-          is not destroyed, it keeps its statistics and its rank, and putting it
-          back restores all of it.
+          review, newest first. Trashing takes one out of this list entirely: off
+          the global leaderboard, out of their own runs, and out of the queue. The
+          run itself is not destroyed, so it can be put back.
         </p>
 
-        {trashedCount > 0 && (
-          <div className="action-row">
-            <button
-              type="button"
-              className="secondary-button small-button"
-              onClick={() => setShowTrashed((value) => !value)}
-              aria-expanded={showTrashed}
-            >
-              {showTrashed
-                ? `Hide ${trashedCount} trashed run${trashedCount === 1 ? '' : 's'}`
-                : `Show ${trashedCount} trashed run${trashedCount === 1 ? '' : 's'}`}
-            </button>
-          </div>
-        )}
-
-        {visibleRuns.length === 0 ? (
+        {liveRuns.length === 0 ? (
           <p className="settings-hint">
             {trashedCount > 0
-              ? `This account has ${trashedCount} trashed run${trashedCount === 1 ? '' : 's'} and nothing else. Nothing here is being shown.`
+              ? 'Nothing left on this account. Everything saved to it has been trashed, and the trashed runs are below.'
               : 'This account has no saved runs. Runs reach an account when the player signs in on the results screen and keeps the run they just finished.'}
           </p>
         ) : (
           <div className="admin-data-list">
-            {visibleRuns.map((run) => (
-              <div
-                key={run.id}
-                className={run.trashed ? 'admin-data-row admin-data-row-trashed' : 'admin-data-row'}
-              >
+            {liveRuns.map((run) => (
+              <div key={run.id} className="admin-data-row">
                 <strong>{run.score}%</strong>
                 <span>{run.source}</span>
                 <span>{run.passed} passed &middot; {run.roundsPlayed} levels</span>
@@ -433,34 +418,17 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
                   {run.submission ? (SUBMISSION_LABELS[run.submission.status] ?? run.submission.status) : 'Not submitted'}
                 </em>
                 <span>{formatWhen(run.createdAt)}</span>
-
-                {run.trashed ? (
-                  <span className="admin-run-actions">
-                    <em className="admin-trash-flag">
-                      Trashed{run.trashedAt ? ` ${formatAgo(run.trashedAt)}` : ''}
-                    </em>
-                    <button
-                      type="button"
-                      className="secondary-button small-button"
-                      onClick={() => handleUntrash(run)}
-                      disabled={busyRunId === run.id}
-                    >
-                      {busyRunId === run.id ? 'Working...' : 'Put it back'}
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="secondary-button small-button"
-                    onClick={() => {
-                      setTrashRunId(run.id)
-                      setTrashReason('')
-                    }}
-                    disabled={busyRunId !== null}
-                  >
-                    Trash
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="secondary-button small-button"
+                  onClick={() => {
+                    setTrashRunId(run.id)
+                    setTrashReason('')
+                  }}
+                  disabled={busyRunId !== null}
+                >
+                  Trash
+                </button>
               </div>
             ))}
           </div>
@@ -486,7 +454,7 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
                 type="button"
                 className="primary-button"
                 onClick={() => {
-                  const run = visibleRuns.find((entry) => entry.id === trashRunId)
+                  const run = liveRuns.find((entry) => entry.id === trashRunId)
                   setTrashRunId(null)
                   if (run) handleTrash(run, trashReason)
                 }}
@@ -506,6 +474,63 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
           </div>
         )}
       </div>
+
+      {/* The trashed runs, in a section of their own rather than as greyed rows
+          among the live ones. They are gone from the list above -- that is what
+          trashing means, and a run you have trashed should not be the thing you
+          see when you open an account -- but they are kept here so the decision
+          can be taken back. Collapsed by default: an account with nothing trashed
+          shows no heading and no empty state, and one with something trashed does
+          not make it the first thing on screen. */}
+      {trashedCount > 0 && (
+        <div className="admin-account-section">
+          <div className="admin-trash-head">
+            <h3>Trashed</h3>
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={() => setShowTrashed((value) => !value)}
+              aria-expanded={showTrashed}
+            >
+              {showTrashed ? 'Hide' : `Show ${trashedCount}`}
+            </button>
+          </div>
+
+          {!showTrashed ? (
+            <p className="settings-hint">
+              {trashedCount} run{trashedCount === 1 ? '' : 's'} trashed. These are off the
+              leaderboard and out of this player&rsquo;s runs.
+            </p>
+          ) : (
+            <>
+              <p className="settings-hint">
+                Putting one back restores it everywhere at once, with the statistics and the
+                leaderboard rank it had before.
+              </p>
+              <div className="admin-data-list">
+                {trashedRuns.map((run) => (
+                  <div key={run.id} className="admin-data-row admin-data-row-trashed">
+                    <strong>{run.score}%</strong>
+                    <span>{run.source}</span>
+                    <span>{run.passed} passed &middot; {run.roundsPlayed} levels</span>
+                    <em className="admin-trash-flag">
+                      Trashed{run.trashedAt ? ` ${formatAgo(run.trashedAt)}` : ''}
+                    </em>
+                    <button
+                      type="button"
+                      className="secondary-button small-button"
+                      onClick={() => handleUntrash(run)}
+                      disabled={busyRunId === run.id}
+                    >
+                      {busyRunId === run.id ? 'Working...' : 'Put it back'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="admin-account-section admin-danger-zone">
         <h3>Delete this account</h3>
@@ -641,7 +666,9 @@ export default function AccountsTab({ passcode, redeemUrl }) {
               <strong>{account.displayName || account.username}</strong>
               <span className="admin-account-username">@{account.username}</span>
               <span className="admin-account-stats">
-                {account.runCount} runs · {account.submissionCount} submitted
+                {/* Live runs, for the same reason as the detail panel's headline:
+                    a trashed run is not a run on the account any more. */}
+                {account.visibleRunCount} runs · {account.submissionCount} submitted
                 {account.pendingCount > 0 && ` · ${account.pendingCount} waiting`}
                 {account.trashedCount > 0 && ` · ${account.trashedCount} trashed`}
               </span>
