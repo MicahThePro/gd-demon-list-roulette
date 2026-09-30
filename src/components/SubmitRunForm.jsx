@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { uploadRecording } from '../services/submissionService'
+import { markSubmitted } from '../utils/submittedRuns'
 import { CONTAINERS, SUGGESTED_HOSTS, getHostLabel, normalizeContainer, normalizeVideoUrl } from '../utils/videoFile'
 
 /**
@@ -16,9 +17,14 @@ import { CONTAINERS, SUGGESTED_HOSTS, getHostLabel, normalizeContainer, normaliz
  * has the live run, while a leaderboard entry is a trimmed summary with packed
  * rounds. Neither the network order nor the validation is this component's
  * business; it just asks for the payload and reports what happened.
+ *
+ * `runKey` is only used to remember a run the Worker says was already sent, so
+ * that a stale local mirror cannot keep offering the button. The Worker is the
+ * authority; this is a mirror of its answer.
  */
 export default function SubmitRunForm({
   getPayload,
+  runKey,
   auth,
   isSubmittable,
   alreadySubmitted = false,
@@ -64,8 +70,11 @@ export default function SubmitRunForm({
     setIsSubmitting(true)
     setStatus({ state: 'idle', message: 'Saving your run and sending the link for review.' })
 
+    // Declared outside the try so the 409 branch can name the run it refers to.
+    let saved = null
     try {
-      const saved = await getPayload()
+      const result = await getPayload()
+      saved = result
       await uploadRecording({
         runId: saved.id,
         videoUrl: link.url,
@@ -73,12 +82,25 @@ export default function SubmitRunForm({
         note: note.trim(),
       })
 
+      // Recorded against the run key, not the server's numeric id, so the
+      // other entry point -- the local leaderboard's row for the same run --
+      // recognises it. See utils/submittedRuns.
+      markSubmitted(saved.runKey ?? saved.id)
       setStatus({
         state: 'done',
         message: 'Submitted. Your run is waiting to be checked, and will appear on the global leaderboard once it is.',
       })
       onSubmitted?.(saved.id)
     } catch (error) {
+      // A 409 means the run was already sent and the Worker refused a second
+      // submission, which is the answer rather than a fault: record it locally
+      // so the form stops offering to send it again.
+      if (error?.status === 409) {
+        markSubmitted(saved?.runKey ?? runKey)
+        onSubmitted?.()
+        setStatus({ state: 'done', message: error.message })
+        return
+      }
       setStatus({ state: 'error', message: error?.message ?? 'Could not submit that run.' })
     } finally {
       setIsSubmitting(false)

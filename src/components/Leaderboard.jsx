@@ -3,7 +3,7 @@ import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
 import { formatDurationMs, decodeHistory, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
 import { submitEntry } from '../services/submissionService'
-import { hasSubmitted, markSubmitted } from '../utils/submittedRuns'
+import { hasSubmitted } from '../utils/submittedRuns'
 import SubmitRunForm from './SubmitRunForm'
 
 const STATUS_LABELS = {
@@ -176,11 +176,8 @@ const RunDetail = ({ entry, onClose, onDelete, auth }) => {
           auth={auth}
           isSubmittable={isSubmittable}
           alreadySubmitted={isSubmitted}
-          getPayload={async () => {
-            const saved = await submitEntry(entry)
-            markSubmitted(saved.id)
-            return saved
-          }}
+          runKey={entry.id}
+          getPayload={() => submitEntry(entry)}
           onSubmitted={() => setIsSubmitted(true)}
           intro={
             <>

@@ -94,6 +94,10 @@ function App() {
   // Identifies the run being played, so an ended run is recorded exactly once
   // even though several code paths reach the results screen.
   const trackedRunId = useRef(null)
+  // The key of the run on the results screen, kept so the submission guard can
+  // recognise a run that was already sent. State rather than the ref above,
+  // because changing it has to re-render the results page.
+  const [resultRunKey, setResultRunKey] = useState('')
   const [saveCode, setSaveCode] = useState('')
 
   const currentStatus = useMemo(() => summarizeResult(run), [run])
@@ -255,6 +259,9 @@ function App() {
       setScreen(SCREEN.RESULTS)
 
       const key = endedRun.runId ?? `${endedRun.source ?? ''}-${endedRun.startedAt ?? endedAt}`
+      // The same key the submission guard uses, so the results screen and the
+      // leaderboard row agree on which run this is.
+      setResultRunKey(key)
       if (trackedRunId.current === key) return
       trackedRunId.current = key
       history.recordRun(endedRun, endedAt)
@@ -492,6 +499,7 @@ function App() {
       {screen === SCREEN.RESULTS && run && (
         <ResultsPage
           run={run}
+          runKey={resultRunKey}
           onRestart={handleRestart}
           onSaveRun={saveCurrentRun}
           onLoadRun={loadRunFromCode}

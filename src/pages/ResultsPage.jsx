@@ -1,9 +1,16 @@
+import { useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
 import { submitRun } from '../services/submissionService'
+import { hasSubmitted } from '../utils/submittedRuns'
 import SubmitRunForm from '../components/SubmitRunForm'
 
-export default function ResultsPage({ run, onRestart, auth }) {
+export default function ResultsPage({ run, runKey, onRestart, auth }) {
+  // The key the server groups a run under. Passed down rather than derived
+  // here, because it has to be the same string the run was recorded under in the
+  // local leaderboard: anything recomputed on this render (a fresh Date.now(),
+  // say) would differ every time and the guard would never match.
+  const [isSubmitted, setIsSubmitted] = useState(() => Boolean(runKey) && hasSubmitted(runKey))
   if (!run) {
     return null
   }
@@ -170,7 +177,10 @@ export default function ResultsPage({ run, onRestart, auth }) {
           <SubmitRunForm
             auth={auth}
             isSubmittable={isSubmittable}
+            alreadySubmitted={isSubmitted}
             getPayload={getPayload}
+            runKey={runKey}
+            onSubmitted={() => setIsSubmitted(true)}
           />
         </div>
 

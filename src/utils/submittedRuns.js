@@ -1,14 +1,17 @@
 /**
  * Which local runs have already been sent to the global leaderboard.
  *
- * The moderation queue lives on the server, but the local leaderboard has to
- * know without asking, so the submitted ids are mirrored into localStorage. A
- * run can also be reached from two places at once -- the results screen and its
- * own row here -- and without this a second submit would quietly create a
- * duplicate run for a reviewer to reject.
+ * Keyed on the *run key* -- the client-side id a run is posted under, which is
+ * what the server groups by -- rather than the numeric id the server assigns,
+ * because the numeric id is only known after a successful post and the key is
+ * known before. The results screen and a leaderboard row can both offer the
+ * same run, and without this a second submit would quietly create a duplicate
+ * for a moderator to reject.
  *
- * This is a convenience guard, not a permission: the server re-checks
- * everything, and clearing localStorage only means the button is offered again.
+ * This is a convenience, not a rule. The Worker refuses a second submission of
+ * the same run outright, so clearing localStorage only means the button is
+ * offered again and the request is then turned down. Do not treat a false here
+ * as permission to submit.
  */
 
 const KEY = 'demon-roulette-submitted'

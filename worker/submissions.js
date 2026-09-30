@@ -205,6 +205,37 @@ export const handleSubmissionRoutes = async ({ db, request, url, key, adminPassc
       return { error: 'That run is not yours to submit', status: 404 }
     }
 
+    /* One submission per run, for good.
+     *
+     * The client's "already submitted" flag is a localStorage mirror, so it is
+     * a convenience and not a rule: clearing site data or opening the site in
+     * another browser forgets it. This check is the rule, and it is what stops
+     * one run filling the queue with a dozen copies for a moderator to reject
+     * by hand.
+     *
+     * Deliberately not scoped to `status = 'pending'`. Once a run has been sent
+     * it is sent: a rejected run stays rejected and an approved one stays on
+     * the board, and in neither case does the same run get a second turn at
+     * the queue. A player who thinks the video was judged unfairly sends a
+     * different run.
+     *
+     * The index on (run_id) serves this lookup. */
+    const existing = await db
+      .prepare('SELECT id, status FROM submissions WHERE run_id = ? ORDER BY id LIMIT 1')
+      .bind(runId)
+      .first()
+    if (existing) {
+      return {
+        error:
+          existing.status === 'pending'
+            ? 'That run is already waiting to be checked'
+            : existing.status === 'approved'
+              ? 'That run is already on the global leaderboard'
+              : 'That run was already sent, and it was turned down',
+        status: 409,
+      }
+    }
+
     const videoUrl = normalizeVideoUrl(body.videoUrl)
     if (!videoUrl) {
       return {

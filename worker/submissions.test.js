@@ -127,6 +127,23 @@ const setup = async (env = makeEnv()) => {
   return { env, token: auth.token, runId: run.id }
 }
 
+/* A fresh run for every case.
+ *
+ * A run may only ever be submitted once, so a block that checks several links
+ * or several file types cannot reuse one run: the second attempt would be
+ * refused as a duplicate rather than judged on its link. Each case needs its own
+ * run to be testing what it means to test. */
+const freshRun = async (env, token, suffix) => {
+  const run = (
+    await jsonCall(env, '/api/runs', {
+      method: 'POST',
+      body: aRun({ runId: `run-${suffix}` }),
+      token,
+    })
+  ).data.run
+  return run.id
+}
+
 const submit = (env, runId, body, token) =>
   jsonCall(env, '/api/submissions', { method: 'POST', body: { ...body, runId }, token })
 
@@ -171,10 +188,6 @@ console.log('submitting a link')
 
   check('submitting without a session is refused', (await submit(env, runId, proof(), undefined)).response.status === 401)
 
-  const ok = await submit(env, runId, proof(), token)
-  check('a link is accepted', ok.response.status === 201, JSON.stringify(ok.data))
-  check('it starts out pending', ok.data.submission?.status === 'pending', JSON.stringify(ok.data))
-
   // Only http and https. A javascript: or data: URL is refused outright rather
   // than normalised, because a moderator clicks this link.
   for (const bad of [
@@ -185,7 +198,8 @@ console.log('submitting a link')
     'not a url at all',
     '',
   ]) {
-    const result = await submit(env, runId, proof({ videoUrl: bad }), token)
+    const id = await freshRun(env, token, `bad-${bad.slice(0, 8)}`)
+    const result = await submit(env, id, proof({ videoUrl: bad }), token)
     check(`"${bad.slice(0, 24)}" is refused`, result.response.status === 400, String(result.response.status))
   }
 
@@ -194,18 +208,58 @@ console.log('submitting a link')
     'https://youtu.be/dQw4w9WgXcQ',
     'http://example.com/run.mp4',
   ]) {
-    const result = await submit(env, runId, proof({ videoUrl: good }), token)
+    const id = await freshRun(env, token, `good-${good.slice(0, 10)}`)
+    const result = await submit(env, id, proof({ videoUrl: good }), token)
     check(`"${good.slice(0, 30)}" is accepted`, result.response.status === 201, String(result.response.status))
   }
 
   for (const container of ['mp4', 'mov', 'avi', 'mkv', 'webm']) {
-    const result = await submit(env, runId, proof({ container }), token)
+    const id = await freshRun(env, token, `c-${container}`)
+    const result = await submit(env, id, proof({ container }), token)
     check(`a .${container} video is accepted`, result.response.status === 201, String(result.response.status))
   }
-  check('an unknown type is refused', (await submit(env, runId, proof({ container: 'exe' }), token)).response.status === 400)
+
+  const typeId = await freshRun(env, token, 'type')
+  check('an unknown type is refused', (await submit(env, typeId, proof({ container: 'exe' }), token)).response.status === 400)
 
   check('a missing run id is refused', (await submit(env, 'not-a-number', proof(), token)).response.status === 400)
   check("somebody else's run cannot be submitted", (await submit(env, 99999, proof(), token)).response.status === 404)
+}
+
+console.log('a run can only be submitted once')
+{
+  const { env, token, runId } = await setup()
+
+  const first = await submit(env, runId, proof(), token)
+  check('the first submission goes through', first.response.status === 201, JSON.stringify(first.data))
+
+  // The client's own "already submitted" flag is a localStorage mirror, so it
+  // can be forgotten by clearing site data. The server is what holds the line.
+  const again = await submit(env, runId, proof(), token)
+  check('a second submission of the same run is refused', again.response.status === 409, String(again.response.status))
+  check('and it says it is already waiting', /already waiting/i.test(again.data?.error ?? ''), JSON.stringify(again.data))
+
+  // Rejected is not a retry. A run that was turned down stays turned down, so
+  // the queue cannot be refilled with copies of something already refused.
+  const id = (await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })).data.submissions[0].id
+  await jsonCall(env, `/api/admin/submissions/${id}/reject`, { method: 'POST', body: { note: 'nope' }, passcode: '258456' })
+
+  const afterReject = await submit(env, runId, proof(), token)
+  check('a rejected run cannot be sent again', afterReject.response.status === 409, String(afterReject.response.status))
+  check('and it says it was turned down', /turned down/i.test(afterReject.data?.error ?? ''), JSON.stringify(afterReject.data))
+
+  await jsonCall(env, `/api/admin/submissions/${id}/approve`, { method: 'POST', body: { note: 'on reflection' }, passcode: '258456' })
+  const afterApprove = await submit(env, runId, proof(), token)
+  check('an approved run cannot be sent again either', afterApprove.response.status === 409, String(afterApprove.response.status))
+  check('and it says it is already on the board', /already on the global leaderboard/i.test(afterApprove.data?.error ?? ''), JSON.stringify(afterApprove.data))
+
+  // One run, one row, however many times the request is repeated.
+  const queue = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
+  check('the run is in the queue exactly once', queue.data.submissions.length === 1, String(queue.data.submissions.length))
+
+  // A different run is unaffected: the rule is per run, not per player.
+  const other = await freshRun(env, token, 'other')
+  check('a different run can still be submitted', (await submit(env, other, proof(), token)).response.status === 201)
 }
 
 console.log('the leaderboard only holds approved runs')
