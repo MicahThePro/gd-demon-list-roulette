@@ -516,17 +516,57 @@ function App() {
     }
 
     const controller = new AbortController()
-    fetchMyEntries(controller.signal)
-      .then((payload) => {
-        if (controller.signal.aborted) return
-        applyAccountEntries.current(payload)
-      })
-      .catch(() => {
-        // A sync that did not write is not worth interrupting anybody over: the
-        // board keeps whatever it had, and the next sign-in tries again.
-      })
+    const read = () => {
+      fetchMyEntries(controller.signal)
+        .then((payload) => {
+          if (controller.signal.aborted) return
+          applyAccountEntries.current(payload)
+        })
+        .catch(() => {
+          // A sync that did not write is not worth interrupting anybody over: the
+          // board keeps whatever it had, and the next read tries again.
+        })
+    }
 
-    return () => controller.abort()
+    read()
+
+    /* Re-read on an interval, so a run trashed by a moderator disappears from the
+     * player's board while they are looking at it.
+     *
+     * Without this, trashing is only visible on the next page load, which is not
+     * the same promise: the moderation queue is judged on whether a run is off
+     * the site, and "off the site as soon as they next reload" is a weaker thing
+     * than it sounds to somebody waiting to check.
+     *
+     * Not while the tab is hidden -- re-reading a background tab costs a request
+     * to find out nothing changed, and the read happens on focus anyway. The
+     * interval is deliberately long for the same reason: this is a backstop for a
+     * rare event, not a live feed, and a burst of requests from every open tab
+     * would be a poor trade for a change made a few times a day. */
+    const POLL_MS = 60_000
+    let intervalId = null
+
+    const startPolling = () => {
+      if (intervalId !== null) return
+      intervalId = window.setInterval(() => {
+        if (document.visibilityState === 'visible') read()
+      }, POLL_MS)
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') read()
+    }
+
+    if (document.visibilityState === 'visible') {
+      startPolling()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      if (intervalId !== null) window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
+      controller.abort()
+    }
   }, [auth.user, accountNonce])
 
   return (

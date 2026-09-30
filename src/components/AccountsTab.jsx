@@ -97,6 +97,16 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
   // different questions, two different answers; keep them apart.
   const [trashRunId, setTrashRunId] = useState(null)
   const [trashReason, setTrashReason] = useState('')
+  // Whether the trashed runs are on screen. Off by default, because the point of
+  // trashing is that the run stops being part of this account as far as anybody
+  // looking at it is concerned -- leaving it in the list, even greyed out and
+  // struck through, meant a trashed run was still what you saw when you opened
+  // the account.
+  //
+  // A toggle rather than a removal, because the reason the row is kept at all is
+  // to be able to take a decision back. Un-trashing is only reachable from here,
+  // so hiding them with no way back would make a mistake permanent.
+  const [showTrashed, setShowTrashed] = useState(false)
   // The run with a request in flight, or null. Separate from trashRunId: a row
   // stays "busy" after its box closes, and one flag for the whole panel would
   // lock every row while a single one was being trashed.
@@ -242,6 +252,21 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
   // at the wrong row. The Worker checks it again against its own record.
   const canDelete = deleteConfirm.trim().toLowerCase() === account.username.toLowerCase()
 
+  /* The run list, split.
+   *
+   * Trashed runs are held back rather than dropped: the list a moderator reads is
+   * the account's runs, and a run that is hidden is a run that can no longer be
+   * seen, checked, or taken back. So they are still fetched, still counted, and
+   * still one click from being restored -- they are just not on screen unless
+   * asked for.
+   *
+   * `showTrashed` is checked only for the trashed ones, so opening an account
+   * with nothing trashed shows exactly the live list and no extra note. */
+  const allRuns = Array.isArray(account.runs) ? account.runs : []
+  const trashedRuns = allRuns.filter((run) => run.trashed)
+  const trashedCount = trashedRuns.length
+  const visibleRuns = showTrashed ? allRuns : allRuns.filter((run) => !run.trashed)
+
   return (
     <>
       <div className="admin-detail-head">
@@ -373,14 +398,30 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
           back restores all of it.
         </p>
 
-        {account.runs.length === 0 ? (
+        {trashedCount > 0 && (
+          <div className="action-row">
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={() => setShowTrashed((value) => !value)}
+              aria-expanded={showTrashed}
+            >
+              {showTrashed
+                ? `Hide ${trashedCount} trashed run${trashedCount === 1 ? '' : 's'}`
+                : `Show ${trashedCount} trashed run${trashedCount === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        )}
+
+        {visibleRuns.length === 0 ? (
           <p className="settings-hint">
-            This account has no saved runs. Runs reach an account when the player
-            signs in on the results screen and keeps the run they just finished.
+            {trashedCount > 0
+              ? `This account has ${trashedCount} trashed run${trashedCount === 1 ? '' : 's'} and nothing else. Nothing here is being shown.`
+              : 'This account has no saved runs. Runs reach an account when the player signs in on the results screen and keeps the run they just finished.'}
           </p>
         ) : (
           <div className="admin-data-list">
-            {account.runs.map((run) => (
+            {visibleRuns.map((run) => (
               <div
                 key={run.id}
                 className={run.trashed ? 'admin-data-row admin-data-row-trashed' : 'admin-data-row'}
@@ -445,7 +486,7 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
                 type="button"
                 className="primary-button"
                 onClick={() => {
-                  const run = account.runs.find((entry) => entry.id === trashRunId)
+                  const run = visibleRuns.find((entry) => entry.id === trashRunId)
                   setTrashRunId(null)
                   if (run) handleTrash(run, trashReason)
                 }}
