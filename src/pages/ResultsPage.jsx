@@ -1,18 +1,9 @@
-import { useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
-import { submitRun, uploadRecording } from '../services/submissionService'
-import { CONTAINERS, SUGGESTED_HOSTS, getHostLabel, normalizeContainer, normalizeVideoUrl } from '../utils/videoFile'
+import { submitRun } from '../services/submissionService'
+import SubmitRunForm from '../components/SubmitRunForm'
 
 export default function ResultsPage({ run, onRestart, auth }) {
-  const [submitState, setSubmitState] = useState({ status: 'idle', message: '' })
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [videoUrl, setVideoUrl] = useState('')
-  const [container, setContainer] = useState('mp4')
-  const [note, setNote] = useState('')
-  const [linkError, setLinkError] = useState('')
-  const [linkOk, setLinkOk] = useState('')
-
   if (!run) {
     return null
   }
@@ -50,62 +41,11 @@ export default function ResultsPage({ run, onRestart, auth }) {
   // than showing a button that would fail.
   const isSubmittable = SUBMITTABLE_SOURCES.includes(run.source)
 
-  // The run is stored first and the video second. The run is off the public
-  // board until the video is approved, so the worst case from a failure in the
-  // middle is a pending run nobody can see, never an unvouched-for score.
-  const handleSubmit = async () => {
-    const link = normalizeVideoUrl(videoUrl)
-    if (!link.ok) {
-      setLinkError(link.error)
-      return
-    }
-
-    setIsSubmitting(true)
-    setSubmitState({
-      status: 'idle',
-      message: 'Saving your run and sending the link for review.',
-    })
-
-    try {
-      const saved = await submitRun(run, Date.now())
-      await uploadRecording({
-        runId: saved.id,
-        videoUrl: link.url,
-        container,
-        note: note.trim(),
-      })
-
-      setSubmitState({
-        status: 'done',
-        message: 'Submitted. Your run is waiting to be checked, and will appear on the global leaderboard once it is.',
-      })
-    } catch (error) {
-      setSubmitState({
-        status: 'error',
-        message: error?.message ?? 'Could not submit that run.',
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  // Checked as the player types, so a paste that worked says so immediately
-  // rather than only after a failed submit.
-  const handleLinkChange = (value) => {
-    setVideoUrl(value)
-    setLinkOk('')
-    if (!value.trim()) {
-      setLinkError('')
-      return
-    }
-    const result = normalizeVideoUrl(value)
-    if (result.ok) {
-      setLinkError('')
-      setLinkOk(result.url)
-    } else {
-      setLinkOk('')
-    }
-  }
+  // The run is stored first and the video second, and both are handled by the
+  // shared form, which the local leaderboard's run detail also uses. It asks for
+  // the run body rather than being handed one, because the leaderboard holds a
+  // trimmed entry and only this page still has the live run.
+  const getPayload = () => submitRun(run, Date.now())
 
   return (
     <main className="page-shell results-page">
@@ -227,121 +167,11 @@ export default function ResultsPage({ run, onRestart, auth }) {
 
         <p className="results-section-label">Global leaderboard</p>
         <div className="submit-panel">
-          {!auth.user ? (
-            <>
-              <p>
-                Sign in and this run can be submitted to the global leaderboard, where everyone can
-                see how far it got. It is optional: the run is already saved in this browser.
-              </p>
-              <p className="settings-hint">
-                Signing in needs a username and a password. There is no email address, so nothing
-                to lose and no waiting on a message.
-              </p>
-            </>
-          ) : !isSubmittable ? (
-            <p className="settings-hint">
-              Runs on this list are not ranked. The leaderboard covers the five lists on the home
-              screen.
-            </p>
-          ) : (
-            <>
-              <p>
-                Submit this run to the global leaderboard as{' '}
-                <strong>@{auth.user.username}</strong>.
-              </p>
-              <p className="settings-hint">
-                A run has to have a video of it before it can go on the global leaderboard.
-                Somebody watches the video first, so your run waits in the queue rather than
-                appearing straight away.
-              </p>
-
-              <div className="submit-proof">
-                <strong>1. Put your video somewhere</strong>
-                <p className="settings-hint">
-                  The site does not host video, so upload it somewhere you already have an account
-                  and make it link shareable. Any of these work:
-                </p>
-                <ul className="host-list">
-                  {SUGGESTED_HOSTS.map((host) => (
-                    <li key={host.name}>
-                      <strong>{host.name}</strong>
-                      <span>{host.hint}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="settings-hint">
-                  Keep the video up until your run is approved. On YouTube, upload it as{' '}
-                  <strong>Unlisted</strong> rather than public, so it stays off search and your
-                  channel.
-                </p>
-              </div>
-
-              <label className="submit-field">
-                2. Paste the link
-                <input
-                  type="url"
-                  inputMode="url"
-                  value={videoUrl}
-                  onChange={(event) => handleLinkChange(event.target.value)}
-                  placeholder="https://drive.google.com/..."
-                  disabled={isSubmitting}
-                />
-              </label>
-              {linkError && <div className="validation-message">{linkError}</div>}
-              {linkOk && (
-                <p className="export-status">
-                  Link looks good: {getHostLabel(linkOk)}
-                </p>
-              )}
-
-              <label className="submit-field">
-                3. What file is it?
-                <select
-                  value={container}
-                  onChange={(event) => setContainer(normalizeContainer(event.target.value) ?? 'mp4')}
-                  disabled={isSubmitting}
-                >
-                  {CONTAINERS.map((type) => (
-                    <option key={type} value={type}>
-                      {type.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="settings-hint">
-                WebM and MP4 open in a browser. MOV, AVI and MKV are accepted too, but the reviewer
-                opens them in a video player rather than in the page.
-              </p>
-
-              <label className="submit-field">
-                Anything to add? (optional)
-                <input
-                  type="text"
-                  value={note}
-                  maxLength={200}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="e.g. recorded with OBS, run starts at 1:20"
-                  disabled={isSubmitting}
-                />
-              </label>
-
-              <div className="action-row">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || !videoUrl.trim()}
-                >
-                  {isSubmitting ? 'Submitting...' : 'Submit run'}
-                </button>
-              </div>
-              {submitState.message && (
-                <p className={submitState.status === 'done' ? 'export-status' : 'validation-message'}>
-                  {submitState.message}
-                </p>
-              )}
-            </>
-          )}
+          <SubmitRunForm
+            auth={auth}
+            isSubmittable={isSubmittable}
+            getPayload={getPayload}
+          />
         </div>
 
         <div className="action-row">

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
 import { formatDurationMs, decodeHistory, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
+import { SUBMITTABLE_SOURCES } from '../services/apiService'
+import { submitEntry } from '../services/submissionService'
+import { hasSubmitted, markSubmitted } from '../utils/submittedRuns'
+import SubmitRunForm from './SubmitRunForm'
 
 const STATUS_LABELS = {
   completed: 'Cleared',
@@ -33,9 +37,15 @@ const formatWhen = (timestamp) => {
   })} · ${time}`
 }
 
-const RunDetail = ({ entry, onClose, onDelete }) => {
+const RunDetail = ({ entry, onClose, onDelete, auth }) => {
   const totalTime = entry.totalMs ? formatDurationMs(entry.totalMs) : '--:--'
   const avgTime = entry.avgMs ? formatDurationMs(entry.avgMs) : '--:--'
+  // Re-read whenever the entry or the user changes, so signing in or submitting
+  // swaps the form's state without the detail view having to be reopened.
+  const [isSubmitted, setIsSubmitted] = useState(() => hasSubmitted(entry.id))
+  // A run on a list the Worker does not rank cannot be sent, so the form says
+  // why rather than offering a button that would be refused.
+  const isSubmittable = SUBMITTABLE_SOURCES.includes(entry.source)
 
   // Only the reasons actually used, in the fixed vocabulary order, so the
   // breakdown lines up between runs instead of shuffling per run. An entry
@@ -155,6 +165,31 @@ const RunDetail = ({ entry, onClose, onDelete }) => {
           })
         )}
       </div>
+
+      {/* The same form the results screen offers, so a run that is already
+          finished with can be sent to the global leaderboard later without
+          replaying it. `getPayload` posts this entry rather than a live run,
+          which is the only thing the two entry points do differently. */}
+      <p className="results-section-label">Global leaderboard</p>
+      <div className="submit-panel">
+        <SubmitRunForm
+          auth={auth}
+          isSubmittable={isSubmittable}
+          alreadySubmitted={isSubmitted}
+          getPayload={async () => {
+            const saved = await submitEntry(entry)
+            markSubmitted(saved.id)
+            return saved
+          }}
+          onSubmitted={() => setIsSubmitted(true)}
+          intro={
+            <>
+              Submit this run to the global leaderboard as{' '}
+              <strong>@{auth?.user?.username}</strong>, using the link to a video of it.
+            </>
+          }
+        />
+      </div>
     </div>
   )
 }
@@ -170,7 +205,7 @@ const FILTERS = {
   ],
 }
 
-export default function Leaderboard({ entries, onDelete, onClear, onExport, onImport }) {
+export default function Leaderboard({ entries, onDelete, onClear, onExport, onImport, auth }) {
   const [tab, setTab] = useState('cleared')
   const [filter, setFilter] = useState(FILTERS.gaveup[0].key)
   const [openId, setOpenId] = useState(null)
@@ -249,7 +284,7 @@ export default function Leaderboard({ entries, onDelete, onClear, onExport, onIm
   if (openEntry) {
     return (
       <div className="lb-detail-wrap">
-        <RunDetail entry={openEntry} onClose={() => setOpenId(null)} onDelete={onDelete} />
+        <RunDetail entry={openEntry} onClose={() => setOpenId(null)} onDelete={onDelete} auth={auth} />
       </div>
     )
   }

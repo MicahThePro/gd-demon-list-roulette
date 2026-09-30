@@ -156,3 +156,56 @@ export const buildRunPayload = (run, endedAt = Date.now()) => {
     })),
   }
 }
+
+/* --- submitting a run that only exists as a leaderboard entry ------------ */
+
+/* The packed tuple order, mirroring useRunHistory. Duplicated as a comment
+   reference rather than imported, because useRunHistory imports nothing from
+   here and importing it here would pull the whole history hook -- and its
+   localStorage access -- into a module the tests use in isolation. The two are
+   kept in step by the round-test below. */
+const PACKED_ROUND_FIELDS = ['id', 'name', 'target', 'achieved', 'result', 'ms', 'video', 'skipReason']
+const PACKED = (field) => PACKED_ROUND_FIELDS.indexOf(field)
+const RESULT = PACKED('result')
+const SKIP_REASON = PACKED('skipReason')
+
+/**
+ * Builds the run body for a run that only survives as a local leaderboard entry.
+ *
+ * This is what makes submitting from the leaderboard possible at all: the
+ * results screen submits the live run object, which the Worker accepts, but the
+ * leaderboard holds a trimmed summary whose rounds are positional tuples, not
+ * the objects `buildRunPayload` reads. Unpacking them here is the whole
+ * difference between the two entry points.
+ *
+ * The give-up round is already inside the packed rounds -- `summarizeRun`
+ * appends it when it builds the entry -- so unlike `buildRunPayload` this does
+ * not add one again.
+ */
+export const buildRunPayloadFromEntry = (entry, endedAt = Date.now()) => ({
+  // The entry id is `${endedAt}-${source}`, so it matches what the run would
+  // have been given on the results screen. Reusing it is what makes a second
+  // submit of the same run an update rather than a new row.
+  runId: entry?.id ?? `${endedAt}-${entry?.source ?? 'run'}`,
+  source: entry?.source ?? 'Unknown list',
+  percentStep: Number.isFinite(entry?.step) ? entry.step : 1,
+  status: entry?.status ?? 'failed',
+  endedAt: Number.isFinite(Number(entry?.at)) ? Number(entry.at) : endedAt,
+  rounds: (entry?.rounds ?? []).map((packed) => ({
+    levelId: packed?.[PACKED('id')] ?? null,
+    levelName: packed?.[PACKED('name')] ?? 'Unknown level',
+    targetPercent: packed?.[PACKED('target')] ?? null,
+    achievedPercent: packed?.[PACKED('achieved')] ?? null,
+    result: packed?.[RESULT] ?? 'failure',
+    elapsedMs: Number.isFinite(packed?.[PACKED('ms')]) ? packed[PACKED('ms')] : null,
+    video: packed?.[PACKED('video')] ?? null,
+    skipReason: packed?.[RESULT] === 'skipped' ? (packed?.[SKIP_REASON] ?? null) : null,
+  })),
+})
+
+/** Posts an entry to the server and returns the stored run, as `submitRun` does. */
+export const submitEntry = async (entry) => {
+  const payload = buildRunPayloadFromEntry(entry)
+  const result = await jsonRequest('/api/runs', { method: 'POST', body: payload, auth: true })
+  return result.run
+}

@@ -318,6 +318,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
                 onClear={history.clearHistory}
                 onExport={handleExportHistory}
                 onImport={history.importEntries}
+                auth={auth}
               />
 
               {exportMessage && (
