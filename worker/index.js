@@ -1,6 +1,7 @@
 /**
  * Cloudflare Worker that serves the two list sources this app cannot fetch
- * directly from the browser, because neither upstream sends CORS headers.
+ * directly from the browser, because neither upstream sends CORS headers, and
+ * that backs the v2 accounts and global leaderboard with a D1 database.
  *
  *   /impossible-levels      -> proxied and filtered from the Impossible Levels API
  *   /challenge-list         -> scraped and parsed from challengelist.gd into the
@@ -8,10 +9,30 @@
  *   /impossible-level-rate  -> the TPS/FPS badge for one level, read from that
  *                              level's page
  *
- * Both list endpoints send Access-Control-Allow-Origin so the site can call them.
- * Every request re-reads upstream, so the counts stay current without a
- * rebuild, and cache-control keeps browsers from re-fetching on every click.
+ *   /api/register /api/login /api/logout /api/me
+ *   /api/runs (GET, POST) /api/runs/:id (DELETE)
+ *   /api/leaderboard
+ *
+ *   /api/submissions (POST) /api/submissions/mine (GET)
+ *   /api/admin/submissions (GET) /api/admin/submissions/:id (GET)
+ *   /api/admin/submissions/:id/approve | /reject | /delete (POST)
+ *
+ *   env.ADMIN_PASSCODE  PBKDF2 hash of the moderation passcode
+ *
+ * The list endpoints are the same three as before, unchanged, and keep sending
+ * Access-Control-Allow-Origin so the site can call them. Every request re-reads
+ * upstream, so the counts stay current without a rebuild, and cache-control
+ * keeps browsers from re-fetching on every click.
+ *
+ * The API endpoints are also CORS open, because the site is served from GitHub
+ * Pages on a different origin from the Worker. That is safe to do because
+ * nothing is readable without a session token: the leaderboard is public, and
+ * everything that writes needs the Authorization header a third party site
+ * cannot read.
  */
+
+import { handleAccountRoutes } from './api.js'
+import { handleSubmissionRoutes } from './submissions.js'
 
 const IMPOSSIBLE_LEVELS_API = 'https://api.impossiblelevels.com/api/levels'
 const CHALLENGE_LIST_URL = 'https://challengelist.gd/challenges/'
@@ -28,8 +49,12 @@ const DETAIL_CONCURRENCY = 4
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, OPTIONS',
-  'access-control-allow-headers': 'Content-Type',
+  'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+  'access-control-allow-headers': 'Content-Type, Authorization, X-Admin-Passcode',
+  // A browser is only allowed to read a response with a custom header on it if
+  // the response opts in, so the leaderboard needs this to be readable at all.
+  'access-control-expose-headers': 'Content-Type',
+  'access-control-max-age': '86400',
 }
 
 const json = (data, init = {}) => {
@@ -289,18 +314,87 @@ const ROUTES = {
 const RATE_CACHE_CONTROL =
   'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800'
 
+// The session cookie is only a convenience: it lets the account survive a page
+// reload on a browser that blocks third-party cookies. The app itself always
+// sends the token in an Authorization header, which is what is actually
+// checked. SameSite=Lax plus Secure means it is never attached to a cross-site
+// request, so this cookie cannot be used to ride on someone else's session.
+const SESSION_COOKIE = (token, maxAgeSeconds) =>
+  `dlr_session=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax; Secure`
+
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS })
+    }
+
+    const url = new URL(request.url)
+    const key = url.pathname.replace(/^\/+/, '').replace(/\.json$/, '')
+
+    if (key === 'api' || key.startsWith('api/')) {
+      // A missing binding means the D1 database has not been created or bound
+      // yet. Saying so plainly beats a 500 with no explanation, and the list
+      // endpoints keep working either way.
+      if (!env?.DB) {
+        return json(
+          { error: 'This Worker has no database bound. Create the D1 database and deploy again.' },
+          { status: 503, headers: { 'cache-control': 'no-store' } },
+        )
+      }
+
+      try {
+        // The video routes come first because they own /api/submissions and
+        // /api/admin; anything they do not match falls through to the account
+        // routes below.
+        const submission = await handleSubmissionRoutes({
+          db: env.DB,
+          request,
+          url,
+          key,
+          adminPasscode: env.ADMIN_PASSCODE,
+        })
+        if (submission) {
+          const headers = { 'cache-control': 'no-store' }
+          return json(submission.error ? { error: submission.error } : (submission.body ?? {}), {
+            status: submission.status ?? 200,
+            headers,
+          })
+        }
+
+        const result = await handleAccountRoutes({ db: env.DB, request, url, key })
+        if (result) {
+          const headers = { 'cache-control': 'no-store' }
+          if (result.setCookie) {
+            headers['set-cookie'] = SESSION_COOKIE(result.setCookie, 60 * 60 * 24 * 30)
+          }
+          if (result.clearCookie) {
+            headers['set-cookie'] = SESSION_COOKIE('', 0)
+          }
+
+          // A route reports a failure as { error, status }, and success as
+          // { body, status }. Both shapes have to reach the client: reading
+          // only result.body sent `{}` with the right status code, so a wrong
+          // password came back as a 401 with no explanation and the sign in
+          // form had nothing to show.
+          const payload = result.error
+            ? { error: result.error }
+            : (result.body ?? {})
+
+          return json(payload, { status: result.status ?? 200, headers })
+        }
+      } catch (error) {
+        return json(
+          { error: error?.message ?? 'Something went wrong on the server' },
+          { status: 500, headers: { 'cache-control': 'no-store' } },
+        )
+      }
+
+      return json({ error: 'Unknown endpoint' }, { status: 404, headers: { 'cache-control': 'no-store' } })
     }
 
     if (request.method !== 'GET') {
       return json({ error: 'Method not allowed' }, { status: 405 })
     }
-
-    const url = new URL(request.url)
-    const key = url.pathname.replace(/^\/+/, '').replace(/\.json$/, '')
 
     if (key === 'impossible-level-rate') {
       const id = url.searchParams.get('id')

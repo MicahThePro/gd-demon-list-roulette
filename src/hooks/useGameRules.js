@@ -44,12 +44,16 @@ export const timeLimitMinutesToMs = (minutes) => {
   return safe > 0 ? safe * 60 * 1000 : 0
 }
 
-// Skipping is on unless the player has explicitly turned it off. A missing
-// cookie therefore means "can skip", which is the behaviour existing players
-// already have.
+// Skipping is OFF unless the player has explicitly turned it on. A missing
+// cookie therefore means "cannot skip", which is the harder default: a run
+// played straight through is the one people trust on a leaderboard.
+//
+// This only affects someone visiting for the first time. A player who already
+// has the cookie keeps whatever they chose, because their saved preference is a
+// decision they made rather than a default they never saw.
 const readAllowSkip = () => {
   const raw = readCookie(COOKIE_ALLOW_SKIP)
-  if (raw === null) return true
+  if (raw === null) return false
   return raw !== 'false'
 }
 

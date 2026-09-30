@@ -15,6 +15,9 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
     setIsSkipPickerOpen(false)
   }, [run.currentTarget, run.currentLevel?.id])
 
+  // The recording prompt is shown in a dialog, and Escape closes it the same
+  // way it closes the skip picker. Only the newest dialog responds, so the
+  // picker takes priority while it is the later one opened.
   // Escape backs out of the skip picker the same way it backs out of the quit
   // dialog, and the picker takes priority since it is the later one opened.
   useEffect(() => {

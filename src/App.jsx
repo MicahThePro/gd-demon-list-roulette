@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import HomePage from './pages/HomePage'
 import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
+import AdminPage from './pages/AdminPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory } from './hooks/useRunHistory'
+import { useAuth } from './hooks/useAuth'
 import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
@@ -15,6 +17,13 @@ const SCREEN = {
   ROULETTE: 'roulette',
   RESULTS: 'results',
 }
+
+/* The moderation panel lives at /admin. The route is not a secret, and does
+   not need to be: every admin endpoint re-checks the passcode, and the data
+   it protects is not readable without it. Detected from the path on load and
+   on every navigation, so it survives a reload or a shared link. */
+const isAdminPath = () =>
+  typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '').endsWith('/admin')
 
 // The AREDL list endpoint returns no creator or video, only publisher_id, so
 // those come from the per-level detail endpoint. That is fetched on demand for
@@ -80,9 +89,11 @@ const hydrateAredlLevel = async (runState, level) => {
 
 function App() {
   const [screen, setScreen] = useState(SCREEN.HOME)
+  const [isAdmin, setIsAdmin] = useState(isAdminPath)
   const [run, setRun] = usePersistentRun()
   const gameRules = useGameRules()
   const history = useRunHistory()
+  const auth = useAuth()
   // Identifies the run being played, so an ended run is recorded exactly once
   // even though several code paths reach the results screen.
   const trackedRunId = useRef(null)
@@ -94,6 +105,15 @@ function App() {
   // changelog entry as the on-page heading.
   useEffect(() => {
     document.title = `${SITE_NAME} ${LATEST_VERSION}`
+  }, [])
+
+  // Leaves the admin route without a full reload, so going back to the site
+  // does not tear down the run in progress behind it.
+  const exitAdmin = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState({}, '', window.location.pathname.replace(/\/admin\/?$/, '/') || '/')
+    }
+    setIsAdmin(false)
   }, [])
 
   const saveCurrentRun = () => {
@@ -396,6 +416,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      {!isAdmin && (
       <header className="topbar">
         <div className="brand-wrap">
           <span className="brand-mark">DLR</span>
@@ -456,7 +477,12 @@ function App() {
           </div>
         )}
       </header>
+      )}
 
+      {isAdmin ? (
+        <AdminPage onExit={exitAdmin} />
+      ) : (
+        <>
       {screen === SCREEN.HOME && (
         <HomePage
           onStart={startRun}
@@ -466,6 +492,7 @@ function App() {
           run={run}
           savedRunCode={saveCode}
           gameRules={gameRules}
+          auth={auth}
         />
       )}
       {screen === SCREEN.ROULETTE && run && (
@@ -487,7 +514,10 @@ function App() {
           onSaveRun={saveCurrentRun}
           onLoadRun={loadRunFromCode}
           savedRunCode={saveCode}
+          auth={auth}
         />
+      )}
+        </>
       )}
     </div>
   )

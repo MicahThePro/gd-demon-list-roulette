@@ -15,6 +15,43 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v2-1',
+    version: 'v2.1',
+    title: 'Video proof, and runs that are checked before they count',
+    summary: 'Point us at a video of your run when you submit it, and have somebody watch it before it goes on the leaderboard.',
+    changes: [
+      'A run can now be submitted with a video of it. On the results screen you pick the file type and paste a link to a video you have already uploaded somewhere.',
+      'The site does not host video, so there is nothing to upload and no size limit. Upload it to Google Drive, YouTube, Discord, OneDrive or anywhere else you already have an account, make it link shareable, and paste that link.',
+      'If you use YouTube, upload as Unlisted rather than public, so the video stays off search and off your channel while it is being checked.',
+      'A run cannot go on the global leaderboard without a video, and the video has to be watched first. Your run waits in a queue until somebody has looked at it.',
+      'The reviewer sees the run’s own numbers next to the video, so every level you cleared, the percentage you hit and how long each one took are there to compare against what the video shows.',
+      'You can add a note with your submission, which helps if your video has a long intro or the run does not start at 0:00.',
+      'A rejected run gets a note explaining why, so you know what to change before your next attempt.',
+      'The leaderboard itself works exactly as before. Five boards, filterable by list, your own row highlighted. It just holds fewer runs now, because each one has been watched.',
+    ],
+  },
+  {
+    id: 'v2-0',
+    version: 'v2.0',
+    title: 'Accounts, and a leaderboard everybody shares',
+    summary: 'Sign in, submit a run, and see how far everyone else got. Five different boards, filterable by list, with your own row highlighted.',
+    changes: [
+      'You can now make an account with a username and a password. There is no email address involved, so there is nothing to confirm and no message to wait for.',
+      'Your password is hashed on the server before it is stored, and is never written down in readable form. Signing in gives you a token that lives in this browser only, so the account is not tied to a device you might lose.',
+      'The results screen has a Submit run button. Sign in and any run you finish can be sent to a global leaderboard that everyone can read, whether or not you have an account.',
+      'Submitting is always your choice. A run is recorded in your own leaderboard either way, and the local leaderboard, the export code and the save codes all work exactly as before.',
+      'Submitting the same run twice replaces it instead of counting it twice, so there is no way to farm a board by pressing the button again.',
+      'A run can only be marked as cleared if it actually has a 100% round behind it, and the percentage a run is ranked on is worked out from the levels you played rather than from anything the page asks for. That means a hand-edited request cannot post a perfect run with nothing to show for it.',
+      "The leaderboard page has two tabs now. Your runs is the leaderboard you already had, and Global is everybody who has submitted one. They are kept apart on purpose, so clearing your own runs can never be mistaken for clearing the site's.",
+      'Global has five boards: Farthest % reached, Most levels cleared, Fastest run, Fewest skips, and Most recent. Fewest skips is the one to watch if you play clean rather than deep.',
+      'Every board can be filtered down to a single list, so you can see the Pointercrate board, the AREDL board, the Challenge List board, the Impossible Levels board and the GSL board on their own.',
+      'Your own run is highlighted on the board and you are told your rank, plus how many runs you have submitted and the best you have done. If you are outside the top fifty, the board still tells you where you stand.',
+      'The board refreshes on its own every thirty seconds, so you can leave it open while you play and see your submission appear.',
+      'The list proxy Worker and the Impossible Levels and Challenge Lists are unchanged. Same Worker, same URLs, it just also holds the accounts and the leaderboard now.',
+      'Signing in is remembered between visits, and signing out works even with no connection.',
+    ],
+  },
+  {
     id: 'v1-9',
     version: 'v1.9',
     title: 'Play your way, and say why you skipped',

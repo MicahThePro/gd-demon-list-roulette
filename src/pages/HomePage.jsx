@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import Leaderboard from '../components/Leaderboard'
+import GlobalLeaderboard from '../components/GlobalLeaderboard'
+import AccountDialog from '../components/AccountDialog'
 import ChangelogDialog from '../components/ChangelogDialog'
 import SettingsDialog from '../components/SettingsDialog'
 import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds } from '../services/listService'
@@ -27,9 +29,14 @@ const getBoundsForSource = (sourceName) => {
   return fetchAredlListBounds()
 }
 
-export default function HomePage({ onStart, onLoadRun, savedRunCode, history, gameRules }) {
+export default function HomePage({ onStart, onLoadRun, savedRunCode, history, gameRules, auth }) {
   const [isLoading, setIsLoading] = useState(false)
   const [isBoardOpen, setIsBoardOpen] = useState(false)
+  // The board view has two halves: what this browser has played, and what
+  // everybody has submitted. Separate tabs rather than one merged list, so a
+  // personal run is never mistaken for a submitted one.
+  const [boardTab, setBoardTab] = useState('mine')
+  const [isAccountOpen, setIsAccountOpen] = useState(false)
   const [isChangelogOpen, setIsChangelogOpen] = useState(false)
   const [source, setSource] = usePersistentListSource()
   const [startRange, setStartRange] = useState('')
@@ -252,8 +259,8 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
         <section className="panel board-page">
           <header className="board-page-bar">
             <div>
-              <p className="eyebrow">Your runs</p>
-              <h2>Leaderboard</h2>
+              <p className="eyebrow">Runs</p>
+              <h2>Leaderboards</h2>
             </div>
             <button
               type="button"
@@ -264,28 +271,72 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
             </button>
           </header>
 
-          <Leaderboard
-            entries={history.entries}
-            onDelete={history.deleteEntry}
-            onClear={history.clearHistory}
-            onExport={handleExportHistory}
-            onImport={history.importEntries}
-          />
+          {/* The two boards are separate views rather than two lists in one
+              scroll area, so a personal run can never be read as a submitted
+              one and a clear-all here can never be mistaken for clearing the
+              global board.
 
-          {exportMessage && (
-            <div className="export-box">
-              <p className="export-status">{exportMessage}</p>
-              {exportCode && (
-                <textarea
-                  readOnly
-                  rows="3"
-                  value={exportCode}
-                  aria-label="Exported leaderboard code"
-                  onFocus={(event) => event.target.select()}
-                />
+              This sits inside .board-page, which is a three row grid: header,
+              the list area, then the footer. The tab strip is NOT given its own
+              row, because a fourth child lands in the minmax(0, 1fr) row and
+              stretches to fill it, which is what made these two buttons tower
+              over the whole page. It is placed inside the list row instead, so
+              the row count is unchanged and the strip is only as tall as it
+              needs to be. */}
+          <div className="board-body">
+            <div className="board-view-tabs" role="tablist" aria-label="Leaderboard">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={boardTab === 'mine'}
+                className={boardTab === 'mine' ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
+                onClick={() => setBoardTab('mine')}
+              >
+                Your runs
+                {history.entries.length > 0 && (
+                  <span className="lb-badge">{history.entries.length}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={boardTab === 'global'}
+                className={boardTab === 'global' ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
+                onClick={() => setBoardTab('global')}
+              >
+                Global
+              </button>
+            </div>
+
+          {boardTab === 'global' ? (
+            <GlobalLeaderboard user={auth.user} />
+          ) : (
+            <div className="board-personal">
+              <Leaderboard
+                entries={history.entries}
+                onDelete={history.deleteEntry}
+                onClear={history.clearHistory}
+                onExport={handleExportHistory}
+                onImport={history.importEntries}
+              />
+
+              {exportMessage && (
+                <div className="export-box">
+                  <p className="export-status">{exportMessage}</p>
+                  {exportCode && (
+                    <textarea
+                      readOnly
+                      rows="3"
+                      value={exportCode}
+                      aria-label="Exported leaderboard code"
+                      onFocus={(event) => event.target.select()}
+                    />
+                  )}
+                </div>
               )}
             </div>
           )}
+          </div>
         </section>
       ) : (
       <section className="panel hero-panel">
@@ -333,6 +384,13 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
               onClick={() => setIsChangelogOpen(true)}
             >
               What's new
+            </button>
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={() => setIsAccountOpen(true)}
+            >
+              {auth.user ? auth.user.displayName : 'Sign in'}
             </button>
             <span className="settings-summary">
               Step: +{percentStep}% ({estimatedRounds} levels to finish)
@@ -446,6 +504,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
         onTotalTimeLimitDraftChange={setTotalTimeLimitDraft}
         onCommitTotalTimeLimit={commitTotalTimeLimit}
       />
+      <AccountDialog isOpen={isAccountOpen} onClose={() => setIsAccountOpen(false)} auth={auth} />
       <ChangelogDialog
         isOpen={isChangelogOpen}
         onClose={() => setIsChangelogOpen(false)}

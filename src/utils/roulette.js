@@ -160,7 +160,10 @@ export const decodeHistory = (encoded) => {
   }
 }
 
-export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1, allowSkip = true, levelTimeLimitMs = 0, totalTimeLimitMs = 0 }) => {
+// allowSkip defaults to false, matching the settings default: a run has to
+// opt in to skipping rather than out of it. App always passes the player's own
+// setting, so this only covers a caller that does not.
+export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1, allowSkip = false, levelTimeLimitMs = 0, totalTimeLimitMs = 0 }) => {
   const safeStep = normalizePercentStep(percentStep)
   const seedStart = clampPercent(Math.max(safeStep, startingPercent ?? safeStep))
   const currentLevel = pickNextLevel(levels, [], allowDuplicates)

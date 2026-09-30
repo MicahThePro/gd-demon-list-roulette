@@ -1,6 +1,19 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "demon-roulette-list-proxy",
-  "main": "worker/index.js",
-  "compatibility_date": "2025-01-01"
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "demon-roulette-list-proxy",
+	"main": "worker/index.js",
+	"compatibility_date": "2025-01-01",
+	// The Worker reads the database as env.DB, so the binding name has to stay
+	// "DB". The database itself was created with `npx wrangler d1 create
+	// demon-roulette`; wrangler's wizard will offer to add a binding of its own,
+	// but that one is named demon_roulette and would point the same database at
+	// a name this code never reads, so only this single entry belongs here.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "demon-roulette",
+			"database_id": "3f2ef1db-ce7a-4c8b-8a98-84c3efd57020",
+			"migrations_dir": "worker/migrations"
+		}
+	]
 }

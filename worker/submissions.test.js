@@ -1,0 +1,302 @@
+/**
+ * End-to-end checks for run submission and moderation.
+ *
+ * The proof is a link to a video on the player's own host, not an upload, so
+ * there is no object storage anywhere in this. The real request handler, the
+ * real SQL and the real passcode check all run; what is verified is the code
+ * that ships.
+ *
+ * Run with: node --experimental-sqlite worker/submissions.test.js
+ */
+import { DatabaseSync } from 'node:sqlite'
+import { readFileSync } from 'node:fs'
+import process from 'node:process'
+import worker from './index.js'
+import { createPasswordRecord } from './auth.js'
+
+const SCHEMA = ['./migrations/0001_init.sql', './migrations/0002_submissions.sql']
+  .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
+  .join('\n')
+
+const createDb = () => {
+  const db = new DatabaseSync(':memory:')
+  db.exec(SCHEMA)
+
+  const prepared = (sql) => {
+    const statement = db.prepare(sql)
+    const execute = (values) => {
+      statement.run(...values)
+      return { success: true, meta: {} }
+    }
+    return {
+      bind: (...values) => ({
+        first: async () => statement.get(...values) ?? null,
+        all: async () => ({ results: statement.all(...values) }),
+        run: async () => execute(values),
+      }),
+      first: async () => statement.get() ?? null,
+      all: async () => ({ results: statement.all() }),
+      run: async () => execute([]),
+    }
+  }
+
+  return {
+    prepare: prepared,
+    batch: async (statements) => {
+      db.exec('BEGIN')
+      try {
+        for (const statement of statements) {
+          await statement.run()
+        }
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+      return statements.map(() => ({ success: true }))
+    },
+  }
+}
+
+const PASSCOD = (await createPasswordRecord('258456')).passwordHash
+const makeEnv = (extra = {}) => ({ DB: createDb(), ADMIN_PASSCODE: PASSCOD, ...extra })
+
+const BASE = 'https://worker.test'
+let failures = 0
+const check = (name, condition, detail = '') => {
+  if (condition) {
+    console.log(`  pass  ${name}`)
+  } else {
+    failures += 1
+    console.log(`  FAIL  ${name}${detail ? ` -- ${detail}` : ''}`)
+  }
+}
+
+const call = async (env, path, { method = 'GET', body, token, passcode } = {}) => {
+  const headers = {}
+  if (body !== undefined) headers['content-type'] = 'application/json'
+  if (token) headers.authorization = `Bearer ${token}`
+  if (passcode) headers['x-admin-passcode'] = passcode
+
+  return worker.fetch(
+    new Request(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+    env,
+  )
+}
+
+const jsonCall = async (env, path, opts) => {
+  const response = await call(env, path, opts)
+  let data
+  try {
+    data = await response.clone().json()
+  } catch {
+    data = null
+  }
+  return { response, data }
+}
+
+const aRun = (over = {}) => ({
+  runId: 'run-1',
+  source: 'All Rated Extreme Demons List',
+  percentStep: 1,
+  status: 'failed',
+  endedAt: 1_700_000_000_000,
+  rounds: [
+    { levelId: 'a', levelName: 'Alpha', targetPercent: 1, achievedPercent: 1, result: 'success', elapsedMs: 30000 },
+    { levelId: 'b', levelName: 'Beta', targetPercent: 2, achievedPercent: 2, result: 'success', elapsedMs: 40000 },
+    { levelId: 'c', levelName: 'Gamma', targetPercent: 3, achievedPercent: 1, result: 'failure', elapsedMs: 20000 },
+  ],
+  ...over,
+})
+
+// A plausible proof: a share link to a video on someone else's host.
+const proof = (over = {}) => ({
+  videoUrl: 'https://drive.google.com/file/d/abc123/view',
+  container: 'mp4',
+  note: 'recorded with OBS',
+  ...over,
+})
+
+const setup = async (env = makeEnv()) => {
+  const auth = (await jsonCall(env, '/api/register', { method: 'POST', body: { username: 'player', password: 'a good password' } })).data
+  const run = (await jsonCall(env, '/api/runs', { method: 'POST', body: aRun(), token: auth.token })).data.run
+  return { env, token: auth.token, runId: run.id }
+}
+
+const submit = (env, runId, body, token) =>
+  jsonCall(env, '/api/submissions', { method: 'POST', body: { ...body, runId }, token })
+
+console.log('the admin passcode')
+{
+  const { env } = await setup()
+
+  check('no passcode is refused', (await jsonCall(env, '/api/admin/submissions')).response.status === 401)
+  check('a wrong passcode is refused', (await jsonCall(env, '/api/admin/submissions', { passcode: '000000' })).response.status === 401)
+
+  const wrong = await jsonCall(env, '/api/admin/submissions', { passcode: '000000' })
+  check('a wrong passcode says so plainly', /passcode/i.test(wrong.data?.error ?? ''), JSON.stringify(wrong.data))
+
+  const right = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
+  check('the right passcode gets in', right.response.status === 200, JSON.stringify(right.data))
+  check('the queue reads as an array', Array.isArray(right.data?.submissions))
+
+  // A wrong passcode must not be able to tell whether a submission exists.
+  const probe = await jsonCall(env, '/api/admin/submissions/999', { passcode: '000000' })
+  check('a wrong passcode cannot confirm a submission exists', probe.response.status === 401)
+}
+
+console.log('the built-in passcode works with no setup')
+{
+  // The owner's chosen passcode is hashed into the Worker, so a first deploy
+  // needs no secret step at all.
+  const env = { DB: createDb() }
+
+  const in1 = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
+  check('the built-in passcode works with no secret set', in1.response.status === 200, JSON.stringify(in1.data))
+  check('a wrong passcode is still refused', (await jsonCall(env, '/api/admin/submissions', { passcode: '258457' })).response.status === 401)
+
+  // A secret overrides it, so the passcode can be changed without a deploy.
+  const override = { ...env, ADMIN_PASSCODE: (await createPasswordRecord('a different code')).passwordHash }
+  check('a secret overrides the built-in one', (await jsonCall(override, '/api/admin/submissions', { passcode: 'a different code' })).response.status === 200)
+  check('and the built-in one stops working', (await jsonCall(override, '/api/admin/submissions', { passcode: '258456' })).response.status === 401)
+}
+
+console.log('submitting a link')
+{
+  const { env, token, runId } = await setup()
+
+  check('submitting without a session is refused', (await submit(env, runId, proof(), undefined)).response.status === 401)
+
+  const ok = await submit(env, runId, proof(), token)
+  check('a link is accepted', ok.response.status === 201, JSON.stringify(ok.data))
+  check('it starts out pending', ok.data.submission?.status === 'pending', JSON.stringify(ok.data))
+
+  // Only http and https. A javascript: or data: URL is refused outright rather
+  // than normalised, because a moderator clicks this link.
+  for (const bad of [
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'file:///etc/passwd',
+    'ftp://example.com/video.mp4',
+    'not a url at all',
+    '',
+  ]) {
+    const result = await submit(env, runId, proof({ videoUrl: bad }), token)
+    check(`"${bad.slice(0, 24)}" is refused`, result.response.status === 400, String(result.response.status))
+  }
+
+  for (const good of [
+    'https://drive.google.com/file/d/abc/view',
+    'https://youtu.be/dQw4w9WgXcQ',
+    'http://example.com/run.mp4',
+  ]) {
+    const result = await submit(env, runId, proof({ videoUrl: good }), token)
+    check(`"${good.slice(0, 30)}" is accepted`, result.response.status === 201, String(result.response.status))
+  }
+
+  for (const container of ['mp4', 'mov', 'avi', 'mkv', 'webm']) {
+    const result = await submit(env, runId, proof({ container }), token)
+    check(`a .${container} video is accepted`, result.response.status === 201, String(result.response.status))
+  }
+  check('an unknown type is refused', (await submit(env, runId, proof({ container: 'exe' }), token)).response.status === 400)
+
+  check('a missing run id is refused', (await submit(env, 'not-a-number', proof(), token)).response.status === 400)
+  check("somebody else's run cannot be submitted", (await submit(env, 99999, proof(), token)).response.status === 404)
+}
+
+console.log('the leaderboard only holds approved runs')
+{
+  const { env, token, runId } = await setup()
+
+  const board = async () => (await jsonCall(env, '/api/leaderboard')).data
+
+  check('a run with no proof is off the board', (await board()).entries.length === 0)
+
+  await submit(env, runId, proof(), token)
+  check('a pending run is still off the board', (await board()).entries.length === 0)
+
+  const queue = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
+  const submission = queue.data.submissions[0]
+  check('the submission is in the queue', Boolean(submission), JSON.stringify(queue.data))
+  check('the queue carries the player', submission.username === 'player')
+  check('the queue carries the link for the moderator', submission.videoUrl === proof().videoUrl, submission.videoUrl)
+  check("the queue carries the player's note", submission.note === 'recorded with OBS', submission.note)
+  check('the queue carries the round list to check against', Array.isArray(submission.rounds) && submission.rounds.length === 3, String(submission.rounds?.length))
+  check('the queue carries the score', submission.score === 3, String(submission.score))
+
+  const pendingOnly = await jsonCall(env, '/api/admin/submissions?status=pending', { passcode: '258456' })
+  check('filtering by pending works', pendingOnly.data.submissions.length === 1)
+
+  await jsonCall(env, `/api/admin/submissions/${submission.id}/approve`, { method: 'POST', body: { note: 'watched it, looks right' }, passcode: '258456' })
+
+  const after = (await board())
+  check('an approved run goes on the board', after.entries.length === 1, JSON.stringify(after.entries))
+  check('and it is the right one', after.entries[0].displayName === 'player')
+
+  // A moderator changing their mind has to take the run back off.
+  await jsonCall(env, `/api/admin/submissions/${submission.id}/reject`, { method: 'POST', body: { note: 'on reflection' }, passcode: '258456' })
+  check('a rejected run comes off the board', (await board()).entries.length === 0)
+}
+
+console.log('moderation actions')
+{
+  const { env, token, runId } = await setup()
+  await submit(env, runId, proof(), token)
+
+  const id = (await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })).data.submissions[0].id
+
+  check('approving needs the passcode', (await jsonCall(env, `/api/admin/submissions/${id}/approve`, { method: 'POST', body: {} })).response.status === 401)
+  check('approving nothing is a 404', (await jsonCall(env, '/api/admin/submissions/9999/approve', { method: 'POST', body: {}, passcode: '258456' })).response.status === 404)
+
+  const detail = await jsonCall(env, `/api/admin/submissions/${id}`, { passcode: '258456' })
+  check('one submission can be read on its own', detail.response.status === 200 && detail.data.submission.id === id, JSON.stringify(detail.data).slice(0, 80))
+
+  // Deleting has to take the run with it, not just the submission.
+  const fresh = await setup()
+  await submit(fresh.env, fresh.runId, proof(), fresh.token)
+  const freshId = (await jsonCall(fresh.env, '/api/admin/submissions', { passcode: '258456' })).data.submissions[0].id
+
+  await jsonCall(fresh.env, `/api/admin/submissions/${freshId}/delete`, { method: 'POST', body: {}, passcode: '258456' })
+  const gone = await jsonCall(fresh.env, '/api/admin/submissions', { passcode: '258456' })
+  check('deleting removes the submission', gone.data.submissions.length === 0, JSON.stringify(gone.data))
+  check('deleting removes the run too', (await jsonCall(fresh.env, '/api/runs', { token: fresh.token })).data.runs.length === 0)
+}
+
+console.log('a player can see their own submissions')
+{
+  const { env, token, runId } = await setup()
+  await submit(env, runId, proof(), token)
+
+  const mine = await jsonCall(env, '/api/submissions/mine', { token })
+  check('a player sees their own submission', mine.data.submissions.length === 1, JSON.stringify(mine.data))
+  check('with its status', mine.data.submissions[0].status === 'pending')
+  check('nobody else can', (await jsonCall(env, '/api/submissions/mine')).response.status === 401)
+}
+
+console.log('nothing is stored and nothing is fetched')
+{
+  const { env, runId } = await setup()
+
+  // No R2 binding at all: the Worker must work with only a database, or every
+  // deploy would depend on storage nobody is paying for.
+  const noBucket = await jsonCall(env, '/api/submissions', {
+    method: 'POST',
+    body: { ...proof(), runId },
+    token: (await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'player', password: 'a good password' } })).data.token,
+  })
+  check('submitting works with no storage binding', noBucket.response.status === 201, JSON.stringify(noBucket.data))
+
+  // The old video streaming route is gone rather than left failing.
+  const old = await jsonCall(env, `/api/admin/submissions/1/video`, { passcode: '258456' })
+  check('the old video route no longer exists', old.response.status === 404, String(old.response.status))
+
+  const unknown = await jsonCall(env, '/api/submissions/1/video', { passcode: '258456' })
+  check('and neither does a public one', unknown.response.status === 404, String(unknown.response.status))
+}
+
+console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)
+process.exit(failures === 0 ? 0 : 1)
