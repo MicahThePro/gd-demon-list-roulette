@@ -1,6 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import AdminPage from './pages/AdminPage'
+/* index.css first, then App.css, and in the same order as main.jsx. index.css
+   carries the dark theme: the :root background gradient, the body/root sizing and
+   the base text colour. App.css only styles components and assumes those are
+   already in place, so without this import the panel renders unstyled components
+   over the browser's white default -- a dark panel with washed-out text. */
+import './index.css'
 import './App.css'
 
 /* The moderation panel as its own entry point, mounted at /admin.
