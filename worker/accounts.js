@@ -27,6 +27,29 @@ const PAGE_SIZE = 50
 // over a call and type by hand. Grouped in threes so it can be said in chunks.
 const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
+/* A username reduced to exactly the form the accounts table stores, which is what
+   a comparison has to be against.
+
+   Registration and login both run a submitted name through this, so a name that
+   went through either is already canonical. A username sent to a route that does
+   not normalise -- /api/redeem, and the code branch of /api/login -- has not been,
+   and comparing that raw text against a canonical one rejects names that are the
+   same account. Trim, lowercase and drop anything outside the alphabet all happen
+   here, so both sides of the comparison are the same shape. */
+export const canonicalUsername = (value) =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.]/g, '')
+    .slice(0, 20)
+
+/* Each character as U+XXXX. The only readable way to show a difference that
+   renders as nothing. */
+const codePoints = (value) =>
+  [...String(value ?? '')]
+    .map((char) => `U+${char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`)
+    .join(' ')
+
 // How long an issued code stays redeemable if it is never used. Long enough to
 // hand over in person, short enough that a forgotten code on an unattended
 // screen stops working.
@@ -98,18 +121,19 @@ export const redeemLoginCodeByHash = async (db, supplied, now, expectedUsername 
      time and an old bookmark must keep working. But when one IS given it has to
      match: otherwise a code pasted into the wrong account's row would sign in as
      the code's real owner and say nothing about it. Compared before the claim, so
-     a mistyped username does not cost anybody the code.
-
-     This is the one place a failure names itself, which is safe precisely because
-     it is only reached once the code hash has already matched. Holding a valid
-     code IS the credential at that point, so naming the account it belongs to
-     tells an attacker nothing they did not already have -- and it is the
-     difference between "your code is dead" and "your code is for somebody else",
-     which are otherwise the same unhelpful sentence. */
-  const wanted = String(expectedUsername ?? '').trim().toLowerCase()
+     a mistyped username does not cost anybody the code. */
+  const wanted = canonicalUsername(expectedUsername)
   if (wanted && wanted !== row.username) {
     return {
-      error: `That code was issued for @${row.username}, not @${wanted}. Check which account you issued it on.`,
+      error:
+        `That code was issued for @${row.username}, not @${wanted}. ` +
+        // The code points, because "these look identical" is the one report that
+        // cannot be acted on. Two strings that render the same but differ are
+        // almost always a homoglyph (a Cyrillic т for a Latin t, say) or a
+        // character that looks like nothing at all, and neither is visible in a
+        // sentence. Naming the bytes turns a puzzle into a fix.
+        `The two are not the same text: sent ${codePoints(expectedUsername)}, ` +
+        `account name is ${codePoints(row.username)}.`,
       status: 401,
     }
   }
@@ -380,19 +404,15 @@ export const handleLoginCodeRoutes = async ({ db, request, key }) => {
     return { error: 'Could not read that request', status: 400 }
   }
 
+  /* No username check of its own here. redeemLoginCodeByHash has already compared
+     one, against the code's own account, before it claimed anything -- so
+     re-checking it afterwards meant comparing against the session that had just
+     been created, which is the same account and therefore never a mismatch. Two
+     checks of one thing, one of them in the wrong place, and the second one could
+     only ever be a stale comparison if the first were ever removed. */
   const result = await redeemLoginCodeByHash(db, body.code, Date.now(), body.username)
   if (result.error) {
     return { error: result.error, status: result.status }
-  }
-
-  /* The username is optional here, because /api/redeem worked without one for a
-     long time. But when one IS sent it is checked, and a mismatch is refused the
-     same way a wrong code is: otherwise a code pasted into the wrong account's
-     row would sign you in as the code's real owner, and nothing on screen would
-     say so. */
-  const claimed = String(body.username ?? '').trim().toLowerCase()
-  if (claimed && claimed !== result.user.username) {
-    return { error: 'That login code is not valid', status: 401 }
   }
 
   const user = result.user

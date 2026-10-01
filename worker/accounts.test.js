@@ -516,6 +516,21 @@ console.log('a login code works as a password')
   const noUsername = await jsonCall(env, '/api/redeem', { method: 'POST', body: { code: lastCode } })
   check('a code with no username still redeems', noUsername.response.status === 200, JSON.stringify(noUsername.data.user))
 
+  /* "it4717" for "lt4717" is a misread, not a typo: 1, l and I are the same glyph
+     in most fonts, so the typed name looks right and the check still refuses it.
+     The server cannot fix that -- folding the look-alikes together would make
+     lt4717 and i14717 the same account and hand out codes across them. So the
+     check stays exact, and the fix is that the panel puts the name in the link
+     rather than leaving a moderator to read it and type it back. Asserted here as
+     the shape the panel builds, so it cannot quietly lose the parameter again. */
+  const liz = (await jsonCall(env, '/api/register', { method: 'POST', body: { username: 'lt4717', password: 'a good password' } })).data
+  const lizCode = (await jsonCall(env, `/api/admin/accounts/${liz.user.id}/login-code`, { method: 'POST', passcode: '258456' })).data
+  const misread = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'it4717', code: lizCode.code } })
+  check('a misread one is still refused, so the name has to come from the link', misread.response.status === 401, JSON.stringify(misread.data))
+  const byLink = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: new URLSearchParams('username=lt4717').get('username'), code: lizCode.code } })
+  check('the name the panel puts in the link redeems', byLink.response.status === 200, JSON.stringify(byLink.data))
+  check('as the account it belongs to', byLink.data.user?.username === 'lt4717', JSON.stringify(byLink.data.user))
+
   // Passwords are untouched. A real password must not be treated as a code, and
   // the wrong password must still be refused.
   const wrongPassword = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: 'a good password' } })

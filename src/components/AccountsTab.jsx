@@ -78,7 +78,7 @@ const AuditLog = ({ passcode }) => {
   )
 }
 
-const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
+const AccountDetail = ({ passcode, accountId, redeemUrl, onBack, onChanged }) => {
   const [account, setAccount] = useState(null)
   const [error, setError] = useState('')
   // The code is held in component state and never fetched again: the Worker only
@@ -312,6 +312,20 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
               Copy this now. It is not stored anywhere readable and cannot be
               shown again &mdash; if you lose it, issue another.
             </p>
+            {/* Names the account the code belongs to. The code is a credential and
+                the only copy in existence, so anything that could put it in front
+                of somebody on the wrong account has to be impossible to do by
+                accident -- and it is shown once, on a panel where the surrounding
+                text is a moderator's, several accounts deep.
+
+                The username is here as a copy button as well as text, because this
+                is the exact string that has to be typed on the code page and 1, l
+                and I are the same glyph in most fonts. Reading it off the screen
+                and typing it back is the one way a correct name becomes a wrong
+                one, so it is handed over as bytes instead. */}
+            <p className="settings-hint">
+              This code is for <strong>@{account.username}</strong> only.
+            </p>
             <code className="admin-code">{issuedCode}</code>
             <div className="action-row">
               <button
@@ -320,6 +334,13 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
                 onClick={() => navigator.clipboard?.writeText(issuedCode)}
               >
                 Copy code
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => navigator.clipboard?.writeText(account.username)}
+              >
+                Copy username
               </button>
               <button type="button" className="secondary-button" onClick={handleRevoke} disabled={isWorking}>
                 Throw this code away
@@ -351,6 +372,27 @@ const AccountDetail = ({ passcode, accountId, onBack, onChanged }) => {
         )}
         {account.loginCode?.usedAt && (
           <p className="settings-hint">The last code was used {formatAgo(account.loginCode.usedAt)}.</p>
+        )}
+
+        {/* The code page link, carrying the name with it. This panel already holds
+            the exact string, and the person at the other end would otherwise have
+            to read it off a screen and type it back -- which is how a correct
+            account name turns into "that code was issued for somebody else".
+            1, l and I are the same glyph in most fonts; the link cannot be misread. */}
+        {redeemUrl && (
+          <p className="settings-hint">
+            Then open{' '}
+            <a
+              href={`${redeemUrl}?username=${encodeURIComponent(account.username)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              the code page
+            </a>{' '}
+            with the code above &mdash; @{account.username} is filled in for you. It
+            opens in a new tab, and signing in replaces whatever session that
+            browser had, so keep this panel&rsquo;s tab to yourself.
+          </p>
         )}
       </div>
 
@@ -623,11 +665,24 @@ export default function AccountsTab({ passcode, redeemUrl }) {
     )
   }
 
+  /* Keyed by the account id, so opening a different account mounts a fresh
+     AccountDetail instead of reusing the one already on screen.
+     This was the bug behind "That code was issued for @someone-else": the issued
+     code, the delete confirmation and the open trash box all live in the detail's
+     component state, and without a key they survived being pointed at another
+     account. So the panel showed account B's name, account B's stats, and a code
+     that had been issued for account A -- with a "Copy code" button that copied
+     it. `isLoading` is derived from `!account`, and a stale account is not null,
+     so nothing ever looked out of date: the swap was invisible. Remounting on
+     the id is what makes the code, the confirmation and the open row all belong
+     to whoever is actually on screen. */
   if (selectedId) {
     return (
       <AccountDetail
+        key={selectedId}
         passcode={passcode}
         accountId={selectedId}
+        redeemUrl={redeemUrl}
         onBack={() => setSelectedId(null)}
         onChanged={() => setRevision((value) => value + 1)}
       />
