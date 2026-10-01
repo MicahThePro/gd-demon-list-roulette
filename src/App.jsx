@@ -8,7 +8,7 @@ import { useAuth } from './hooks/useAuth'
 import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
 import PreviewBanner from './components/PreviewBanner'
 import RedeemCodePage from './pages/RedeemCodePage'
-import { endPreviewSession, getPreviewUser, syncPlayerData } from './services/adminService'
+import { getPreviewUser, syncPlayerData } from './services/adminService'
 import { fetchMyEntries } from './services/apiService'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
@@ -620,17 +620,22 @@ function App() {
         username={previewUser}
         onEnded={() => {
           setPreviewUser(null)
-          /* Ending a preview ends the preview session, not the moderator's. The
-             token that was in storage before the code was redeemed is put back, so
-             the app carries on as the account it was before rather than dropping
-             somebody out of an account they never left. `refresh` re-reads it from
-             the server, which is what covers a preview that survived a reload --
-             there was no copy of the account in memory to put back. */
+          /* Ending a preview ends the preview session, not the moderator's.
+           *
+           * The banner already ended the session -- it owns the button, and
+           * endPreviewSession is what revokes the previewed account's token and
+           * puts the moderator's own token back in storage. Calling it a second
+           * time here is not harmless: it revokes logout again, this time
+           * against the token that was just restored, so the moderator's own
+           * session dies on the server and the refresh below signs them out of an
+           * account they never left. So it is called once, from one place.
+           *
+           * `refresh` re-reads the account from the server, which is what covers
+           * a preview that survived a reload -- there was no copy of the account
+           * in memory to put back. */
           history.endPreview()
           auth.endPreview()
-          endPreviewSession()
-            .then(() => auth.refresh())
-            .catch(() => auth.refresh())
+          auth.refresh()
         }}
       />
       <header className="topbar">

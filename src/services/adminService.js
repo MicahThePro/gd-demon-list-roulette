@@ -143,6 +143,23 @@ export const redeemLoginCode = async ({ username, code }) => {
  *  back rather than dropped, because ending a preview is not signing out and they
  *  never asked to be. */
 export const endPreviewSession = async () => {
+  /* Guarded, so ending a preview is idempotent.
+   *
+   * Restoring the moderator's session means removing the stash. A second call
+   * finds nothing stashed, reads that as "there was no session before the
+   * preview", and clears the token -- which is the moderator signing themselves
+   * out of their own account by pressing the button twice, or by the banner and
+   * the app both calling this. There is nothing to undo, so there is nothing to
+   * do. */
+  let stashed
+  try {
+    stashed = localStorage.getItem(PREVIOUS_TOKEN_KEY)
+  } catch {
+    stashed = null
+  }
+  if (!stashed && !getPreviewUser()) {
+    return
+  }
   try {
     await request('/api/logout', { method: 'POST', auth: true })
   } catch {
