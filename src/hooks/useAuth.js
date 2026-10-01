@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchMe, getStoredToken, login, logout as apiLogout, register as apiRegister } from '../services/apiService'
 
 /**
@@ -11,6 +11,12 @@ import { fetchMe, getStoredToken, login, logout as apiLogout, register as apiReg
  */
 export const useAuth = () => {
   const [user, setUser] = useState(null)
+  // Whether a preview is in progress, and the account that was signed in before it
+  // started so ending the preview can put it back. In a ref rather than state: it
+  // is only ever read while handling the button, and nothing renders from it
+  // directly -- the flag is what renders, and that has to be state to re-render.
+  const savedUser = useRef(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
   // Starting true whenever a token exists means the "checking your sign in"
   // line is already correct on the first render, instead of flashing a signed
   // out form that is about to be replaced.
@@ -88,13 +94,66 @@ export const useAuth = () => {
     setError('')
   }, [])
 
-  // A preview is ended from outside the auth UI -- the banner's own button -- so
-  // the session has to be droppable without going through signOut, which also
-  // revokes the session server side and the preview page already does that.
-  const forgetUser = useCallback(() => {
-    setUser(null)
-    setError('')
+  /* Previewing somebody else's account.
+   *
+   * Redeeming a login code puts the code's token in storage and hands the app the
+   * user it belongs to, but nothing here was told about it -- so `user` stayed the
+   * moderator's own account while every request carried the previewed account's
+   * token. That is the worst of both: the header said one name, saving a run wrote
+   * it to the other, and the mismatch only showed up as a request failing.
+   *
+   * So the swap goes through here, and the account it replaced is kept rather than
+   * dropped. Ending a preview is not signing out -- the moderator never asked to be
+   * signed out of their own account, and the preview session is the only thing that
+   * should end -- so the saved user comes back and the app is exactly as it was,
+   * with the previewed account's session revoked. */
+
+  // Passed in rather than read from state, so this stays a plain assignment and the
+  // account being replaced is decided by the caller that can see it, not by an
+  // updater function with a side effect in it.
+  const startPreview = useCallback((previewed, previousUser) => {
+    if (savedUser.current === null) {
+      savedUser.current = previousUser ?? null
+    }
+    setUser(previewed)
+    setIsPreviewing(true)
   }, [])
 
-  return { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut, forgetUser }
+  const endPreview = useCallback(() => {
+    const own = savedUser.current
+    savedUser.current = null
+    setUser(own)
+    setIsPreviewing(false)
+  }, [])
+
+  /* Re-reads whoever the stored token belongs to.
+   *
+   * Used after a preview ends. The token that was in storage before the code was
+   * redeemed is put back, but the app had no copy of the account it belonged to --
+   * a preview can survive a reload, and then the account being restored was never
+   * in memory to begin with. Reading it back is the same check the app does on
+   * mount, and it is also what makes ending a preview with no session before it
+   * correctly leave the browser signed out rather than showing a dead account. */
+  const refresh = useCallback(async () => {
+    try {
+      setUser(await fetchMe())
+    } catch {
+      setUser(null)
+    }
+  }, [])
+
+  return {
+    user,
+    isPreviewing,
+    isRestoring,
+    isBusy,
+    error,
+    setError,
+    signIn,
+    signUp,
+    signOut,
+    startPreview,
+    endPreview,
+    refresh,
+  }
 }

@@ -14,6 +14,12 @@ const API_URL = 'https://demon-roulette-list-proxy.micah-nordlund.workers.dev'
 // Marks this browser as previewing another account, so the banner survives a
 // reload. The session token cannot carry this: it looks identical either way.
 const PREVIEW_KEY = 'demon-roulette-preview'
+// The session that was in this browser before the preview started. Redeeming a code
+// overwrites the stored token, and that token was the only copy of the moderator's
+// own session -- so ending the preview used to leave them signed out of an account
+// they had never asked to leave. Kept here instead, and put back when the preview
+// ends, which is what "end the preview" is supposed to mean. */
+const PREVIOUS_TOKEN_KEY = 'demon-roulette-preview-previous-token'
 
 const parse = async (response) => {
   let payload
@@ -106,6 +112,18 @@ export const redeemLoginCode = async ({ username, code }) => {
     method: 'POST',
     body: { username: username ?? null, code },
   })
+  // Stashed before the token is replaced, and only the first time, so a preview
+  // started from inside another preview cannot overwrite the real account's
+  // session with the first previewed one.
+  try {
+    const existing = getStoredToken()
+    if (existing && !localStorage.getItem(PREVIOUS_TOKEN_KEY)) {
+      localStorage.setItem(PREVIOUS_TOKEN_KEY, existing)
+    }
+  } catch {
+    // Without storage the preview still works for this visit; ending it just leaves
+    // the moderator signed out, as it did before.
+  }
   saveToken(result.token)
   // Remembered in this browser only, so a reload does not quietly drop the
   // banner and make a preview look like an ordinary session.
@@ -118,15 +136,31 @@ export const redeemLoginCode = async ({ username, code }) => {
   return result.user
 }
 
-/** Signs out of a preview session. Same as any other sign out. */
+/** Ends a preview session. Only the previewed account's session ends.
+ *
+ *  The preview session is revoked, because it is a credential handed to a
+ *  moderator and the code it came from is spent; the moderator's own session is put
+ *  back rather than dropped, because ending a preview is not signing out and they
+ *  never asked to be. */
 export const endPreviewSession = async () => {
   try {
     await request('/api/logout', { method: 'POST', auth: true })
   } catch {
     // As with logout() anywhere else: a network failure must not stop the
-    // browser dropping its copy of the session.
+    // browser restoring its own copy of the session.
   }
-  saveToken(null)
+
+  let restored = null
+  try {
+    restored = localStorage.getItem(PREVIOUS_TOKEN_KEY)
+    localStorage.removeItem(PREVIOUS_TOKEN_KEY)
+  } catch {
+    // Without storage there is no stashed token to put back, which leaves the
+    // browser signed out -- the same as an ordinary sign out.
+  }
+  // Nothing was stashed -- there was no session before the preview -- so this is an
+  // ordinary sign out and leaves the browser signed out.
+  saveToken(restored)
   clearPreviewMode()
 }
 

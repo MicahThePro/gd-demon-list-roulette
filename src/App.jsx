@@ -8,7 +8,7 @@ import { useAuth } from './hooks/useAuth'
 import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
 import PreviewBanner from './components/PreviewBanner'
 import RedeemCodePage from './pages/RedeemCodePage'
-import { getPreviewUser, syncPlayerData } from './services/adminService'
+import { endPreviewSession, getPreviewUser, syncPlayerData } from './services/adminService'
 import { fetchMyEntries } from './services/apiService'
 import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
@@ -456,8 +456,33 @@ function App() {
    *
    * The username is read from localStorage rather than kept in state, because a
    * reload happens -- opening a redeem code in a new tab lands here first -- and
-   * the banner must not quietly disappear across one. */
+   * the banner must not quietly disappear across one.
+   *
+   * Starting one has to reach three places, not one. The token in storage is the
+   * account every request is made as, but the app's own copy of the player, the
+   * account's runs on screen and the local history were all separate, so the
+   * header said one name while the writes went to another and the board showed a
+   * third thing. Redeeming a code now swaps all three at once. */
   const [previewUser, setPreviewUser] = useState(() => getPreviewUser())
+
+  const startPreviewing = (user) => {
+    // The account being replaced, passed in rather than read inside the hook, so
+    // ending the preview can put it back.
+    auth.startPreview(user, auth.user)
+    history.beginPreview()
+    setPreviewUser(user.username)
+  }
+
+  // A reload in the middle of a preview lands here with a preview marker in
+  // storage and no state for any of it. The banner and the account are restored
+  // from the marker and from the session the token belongs to; the board is emptied
+  // and re-read as a replacement, so the previewed account's runs -- and only
+  // theirs -- are what it shows. Without this, a reload left the moderator's own
+  // runs under somebody else's name, which is the same bug in a worse place.
+  useEffect(() => {
+    if (!previewUser) return
+    history.beginPreview()
+  }, [previewUser]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The player data mirror. A signed-in player uploads their history and settings
   // so a moderator can see what the account holds; the browser stays the source
@@ -467,14 +492,22 @@ function App() {
       return undefined
     }
 
+    /* Not during a preview. This uploads whatever the board holds to whichever
+       account is signed in, and during a preview those are two different people's
+       data: it would write the moderator's own runs and settings onto the account
+       being previewed. The previewed account's board is read from the server, which
+       is where its runs already are, so there is nothing for the mirror to do. */
+    if (history.isPreviewing) {
+      return undefined
+    }
+
     const controller = new AbortController()
     const timer = setTimeout(() => {
       syncPlayerData({
         history: history.entries,
         settings: readStoredSettings(),
       }).catch(() => {
-        // A preview's data is a moderator's own upload going to another account,
-        // and a mirror that did not write is not worth interrupting anyone over.
+        // A mirror that did not write is not worth interrupting anyone over.
       })
     }, 1500)
 
@@ -484,7 +517,7 @@ function App() {
     }
     // Re-runs when the history or the signed-in player changes, so the mirror is
     // not left holding whatever it had at sign in.
-  }, [auth.user, history.entries])
+  }, [auth.user, history.entries, history.isPreviewing])
 
   /* A signed-in player's leaderboard is the account's, not the device's.
    *
@@ -505,6 +538,13 @@ function App() {
   // returns a new callback object on every render, so depending on it directly
   // would re-read the account after every unrelated render.
   const applyAccountEntries = useRef(history.applyAccountEntries)
+  // The preview flag read from the same place, for the same reason: the effect
+  // below must not re-run every time it flips just to be told about it.
+  const historyRef = useRef(history)
+
+  useEffect(() => {
+    historyRef.current = history
+  }, [history])
 
   useEffect(() => {
     applyAccountEntries.current = history.applyAccountEntries
@@ -520,7 +560,12 @@ function App() {
       fetchMyEntries(controller.signal)
         .then((payload) => {
           if (controller.signal.aborted) return
-          applyAccountEntries.current(payload)
+          /* `replace` during a preview, and only then. Merging is right for an
+             ordinary sign in -- this device may hold runs the account has not seen
+             yet -- but it is exactly wrong for a preview: the moderator's own runs
+             would stay on the board under somebody else's name, and an account with
+             no runs would appear to have the moderator's. */
+          applyAccountEntries.current({ ...payload, replace: historyRef.current.isPreviewing })
         })
         .catch(() => {
           // A sync that did not write is not worth interrupting anybody over: the
@@ -575,9 +620,17 @@ function App() {
         username={previewUser}
         onEnded={() => {
           setPreviewUser(null)
-          // The session went with the preview, so the app's own copy of the
-          // player has to go too or the header keeps showing a dead account.
-          auth.forgetUser()
+          /* Ending a preview ends the preview session, not the moderator's. The
+             token that was in storage before the code was redeemed is put back, so
+             the app carries on as the account it was before rather than dropping
+             somebody out of an account they never left. `refresh` re-reads it from
+             the server, which is what covers a preview that survived a reload --
+             there was no copy of the account in memory to put back. */
+          history.endPreview()
+          auth.endPreview()
+          endPreviewSession()
+            .then(() => auth.refresh())
+            .catch(() => auth.refresh())
         }}
       />
       <header className="topbar">
@@ -645,7 +698,7 @@ function App() {
         <RedeemCodePage
           onExit={() => setScreen(SCREEN.HOME)}
           onRedeemed={(user) => {
-            setPreviewUser(user.username)
+            startPreviewing(user)
             setScreen(SCREEN.HOME)
           }}
         />

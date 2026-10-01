@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElapsedLevelTimeMs, normalizeSkipReason } from '../utils/roulette'
 
 const STORAGE_KEY = 'demon-roulette-history'
@@ -245,14 +245,57 @@ export const compareEntries = (a, b) => {
 
 export const useRunHistory = () => {
   const [entries, setEntries] = useState(readHistory)
+  /* Previewing somebody else's account.
+   *
+   * The board on screen belongs to whoever is signed in, and during a preview that
+   * is not the person whose browser this is. Three things had to change together,
+   * because each one alone leaves the wrong runs on screen:
+   *
+   * 1. The account's runs replace the local ones rather than merging with them. A
+   *    merge showed the moderator's own runs under the previewed account's name --
+   *    and an account with no runs at all showed the moderator's, which reads as
+   *    though the previewed account had played them.
+   * 2. The local runs are kept aside rather than overwritten. They live in this
+   *    browser's storage, so replacing them on screen without setting them aside
+   *    would destroy the moderator's own history the moment a preview ended.
+   * 3. Nothing is written to storage during a preview. A run played while
+   *    previewing belongs to the previewed account and belongs on their account,
+   *    not in this browser's history, and the results screen offers to save it
+   *    there. Writing it locally would put somebody else's run into the
+   *    moderator's own board on the next sign in. */
+  const localBackup = useRef(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
+
+  const beginPreview = useCallback(() => {
+    setEntries((current) => {
+      // Set aside once, so a preview started from inside another preview does not
+      // overwrite the real backup with the first previewed account's runs.
+      if (localBackup.current === null) {
+        localBackup.current = current
+      }
+      return []
+    })
+    setIsPreviewing(true)
+  }, [])
+
+  const endPreview = useCallback(() => {
+    const own = localBackup.current
+    localBackup.current = null
+    setEntries(own ?? readHistory())
+    setIsPreviewing(false)
+  }, [])
 
   // Two writes with different jobs. The mirror keeps every level so an export
   // can be complete; the cookie is trimmed to fit and is what survives if
   // localStorage is ever cleared.
   useEffect(() => {
+    // Skipped wholesale during a preview: what is on screen is the previewed
+    // account's runs, and persisting those into this browser's history would hand
+    // them back to the moderator the moment the preview ended.
+    if (isPreviewing) return
     writeMirror(entries)
     writeCookie(STORAGE_KEY, JSON.stringify(fitCookieLimit(entries)))
-  }, [entries])
+  }, [entries, isPreviewing])
 
   const recordRun = useCallback((runState, endedAt = Date.now()) => {
     if (!runState) return
@@ -287,22 +330,33 @@ export const useRunHistory = () => {
      here and synced there keeps one row. `trashedRunKeys` comes back as keys
      rather than entries, and a trashed run is also removed from the local copy:
      a run hidden on the account is hidden here, whether or not this device was
-     the one that recorded it. */
-  const applyAccountEntries = useCallback(({ entries: incoming = [], trashedRunKeys = [] } = {}) => {
-    const hidden = new Set(trashedRunKeys)
+     the one that recorded it.
 
-    setEntries((current) => {
-      const merged = new Map(current.map((entry) => [entry.id, entry]))
-      for (const entry of incoming) {
-        if (!isValidEntry(entry) || hidden.has(entry.id)) continue
-        merged.set(entry.id, entry)
-      }
-      return [...merged.values()]
-        .filter((entry) => !hidden.has(entry.id))
-        .sort(compareEntries)
-        .slice(0, MAX_ENTRIES)
-    })
-  }, [])
+     `replace` is for a preview, and is the one case where merging would be wrong.
+     Merging a previewed account's runs into this browser's runs shows the
+     moderator's own runs labelled with somebody else's name, and an account with
+     no runs at all shows the moderator's, which is the opposite of what a preview
+     is for. The previewed account's board is exactly what the account holds. */
+  const applyAccountEntries = useCallback(
+    ({ entries: incoming = [], trashedRunKeys = [], replace = false } = {}) => {
+      const hidden = new Set(trashedRunKeys)
+
+      setEntries((current) => {
+        const merged = replace
+          ? new Map()
+          : new Map(current.map((entry) => [entry.id, entry]))
+        for (const entry of incoming) {
+          if (!isValidEntry(entry) || hidden.has(entry.id)) continue
+          merged.set(entry.id, entry)
+        }
+        return [...merged.values()]
+          .filter((entry) => !hidden.has(entry.id))
+          .sort(compareEntries)
+          .slice(0, MAX_ENTRIES)
+      })
+    },
+    [],
+  )
 
   /** Locally hides every run the account reports as trashed, without a re-read
    *  of the whole account. Used right after a moderator's action changes things
@@ -318,6 +372,9 @@ export const useRunHistory = () => {
 
   return {
     entries,
+    isPreviewing,
+    beginPreview,
+    endPreview,
     recordRun,
     deleteEntry,
     clearHistory,

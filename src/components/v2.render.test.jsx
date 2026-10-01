@@ -13,6 +13,7 @@ import process from 'node:process'
 import AccountDialog from './AccountDialog.jsx'
 import GlobalLeaderboard from './GlobalLeaderboard.jsx'
 import Leaderboard from './Leaderboard.jsx'
+import PreviewBanner from './PreviewBanner.jsx'
 
 let failures = 0
 const check = (name, condition, detail = '') => {
@@ -83,6 +84,34 @@ console.log('AccountDialog')
   )
   check('with a run in hand the attach choice is offered', withRun.includes('Put the run I just finished'))
   check('and it is a checkbox, ticked by default', withRun.includes('type="checkbox"') && withRun.includes('checked=""'))
+}
+
+console.log('Previewing another account')
+{
+  /* The preview swaps three separate things -- the app's copy of the player, the
+   * board on screen, and the local history -- and each of them used to be left
+   * behind on its own, which is how a preview ended up showing one account's name
+   * over another account's runs and then signing the moderator out at the end. */
+
+  const previewing = {
+    ...signedIn,
+    user: { id: 2, username: 'lt4717', displayName: 'lt4717' },
+    isPreviewing: true,
+  }
+  const html = renderToStaticMarkup(<AccountDialog isOpen onClose={() => {}} auth={previewing} />)
+  check('the account on screen is the previewed one', html.includes('@lt4717'), html.slice(0, 200))
+  check('and not the moderator\'s own account', !html.includes('@player_one'))
+
+  const banner = renderToStaticMarkup(<PreviewBanner username="lt4717" onEnded={() => {}} />)
+  check('the banner names who is being previewed', banner.includes('Previewing lt4717') && banner.includes('account'), banner.slice(0, 200))
+  // The wording promises the moderator everything they do is done as the player.
+  // That is only true if every screen reads the previewed account, which is exactly
+  // what this string asserts and what the swap is for.
+  check('and says their actions are the player\'s', banner.includes('Anything you do here is done as them'))
+
+  // No preview, no banner: it is not a dismissible notice, so it must not render
+  // when there is nothing to end.
+  check('no preview renders no banner', renderToStaticMarkup(<PreviewBanner username={null} />) === '')
 }
 
 console.log('Leaderboard, with no import and no export')
