@@ -192,14 +192,39 @@ const RunDetail = ({ entry, onClose, onDelete, auth }) => {
 }
 
 /* Succeeded runs have a single natural order (the levels you cleared), so they
-   get no filters. Gave-up runs have several comparable numbers, so that tab can
-   be sorted. */
+   get no filters. Gave-up and failed runs have several comparable numbers, so
+   those tabs can be sorted. */
+const SORT_FILTERS = [
+  { key: 'score', label: 'Highest %', compare: (a, b) => b.score - a.score },
+  { key: 'levels', label: 'Most levels', compare: (a, b) => b.roundsPlayed - a.roundsPlayed },
+  { key: 'newest', label: 'Newest', compare: (a, b) => b.at - a.at },
+]
 const FILTERS = {
-  gaveup: [
-    { key: 'score', label: 'Highest %', compare: (a, b) => b.score - a.score },
-    { key: 'levels', label: 'Most levels', compare: (a, b) => b.roundsPlayed - a.roundsPlayed },
-    { key: 'newest', label: 'Newest', compare: (a, b) => b.at - a.at },
-  ],
+  gaveup: SORT_FILTERS,
+  failed: SORT_FILTERS,
+}
+
+/* Succeeded runs have a single natural order (the levels you cleared), so they
+   get no filters. Gave-up runs have several comparable numbers, so that tab can
+   be sorted. Failed runs are the same shape and sort with them.
+
+   Three tabs, not two, and that is the point: a run that misses its target is a
+   real run the player played and the board has a row for it -- it is on their
+   account, it counts in the badge, and it can be submitted. A two-tab board had
+   no home for it, so a failed run was counted in the "N runs stored" total and
+   in the badge but appeared nowhere, with no row and therefore no way to delete
+   it. The tabs are built to cover every entry rather than to divide the
+   interesting ones, so the tab counts always add up to the total. */
+const TABS = [
+  { key: 'cleared', label: 'Succeeded', statuses: ['completed'], filters: [] },
+  { key: 'gaveup', label: 'Gave up', statuses: ['gaveup'], filters: FILTERS.gaveup },
+  { key: 'failed', label: 'Failed', statuses: ['failed'], filters: FILTERS.failed },
+]
+
+const EMPTY_TAB_MESSAGES = {
+  cleared: 'No cleared runs yet. Hit a 100% level to make this list.',
+  gaveup: 'No runs given up yet.',
+  failed: 'No failed runs yet. Missing a target ends a run, and that is recorded here.',
 }
 
 export default function Leaderboard({ entries, onDelete, onClear, auth }) {
@@ -207,16 +232,32 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
   const [filter, setFilter] = useState(FILTERS.gaveup[0].key)
   const [openId, setOpenId] = useState(null)
 
-  const tabs = useMemo(
-    () => [
-      { key: 'cleared', label: 'Succeeded', items: entries.filter((e) => e.status === 'completed') },
-      { key: 'gaveup', label: 'Gave up', items: entries.filter((e) => e.status === 'gaveup') },
-    ],
-    [entries],
-  )
+  const tabs = useMemo(() => {
+    const built = TABS.map((definition) => ({
+      ...definition,
+      items: entries.filter((e) => definition.statuses.includes(e.status)),
+    }))
+    /* Anything the tabs above do not claim, so no run can be counted but invisible.
+       A status written by a newer version of the site would otherwise land here:
+       it is real data the player can see the total of, so it is listed rather than
+       swallowed. Nothing produces one today, which is exactly why it is worth
+       rendering rather than trusting the list above to stay complete. */
+    const claimed = new Set(TABS.flatMap((t) => t.statuses))
+    const unlisted = entries.filter((entry) => !claimed.has(entry.status))
+    if (unlisted.length) {
+      built.push({
+        key: 'other',
+        label: 'Other',
+        items: unlisted,
+        filters: SORT_FILTERS,
+        isFallback: true,
+      })
+    }
+    return built
+  }, [entries])
 
   const activeTab = tabs.find((t) => t.key === tab) ?? tabs[0]
-  const activeFilters = FILTERS[activeTab.key] ?? []
+  const activeFilters = activeTab?.filters ?? []
   const activeFilter =
     activeFilters.find((f) => f.key === filter) ?? activeFilters[0] ?? null
   // Sorting a device-local list of runs is cheap, so it just happens per render
@@ -272,9 +313,7 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
         <p className="lb-empty">
           {entries.length === 0
             ? 'No runs yet. Hit a 100% level to make this list, or sign in to pick up the runs saved on your account.'
-            : tab === 'cleared'
-              ? 'No cleared runs yet. Hit a 100% level to make this list.'
-              : 'No runs given up yet.'}
+            : (EMPTY_TAB_MESSAGES[activeTab.key] ?? 'Nothing in this list yet.')}
         </p>
       ) : (
         <div className="lb-list">

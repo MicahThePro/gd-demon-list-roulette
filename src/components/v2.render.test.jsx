@@ -76,17 +76,23 @@ console.log('AccountDialog')
   )
   check('a restored session says so instead of flashing a form', restoring.includes('Checking your saved sign in'))
 
-  // The results screen opens this same dialog with a run in hand, so the choice
-  // about that run has to live here rather than in a second form on the results
-  // page. Absent without a run, present with one.
+  // The results screen opens this same dialog with a run in hand. It no longer
+  // asks whether to save that run: the run is why the dialog is open, so it is
+  // saved to the account being signed in to. The wording says so, because saving
+  // something on the player's account without saying so would be worse than asking
+  // -- but a question they can decline is not a save either.
   const withoutRun = renderToStaticMarkup(<AccountDialog isOpen onClose={() => {}} auth={signedOut} />)
-  check('with no run in hand the attach choice is not offered', !withoutRun.includes('Put the run I just finished'))
+  check('with no run in hand nothing is promised about saving', !withoutRun.includes('saved to'))
 
   const withRun = renderToStaticMarkup(
     <AccountDialog isOpen onClose={() => {}} auth={signedOut} pendingRun={{ rounds: [] }} />,
   )
-  check('with a run in hand the attach choice is offered', withRun.includes('Put the run I just finished'))
-  check('and it is a checkbox, ticked by default', withRun.includes('type="checkbox"') && withRun.includes('checked=""'))
+  check('with a run in hand the saving is stated', withRun.includes('is saved to'))
+  check('and named against the account being typed', withRun.includes('<strong>@your account</strong>'))
+  // The bug was a question the player could answer no to, and the run then living
+  // only on the device. There is no control to untick at all.
+  check('and there is no longer a question to answer about it', !withRun.includes('Put the run I just finished'))
+  check('no checkbox is offered in its place', !withRun.includes('admin-remember'))
 }
 
 console.log('Previewing another account')
@@ -196,6 +202,40 @@ console.log('Leaderboard, with no import and no export')
   // The empty message points at signing in rather than at a code that no longer
   // exists, because that is now how a run reaches another device.
   check('the empty message points at the account', empty.includes('sign in') && !empty.includes('leaderboard code'))
+
+  /* Every run on the board has to be reachable somewhere, or it is a run the
+   * player can count, see the total of, and never find or remove. That happened
+   * to a failed run: it was stored, counted in the badge and the "N of M runs
+   * stored" line, and had no tab, so no row and no delete button. The counts are
+   * the whole claim -- if the tabs do not add up to the total, one is unreachable.
+   *
+   * The three statuses below are the three summarizeRun can produce, so this is
+   * the exact set that went missing, not a sample. */
+  const everyStatus = ['completed', 'gaveup', 'failed']
+  const withOneOfEach = everyStatus.map((status, index) => ({
+    ...anEntry,
+    id: `170000000${index}000-AREDL`,
+    status,
+  }))
+  const allStatuses = renderToStaticMarkup(<Leaderboard {...props} entries={withOneOfEach} />)
+  check('a board of every kind of run says how many it holds', allStatuses.includes('3 of 20 runs stored'), allStatuses.slice(0, 300))
+  check('and has a tab for each', ['Succeeded', 'Gave up', 'Failed'].every((label) => allStatuses.includes(label)), allStatuses.slice(0, 300))
+  // The tab badges are the other half of the same claim: they are what the player
+  // reads to work out where a missing run went.
+  const badgeCounts = [...allStatuses.matchAll(/lb-tab-count">(\d+)</g)].map((m) => Number(m[1]))
+  check(
+    'and the tab counts add up to the total',
+    badgeCounts.reduce((sum, n) => sum + n, 0) === withOneOfEach.length,
+    badgeCounts.join('+'),
+  )
+
+  // A status this version does not know about -- written by a newer one -- must
+  // still be listed rather than counted into nothing.
+  const withUnknown = renderToStaticMarkup(
+    <Leaderboard {...props} entries={[...withOneOfEach, { ...anEntry, id: 'unknown-1', status: 'abandoned' }]} />,
+  )
+  check('a run with an unfamiliar status is not swallowed', withUnknown.includes('4 of 20 runs stored'), withUnknown.slice(0, 300))
+  check('it gets a tab of its own so it can be found and deleted', withUnknown.includes('Other'), withUnknown.slice(0, 300))
 }
 
 console.log('GlobalLeaderboard')

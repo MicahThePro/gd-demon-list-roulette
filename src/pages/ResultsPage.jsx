@@ -12,9 +12,10 @@ import SubmitRunForm from '../components/SubmitRunForm'
  * The order is deliberate. Signing in is the first thing offered because it is
  * what makes the run survive -- a run held only in this browser is lost with the
  * browser, and a run on the account is on whichever device signs in next. The
- * dialog is the same one the home screen uses, and it carries the choice of
- * whether to attach this run, so a player who signs in from here does not have
- * to go and find the run afterwards.
+ * dialog is the same one the home screen uses, and signing in from here saves the
+ * run to the account rather than offering to: the player came here from a run, so
+ * keeping it is the only reason they are here, and a question about it is a
+ * question about something they have already decided.
  */
 export default function ResultsPage({ run, runKey, onRestart, auth, onAccountChanged }) {
   // The key the server groups a run under. Passed down rather than derived
@@ -257,9 +258,9 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
                 only in this browser.
               </p>
               <p className="settings-hint">
-                You can sign in or create an account right here, and choose whether this run goes
-                on it. Either way the run is already recorded on this device, so nothing is lost
-                if you do not.
+                You can sign in or create an account right here, and the run you just finished is
+                saved to it straight away. Either way the run is already recorded on this device,
+                so nothing is lost if you do not.
               </p>
               <div className="action-row">
                 <button
@@ -293,11 +294,10 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
         </div>
       </section>
 
-      {/* The same account dialog the home screen opens, given the choice about
-          this run. `onAuthenticated` runs after a successful sign in or sign up,
-          which is where the run gets offered rather than saved automatically:
-          attaching somebody else's finished run to an account they just made is
-          their call, not ours. */}
+      {/* The same account dialog the home screen opens. `onAuthenticated` runs
+          after a successful sign in or sign up, and the run in hand is saved to
+          the account rather than offered to it: the run is why this dialog is
+          open, so there is nothing to ask about it. */}
       <AccountDialog
         isOpen={isAccountOpen}
         onClose={() => setIsAccountOpen(false)}
@@ -305,16 +305,12 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
         pendingRun={run}
         onAuthenticated={async (_user, { attachRun }) => {
           setIsAccountOpen(false)
-          // Signing in with the box unticked saves nothing, and says so rather
-          // than leaving the player wondering whether the run made it.
-          if (!attachRun) {
-            setSaveState({
-              state: 'done',
-              message: `Signed in. This run is still only on this device \u2014 use "Save to my account" above to keep it.`,
-            })
-            onAccountChanged?.()
-            return
-          }
+          onAccountChanged?.()
+          /* Nothing to decide any more: signing in from here is signing in to keep
+             this run, so it is saved without being asked about. The `attachRun`
+             branch stays because the account dialog also opens from the home
+             screen with no run in hand, where there is nothing to save. */
+          if (!attachRun) return
           await handleSaveToAccount()
         }}
       />

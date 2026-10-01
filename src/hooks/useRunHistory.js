@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElapsedLevelTimeMs, normalizeSkipReason } from '../utils/roulette'
+import { clearBoard, deleteEntryFromBoard } from './boardDeletion'
 
 const STORAGE_KEY = 'demon-roulette-history'
 // Full-fidelity mirror of the history. The cookie is trimmed to fit its ~4 KB
@@ -266,6 +267,17 @@ export const useRunHistory = () => {
   const localBackup = useRef(null)
   const [isPreviewing, setIsPreviewing] = useState(false)
 
+  /* The current board, readable from a callback that does not want to depend on it.
+   *
+   * Deleting has to read the entry it is deleting -- to find whether the server
+   * knows it, and under which id -- before it removes it, and by then the
+   * setEntries updater that holds the list has already been handed its work. A
+   * callback that took `entries` would rebuild on every recorded run and make
+   * every row in the board a new function; a ref is written during render and
+   * read afterwards, which is the one case a ref is for. */
+  const entriesRef = useRef(entries)
+  entriesRef.current = entries
+
   const beginPreview = useCallback(() => {
     setEntries((current) => {
       // Set aside once, so a preview started from inside another preview does not
@@ -309,11 +321,34 @@ export const useRunHistory = () => {
     })
   }, [])
 
-  const deleteEntry = useCallback((id) => {
+  /* Deletes a run.
+   *
+   * The server is asked first and the row is dropped only once it has agreed, so a
+   * signed-in player's delete survives the periodic re-read of their account rather
+   * than being undone by it. See boardDeletion for why the id matters and why a
+   * failed delete leaves the run visible. */
+  const deleteEntry = useCallback(async (id, { onServerError } = {}) => {
+    const target = entriesRef.current.find((entry) => entry.id === id)
+    const result = await deleteEntryFromBoard(target)
+    if (!result.ok) {
+      onServerError?.(result.error)
+      return
+    }
     setEntries((current) => current.filter((entry) => entry.id !== id))
   }, [])
 
-  const clearHistory = useCallback(() => {
+  const clearHistory = useCallback(async ({ onServerError } = {}) => {
+    const { survivors, error } = await clearBoard(entriesRef.current)
+    if (survivors.length) {
+      // Put back exactly what could not be deleted, so the board agrees with the
+      // account rather than looking emptier than it is.
+      setEntries((current) => {
+        const kept = new Set(current.map((entry) => entry.id))
+        return [...survivors.filter((entry) => kept.has(entry.id)), ...current]
+      })
+      onServerError?.(error)
+      return
+    }
     setEntries([])
   }, [])
 

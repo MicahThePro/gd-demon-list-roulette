@@ -43,6 +43,11 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
   const [rangeMax, setRangeMax] = useState(DEFAULT_MAX)
   const [loadCode, setLoadCode] = useState(savedRunCode || '')
   const [loadError, setLoadError] = useState('')
+  /* Said out loud rather than swallowed. A run on an account is deleted on the
+     server, and a delete that does not reach the server leaves the run exactly
+     where it was -- so a failure here has to be visible, or the button reads as
+     broken with nothing to explain why. */
+  const [boardError, setBoardError] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [percentStep, setPercentStep] = usePersistentPercentStep()
   const [percentStepDraft, setPercentStepDraft] = useState(() => String(percentStep))
@@ -202,7 +207,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
   const handleLoad = () => {
     const trimmedCode = loadCode.trim()
     const success = onLoadRun?.(trimmedCode)
-
     if (!trimmedCode) {
       setLoadError('Paste a save code before loading your run.')
       return
@@ -214,6 +218,14 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
     }
 
     setLoadError('')
+  }
+
+  /* One message for both. The two failures have the same shape -- the run is
+     still on the board because the server did not take the delete -- so they say
+     the same thing, and clearing it on the next attempt means a delete that works
+     takes the complaint away with it. */
+  const reportBoardError = (error) => {
+    setBoardError(error?.message ?? 'Could not delete that run. It is still here.')
   }
 
   return (
@@ -279,10 +291,14 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
             <GlobalLeaderboard user={auth.user} />
           ) : (
             <div className="board-personal">
+              {/* Only on the personal board: a failed delete is about this list, and
+                  a message sitting under the global board would blame the wrong
+                  thing. */}
+              {boardError && <div className="validation-message">{boardError}</div>}
               <Leaderboard
                 entries={history.entries}
-                onDelete={history.deleteEntry}
-                onClear={history.clearHistory}
+                onDelete={(id) => history.deleteEntry(id, { onServerError: reportBoardError })}
+                onClear={() => history.clearHistory({ onServerError: reportBoardError })}
                 auth={auth}
               />
             </div>

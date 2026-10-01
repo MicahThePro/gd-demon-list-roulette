@@ -15,9 +15,14 @@ const MIN_PASSWORD_LENGTH = 8
  * stale error from a failed attempt never greets the next attempt.
  *
  * `pendingRun` and `onAuthenticated` are how the results screen uses it: the
- * player is told the run they just finished can go on the account they are about
- * to make, and says yes or no there. The attachment is never automatic -- signing
- * in to look at something should not quietly put a run on an account.
+ * player signs in while holding a run they just finished, and that run goes on
+ * the account they just made or signed in to. There is no question to answer,
+ * because there is no decision to make -- they came here from a run, and the
+ * account is what keeps runs. Asking, and unticking the box, was how runs ended
+ * up only on the device: the run was on screen, the account was right there, and
+ * the player had to know they had to ask for the thing they were already looking
+ * at. `pendingRun` therefore travels with the callback rather than with a
+ * checkbox.
  */
 export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null, onAuthenticated }) {
   const { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut } = auth
@@ -25,11 +30,12 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
-  // Whether to put the run the player just finished on the account. Defaults to
-  // yes, because the whole reason the results screen offers to sign in there is
-  // that the run is otherwise only in this browser -- and it is a checkbox, so
-  // saying no is one click and never a lost run.
-  const [attachRun, setAttachRun] = useState(true)
+  // Whether to put the run the player just finished on the account. There is no
+  // choice here any more: signing in from the results screen is signing in to keep
+  // that run, and it happens without being asked for. A player who does not want
+  // it on the account simply signs in from the home screen, where there is no run
+  // in hand and nothing is attached.
+  const [attachRun] = useState(true)
 
   const handleClose = () => {
     setPassword('')
@@ -61,11 +67,7 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
       // is a call made as the signed-in player. Doing it here rather than in the
       // caller's own submit handler is what makes every entry point -- the home
       // screen and the results screen -- behave the same way.
-      if (pendingRun && attachRun) {
-        onAuthenticated?.(result.user, { attachRun: true, run: pendingRun })
-        return
-      }
-      onAuthenticated?.(result.user, { attachRun: false, run: pendingRun })
+      onAuthenticated?.(result.user, { attachRun: Boolean(pendingRun), run: pendingRun })
       handleClose()
     }
   }
@@ -167,14 +169,14 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
             )}
 
             {pendingRun && (
-              <label className="admin-remember">
-                <input
-                  type="checkbox"
-                  checked={attachRun}
-                  onChange={(event) => setAttachRun(event.target.checked)}
-                />
-                Put the run I just finished on this account
-              </label>
+              /* Says what is about to happen rather than asking about it. The run
+                 they just finished is the reason this dialog is open, so it goes on
+                 the account being signed in to -- the wording makes that plain
+                 before they type their password, not after. */
+              <p className="settings-hint">
+                This run is saved to <strong>@{username.trim() || 'your account'}</strong> when
+                you sign in, so it is here on any device you use.
+              </p>
             )}
 
             {error && <div className="validation-message">{error}</div>}
