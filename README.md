@@ -27,6 +27,7 @@ Simple to explain, brutal to actually do.
 - **Rate and version badges** — Impossible Levels entries show the TPS or FPS they need, and the game version, when the list provides one
 - **Real level IDs, names, creators and thumbnails** across every list
 - **Accounts** — a username and a password, no email address and nothing to confirm
+- **An editable display name** — separate from your username, changeable once a day with a live countdown while you wait
 - **Runs follow your account** — sign in on another device and everything you have played is there, not just in this browser
 - **Global leaderboard** — five boards, filterable by list, with video proof checked before a run counts
 - **Submit whenever you like** — send a run from your own leaderboard, not only from the results screen right after you finish
@@ -36,7 +37,54 @@ Simple to explain, brutal to actually do.
 - **Quit mid-run** — abandon a run without it counting as a give-up or reaching the leaderboard
 - **Per-level timer**, with average time per level on the results screen
 - **Works on phones and tablets** — touch-friendly controls and a layout built for small screens
+- **Play any past version** — each release in What's new opens a frozen copy of that version
 - **No tracking** — an account is a username and a password, and there is no analytics script anywhere on the site
+
+## What’s new in v2.3
+v2.3 is a fix-and-polish update. It does not change how the game plays; it makes
+the account and leaderboard behave the way you would expect.
+
+### Finished runs save to your account on their own
+Finish a run while signed in and it is saved to your account straight away. There
+is no box to tick and nothing to remember to do — the run is on your account by
+the time the results screen appears.
+Saving to your account and submitting to the global leaderboard are still two
+separate things. A run is saved to your account either way; putting it on the
+public board is your choice, and still needs a video.
+### Every run can be deleted
+Any run in **Your runs** can be deleted, not only the ones you have not
+submitted. Deleting a run that is on the global leaderboard takes it off the
+board too. **Clear all** works on every run rather than only the safe ones.
+### Your display name is editable, once a day
+Open your account and there is a **Change display name** button under your name.
+Type a new one, save, and it changes everywhere at once — the leaderboard, the
+admin panel, and searches.
+You can change it once a day. In between, the button is greyed out with a live
+countdown sitting in the same spot showing exactly how long is left. It unlocks on
+its own — leave the tab open across the deadline and it comes back to the second,
+with no reload.
+The wait runs from your last change rather than from midnight, so it cannot be
+stepped over by timing a change either side of a day boundary.
+### Display name and username are different things
+Your username is yours for good and is what you sign in with; the display name is
+only the label you show. Both now appear on the leaderboard, so a run by “Alex”
+with `@alex2` beside it is one person and not somebody pretending to be another.
+Previously only the display name was shown, so two players who picked the same
+name were indistinguishable.
+### Signing in no longer mixes up two accounts
+On a shared browser, signing out of one account and into another used to leave the
+first account’s runs on screen under the second account’s name. Runs now belong to
+one account at a time, and signing out clears them.
+### Ending a preview no longer signs you out
+Closing a moderator preview used to throw away the session the moderator was
+actually using, so they had to sign in again. It now ends only the preview.
+### Every past version is playable
+Each release in **What’s new** has a **Play this version** link that opens a frozen
+copy of that version in a new tab. Nothing you do there touches the current site.
+### Disabled buttons look disabled
+There was no styling for the disabled state, so a button that could not be pressed
+looked exactly like one that could. The only way to find out was to click it and
+watch nothing happen.
 
 ## What’s new in v2.2
 

@@ -9,14 +9,15 @@
  * Run with: node --experimental-vm-modules src/components/v2.render.test.js
  */
 import { renderToStaticMarkup } from 'react-dom/server'
+import { existsSync } from 'node:fs'
 import process from 'node:process'
 import AccountDialog from './AccountDialog.jsx'
 import ChangelogDialog from './ChangelogDialog.jsx'
 import GlobalLeaderboard from './GlobalLeaderboard.jsx'
 import Leaderboard from './Leaderboard.jsx'
 import PreviewBanner from './PreviewBanner.jsx'
-import { isPlayable, versionUrl } from '../data/versions.js'
-import { CHANGELOG } from '../data/changelog.js'
+import { isPlayable, versionUrl, PLAYABLE_VERSIONS } from '../data/versions.js'
+import { CHANGELOG, LATEST_VERSION } from '../data/changelog.js'
 
 let failures = 0
 const check = (name, condition, detail = '') => {
@@ -230,6 +231,50 @@ console.log('Changelog, and playing an old version')
     versionUrl('v1.9'),
   )
   check('a version nobody has tagged is not playable', !isPlayable('v0.1'))
+
+  /* The two versions this update ships.
+   *
+   * Checked by name rather than by position, so the checks keep meaning something
+   * after the next bump: they assert that the release named here is the live one
+   * and that the one before it is playable, not merely that "the first entry" is
+   * first. A changelog that grows is the normal case, and a test that only holds
+   * while the list is the length it is today stops being a test. */
+  check('v2.3 is the live version', CHANGELOG[0].version === 'v2.3', CHANGELOG[0].version)
+  // Matched on the heading and the version alone rather than on the whole phrase,
+  // because the apostrophe in "What's new" is a curly one in the component. Testing
+  // the exact string would make this check fail over typography, and fixing it
+  // would mean editing the check every time the apostrophe changed.
+  check(
+    'the heading names the live version',
+    dialog.includes('What') && dialog.includes('new in v2.3'),
+    LATEST_VERSION,
+  )
+  check('v2.3 is not playable, since it is the page you are on', !isPlayable('v2.3'))
+
+  check('v2.2 is in the changelog', CHANGELOG.some((release) => release.version === 'v2.2'))
+  check('v2.2 is playable', isPlayable('v2.2'))
+  check('and v2.2 has a play link', dialog.includes(versionUrl('v2.2')), versionUrl('v2.2'))
+
+  /* The changelog is the only thing that says a build exists, so the claim and the
+   * directory have to agree. This is the one check that needs the filesystem, and it
+   * is here because the alternative is a link that 404s in production and passes
+   * every other check. */
+  check(
+    'the v2.2 build is actually on disk',
+    existsSync(new URL('../data/../../versions/v2.2/index.html', import.meta.url)),
+    'versions/v2.2/index.html is missing',
+  )
+
+  /* Every release claims a build, so every claim has to resolve. A missing directory
+   * is exactly the failure the "is written by hand" note in versions.js warns about. */
+  const claimedButAbsent = PLAYABLE_VERSIONS.filter(
+    (version) => !existsSync(new URL(`../data/../../versions/${version}/index.html`, import.meta.url)),
+  )
+  check(
+    'every claimed build exists on disk',
+    claimedButAbsent.length === 0,
+    claimedButAbsent.join(', '),
+  )
 }
 
 console.log('Leaderboard, with no import and no export')

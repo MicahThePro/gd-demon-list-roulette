@@ -27,6 +27,7 @@
 
 /** Versions with a frozen build, newest first. */
 export const PLAYABLE_VERSIONS = [
+  'v2.2',
   'v2.1',
   'v2.0',
   'v1.9',

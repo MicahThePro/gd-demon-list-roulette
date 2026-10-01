@@ -15,6 +15,25 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v2-3',
+    version: 'v2.3',
+    title: 'Runs that follow your account, and a name you can change',
+    summary: 'Finished runs save to your account on their own, every run can be deleted, your display name is editable once a day, and old versions of the site are playable again.',
+    changes: [
+      'A run you finish is now saved to your account straight away, without being asked. If you finish a run while signed in, it is on your account by the time you see the results screen -- there is no box to tick and nothing to remember to do. You do not have to submit it to the global leaderboard for this to happen; saving it to your account and putting it on the public board are still two separate things.',
+      'Any run in Your runs can now be deleted, not just the ones you have not submitted. Deleting a run that is on the global leaderboard takes it off the board too. This is what Clear all does, and it now works on every run rather than only the safe ones.',
+      'You can change your display name. Open your account and there is a Change display name button under your name; type a new one and save, and it changes everywhere at once -- on the leaderboard, in the admin panel, and in searches.',
+      'You can change your display name once a day. The button is greyed out in between, with a live countdown sitting in the same spot showing exactly how long is left. It is not a page reload away -- leave the tab open across the deadline and the button comes back on its own, to the second. The wait is measured from your last change rather than from midnight, so it cannot be stepped over by timing it either side of a day boundary.',
+      'Your display name is not your username. The username is yours for good and is what you sign in with; the display name is just the label you show. They are shown separately on the leaderboard, so a run by “Alex” with @alex2 next to it is one person and not somebody pretending to be another. You still cannot change your username.',
+      'Leaderboard rows now show the handle next to the display name. Before, only the display name was shown, which meant two players who picked the same name were indistinguishable on the board.',
+      'Signing in no longer merges two accounts on a shared browser. Previously, signing out of one account and into another left the first account’s runs on screen under the second account’s name. Runs now belong to one account at a time, and signing out clears them.',
+      'Ending a moderator preview no longer signs the moderator out. Previously, closing a preview threw away the session the moderator was actually using, and they had to sign in again afterwards.',
+      'Usernames keep the capitalisation you typed. “DemonRoulette” used to be stored as “demonroulette”, so you could never have the name you wanted. Signing in still works whichever way you type it, and nobody else can claim your name in any case.',
+      'Every past version of the site is playable again from the What’s new dialog. Each release has a Play this version link that opens a frozen copy of that version in a new tab. Nothing you do there touches the current site.',
+      'Disabled buttons are now actually greyed out. They had no styling for the disabled state at all, so a button that could not be pressed looked exactly like one that could, and the only way to find out was to click it and see nothing happen.',
+    ],
+  },
+  {
     id: 'v2-2',
     version: 'v2.2',
     title: 'Submit a run whenever you like, and codes that actually paste',
