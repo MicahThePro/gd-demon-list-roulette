@@ -471,7 +471,12 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
         onTotalTimeLimitDraftChange={setTotalTimeLimitDraft}
         onCommitTotalTimeLimit={commitTotalTimeLimit}
       />
-      <AccountDialog isOpen={isAccountOpen} onClose={() => setIsAccountOpen(false)} auth={auth} />
+      <AccountDialog
+        isOpen={isAccountOpen}
+        onClose={() => setIsAccountOpen(false)}
+        auth={auth}
+        onSignedOut={history.restoreLocal}
+      />
       <ChangelogDialog
         isOpen={isChangelogOpen}
         onClose={() => setIsChangelogOpen(false)}

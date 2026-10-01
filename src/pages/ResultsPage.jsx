@@ -17,7 +17,7 @@ import SubmitRunForm from '../components/SubmitRunForm'
  * keeping it is the only reason they are here, and a question about it is a
  * question about something they have already decided.
  */
-export default function ResultsPage({ run, runKey, onRestart, auth, onAccountChanged }) {
+export default function ResultsPage({ run, runKey, onRestart, auth, onAccountChanged, onSignedOut }) {
   // The key the server groups a run under. Passed down rather than derived
   // here, because it has to be the same string the run was recorded under in the
   // local leaderboard: anything recomputed on this render (a fresh Date.now(),
@@ -303,6 +303,7 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
         onClose={() => setIsAccountOpen(false)}
         auth={auth}
         pendingRun={run}
+        onSignedOut={onSignedOut}
         onAuthenticated={async (_user, { attachRun }) => {
           setIsAccountOpen(false)
           onAccountChanged?.()

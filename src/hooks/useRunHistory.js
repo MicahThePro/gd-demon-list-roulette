@@ -2,15 +2,44 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElapsedLevelTimeMs, normalizeSkipReason } from '../utils/roulette'
 import { clearBoard, deleteEntryFromBoard } from './boardDeletion'
 
-const STORAGE_KEY = 'demon-roulette-history'
-// Full-fidelity mirror of the history. The cookie is trimmed to fit its ~4 KB
-// budget, so reading state from the cookie alone would permanently lose level
-// detail and an exported code could not carry everything. The mirror is
-// unbounded in the way a cookie is not, so export and import work off it.
-const MIRROR_KEY = 'demon-roulette-history-full'
-// A cookie caps out around 4 KB, so the history is kept deliberately small.
-// Each entry holds only what the leaderboard needs, not the full run.
+/* Nothing here is written to a cookie or to localStorage, deliberately.
+ *
+ * The account is the only place runs are kept. A device-held board looked
+ * harmless on a personal browser and was a data leak on a shared one: signing
+ * out of one account and into another merged the two boards, so the next
+ * account saw runs that belonged to somebody who was not signed in. Keeping
+ * runs on the account removes that whole class of bug -- there is no second copy
+ * for one account to read out of another account's board. */
 export const MAX_ENTRIES = 20
+
+/* Clears the keys earlier versions used to write, once, so they are not left
+ * behind holding runs that now belong to an account.
+ *
+ * They are no longer read, so this is not a correctness requirement -- nothing
+ * reads them any more. It is tidiness: a run left in this browser's storage is a
+ * copy of somebody's play history that nothing on the site is now responsible for,
+ * and on a shared browser whoever opens it next could still get at it with one
+ * line of devtools. Removing it means the account is the only place runs are. */
+const PURGED_KEYS = [
+  'demon-roulette-history',
+  'demon-roulette-history-full',
+  'demon-roulette-history-unowned',
+]
+export const purgeLegacyHistoryKeys = () => {
+  if (typeof localStorage === 'undefined') return
+  for (const key of PURGED_KEYS) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      // Storage disabled or full. Nothing can be read either, so there is nothing
+      // here worth interrupting anybody over.
+    }
+  }
+  if (typeof document === 'undefined') return
+  for (const key of PURGED_KEYS) {
+    document.cookie = `${encodeURIComponent(key)}=; path=/; max-age=0; samesite=lax`
+  }
+}
 
 // Unpacks a stored round tuple back into named fields for display, and
 // rebuilds the thumbnail from the stored YouTube id.
@@ -23,24 +52,6 @@ export const unpackRound = (packed) => {
   return out
 }
 const MAX_ROUNDS_KEPT = 100
-
-const readCookie = (name) => {
-  if (typeof document === 'undefined') return null
-
-  const prefix = `${encodeURIComponent(name)}=`
-  const match = document.cookie
-    .split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(prefix))
-
-  return match ? decodeURIComponent(match.slice(prefix.length)) : null
-}
-
-const writeCookie = (name, value) => {
-  if (typeof document === 'undefined') return
-
-  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`
-}
 
 const isEntryLike = (entry) => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry))
 
@@ -64,46 +75,6 @@ export const isValidEntry = (entry) =>
   REQUIRED_ENTRY_FIELDS.every((field) => entry[field] != null) &&
   Array.isArray(entry.rounds) &&
   Number.isFinite(Number(entry.at))
-
-const readMirror = () => {
-  if (typeof localStorage === 'undefined') return []
-
-  try {
-    const parsed = JSON.parse(localStorage.getItem(MIRROR_KEY))
-    return Array.isArray(parsed) ? parsed.filter(isValidEntry) : []
-  } catch {
-    return []
-  }
-}
-
-const writeMirror = (entries) => {
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(MIRROR_KEY, JSON.stringify(entries))
-  } catch {
-    // A full mirror can be large, and localStorage is capped too. Losing the
-    // mirror only costs export fidelity; the cookie below is still written.
-  }
-}
-
-const readHistory = () => {
-  // The mirror is preferred because it holds every level, while the cookie has
-  // had detail shed to fit. A first-time visitor has neither.
-  const mirrored = readMirror()
-  if (mirrored.length) {
-    return mirrored
-  }
-
-  const raw = readCookie(STORAGE_KEY)
-  if (!raw) return []
-
-  try {
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter(isEntryLike) : []
-  } catch {
-    return []
-  }
-}
 
 // Only the fields the leaderboard and the detail view need, so the cookie
 // stays small. Rounds are stored as positional tuples rather than objects,
@@ -196,42 +167,6 @@ const summarizeRun = (runState, endedAt) => {
   }
 }
 
-// A cookie caps out near 4 KB, so the history is trimmed to fit. Round detail
-// is shed evenly across every entry, best run included, because one 100 level
-// run on its own already exceeds the budget. Only once there is no detail left
-// to lose does the oldest entry get dropped.
-const fitCookieLimit = (entries) => {
-  const budget = 3600
-  if (JSON.stringify(entries).length <= budget) {
-    return entries
-  }
-
-  // Shed rounds from every entry, longest first, until it fits. A single 100
-  // level run on its own exceeds the budget, so this has to go all the way
-  // down rather than stopping early.
-  for (const keep of [25, 20, 15, 10, 8, 6, 5, 4, 3, 2, 1]) {
-    const trimmed = entries.map((entry) => ({ ...entry, rounds: entry.rounds.slice(0, keep) }))
-    if (JSON.stringify(trimmed).length <= budget) {
-      return trimmed
-    }
-  }
-
-  // Still too big, so drop the oldest entries as well. Entries are already
-  // sorted best first, so the newest and strongest survive longest.
-  for (const keep of [10, 5, 3, 1]) {
-    const shortened = entries.map((entry) => ({ ...entry, rounds: entry.rounds.slice(0, keep) }))
-    let count = shortened.length
-    while (count > 1 && JSON.stringify(shortened.slice(0, count)).length > budget) {
-      count -= 1
-    }
-    if (JSON.stringify(shortened.slice(0, count)).length <= budget) {
-      return shortened.slice(0, count)
-    }
-  }
-
-  return []
-}
-
 // Best first: completed runs outrank everything, then the farthest percentage
 // reached, then the most levels cleared.
 export const compareEntries = (a, b) => {
@@ -244,27 +179,16 @@ export const compareEntries = (a, b) => {
   return (a.totalMs || 0) - (b.totalMs || 0)
 }
 
-export const useRunHistory = () => {
-  const [entries, setEntries] = useState(readHistory)
-  /* Previewing somebody else's account.
+export const useRunHistory = (ownerKey = null) => {
+  /* Starts empty and stays empty until the server says otherwise.
    *
-   * The board on screen belongs to whoever is signed in, and during a preview that
-   * is not the person whose browser this is. Three things had to change together,
-   * because each one alone leaves the wrong runs on screen:
-   *
-   * 1. The account's runs replace the local ones rather than merging with them. A
-   *    merge showed the moderator's own runs under the previewed account's name --
-   *    and an account with no runs at all showed the moderator's, which reads as
-   *    though the previewed account had played them.
-   * 2. The local runs are kept aside rather than overwritten. They live in this
-   *    browser's storage, so replacing them on screen without setting them aside
-   *    would destroy the moderator's own history the moment a preview ended.
-   * 3. Nothing is written to storage during a preview. A run played while
-   *    previewing belongs to the previewed account and belongs on their account,
-   *    not in this browser's history, and the results screen offers to save it
-   *    there. Writing it locally would put somebody else's run into the
-   *    moderator's own board on the next sign in. */
-  const localBackup = useRef(null)
+   * There is no longer a device-held copy to read back, so the board is whatever
+   * the signed-in account holds. A signed-out player sees the runs they played in
+   * this session and nothing else, and a reload loses them -- which is the price
+   * of not keeping one person's runs where the next person can read them. The
+   * results screen is where a run is handed to an account, and once it is there
+   * it survives a reload, a new device, and every sign in afterwards. */
+  const [entries, setEntries] = useState([])
   const [isPreviewing, setIsPreviewing] = useState(false)
 
   /* The current board, readable from a callback that does not want to depend on it.
@@ -273,51 +197,64 @@ export const useRunHistory = () => {
    * knows it, and under which id -- before it removes it, and by then the
    * setEntries updater that holds the list has already been handed its work. A
    * callback that took `entries` would rebuild on every recorded run and make
-   * every row in the board a new function; a ref is written during render and
-   * read afterwards, which is the one case a ref is for. */
+   * every row in the board a new function; a ref is written in an effect and read
+   * afterwards, which is the one case a ref is for. */
   const entriesRef = useRef(entries)
-  entriesRef.current = entries
+  /* Written in an effect rather than during render, because a ref written during
+   * render is a value React can throw away: under concurrent rendering a render can
+   * be started and abandoned, and the write would survive while the state it was
+   * describing did not. Both refs are only ever read from callbacks and effects,
+   * never during render, so an effect is late enough and correct. */
+  useEffect(() => {
+    entriesRef.current = entries
+  }, [entries])
 
+  /* Emptied the moment the account changes.
+   *
+   * This is the fix for the reported bug, and it is deliberately the bluntest
+   * version of it: signing out of one account and into another used to merge the
+   * two boards, so the second account was shown the first one's runs, every one of
+   * them belonging to somebody who was not signed in. The board now holds one
+   * account's runs and no other account's, and there is no stored copy for a
+   * later sign in to bring back. Between accounts, and before the first read
+   * lands, it is empty rather than stale -- an empty board for a moment is a far
+   * smaller problem than the wrong runs. */
+  useEffect(() => {
+    setEntries([])
+  }, [ownerKey])
+
+  /* Previewing somebody else's account.
+   *
+   * The board on screen belongs to whoever is signed in, and during a preview that
+   * is not the person whose browser this is. The previewed account's runs replace
+   * whatever is there rather than merging with it, and the moderator's own board
+   * is not restored on screen afterwards -- it is read back from the server, which
+   * is the only place it is kept, so there is nothing kept aside to restore. */
   const beginPreview = useCallback(() => {
-    setEntries((current) => {
-      // Set aside once, so a preview started from inside another preview does not
-      // overwrite the real backup with the first previewed account's runs.
-      if (localBackup.current === null) {
-        localBackup.current = current
-      }
-      return []
-    })
+    setEntries([])
     setIsPreviewing(true)
   }, [])
 
   const endPreview = useCallback(() => {
-    const own = localBackup.current
-    localBackup.current = null
-    setEntries(own ?? readHistory())
+    setEntries([])
     setIsPreviewing(false)
   }, [])
 
-  // Two writes with different jobs. The mirror keeps every level so an export
-  // can be complete; the cookie is trimmed to fit and is what survives if
-  // localStorage is ever cleared.
-  useEffect(() => {
-    // Skipped wholesale during a preview: what is on screen is the previewed
-    // account's runs, and persisting those into this browser's history would hand
-    // them back to the moderator the moment the preview ended.
-    if (isPreviewing) return
-    writeMirror(entries)
-    writeCookie(STORAGE_KEY, JSON.stringify(fitCookieLimit(entries)))
-  }, [entries, isPreviewing])
-
+  /* Records a run that just ended.
+   *
+   * Signed out, it is kept for this session only, so the player can see it on the
+   * board and delete it while the page is open. Signed in, the run is on the
+   * account by the time the server read happens, and that read is what puts it on
+   * the board -- so this is only a provisional row, and the account's own copy is
+   * what survives. */
   const recordRun = useCallback((runState, endedAt = Date.now()) => {
     if (!runState) return
 
     setEntries((current) => {
-      const next = [summarizeRun(runState, endedAt), ...current]
-        .sort(compareEntries)
-        .slice(0, MAX_ENTRIES)
-
-      return fitCookieLimit(next)
+      const entry = summarizeRun(runState, endedAt)
+      const kept = new Map(current.map((item) => [item.id, item]))
+      kept.set(entry.id, entry)
+      return [...kept.values()].sort(compareEntries).slice(0, MAX_ENTRIES)
     })
   }, [])
 
@@ -337,11 +274,15 @@ export const useRunHistory = () => {
     setEntries((current) => current.filter((entry) => entry.id !== id))
   }, [])
 
+  /* Clears the board, deleting on the account every run it can.
+   *
+   * Runs the server does not know about -- played signed out, in this session --
+   * have nothing to delete anywhere else, so the row goes. Runs it could not
+   * delete are put back, so the board agrees with the account rather than looking
+   * emptier than it is. */
   const clearHistory = useCallback(async ({ onServerError } = {}) => {
     const { survivors, error } = await clearBoard(entriesRef.current)
     if (survivors.length) {
-      // Put back exactly what could not be deleted, so the board agrees with the
-      // account rather than looking emptier than it is.
       setEntries((current) => {
         const kept = new Set(current.map((entry) => entry.id))
         return [...survivors.filter((entry) => kept.has(entry.id)), ...current]
@@ -352,58 +293,37 @@ export const useRunHistory = () => {
     setEntries([])
   }, [])
 
-  /* Replaces the local board with the account's runs, and hides the ones a
-     moderator has trashed.
+  /* Replaces the board with the account's runs, and hides the ones a moderator
+     has trashed.
+   *
+   * A signed-in player's leaderboard is the account's and nothing else: it is
+   * replaced rather than merged, so an account with no runs shows an empty board
+   * rather than the previous account's, and a run on this device that was never
+   * saved to an account is not smuggled onto the next account's board. Runs are
+   keyed by the id the server minted, so a run saved and then read back keeps one
+   row rather than two. */
+  const applyAccountEntries = useCallback(({ entries: incoming = [], trashedRunKeys = [] } = {}) => {
+    const hidden = new Set(trashedRunKeys)
+    const kept = new Map()
+    for (const entry of incoming) {
+      if (!isValidEntry(entry) || hidden.has(entry.id)) continue
+      kept.set(entry.id, entry)
+    }
+    setEntries([...kept.values()].sort(compareEntries).slice(0, MAX_ENTRIES))
+  }, [])
 
-     A signed-in player's leaderboard is the account's, not the device's: signing
-     in on another device brings the same board, and signing out of an account
-     leaves that device's own runs alone rather than mixing the two. The
-     replacement rather than a merge is the point -- a run that was trashed and
-     deleted on one device must not survive on another.
-
-     Server entries are merged in place of local ones by id, so a run played
-     here and synced there keeps one row. `trashedRunKeys` comes back as keys
-     rather than entries, and a trashed run is also removed from the local copy:
-     a run hidden on the account is hidden here, whether or not this device was
-     the one that recorded it.
-
-     `replace` is for a preview, and is the one case where merging would be wrong.
-     Merging a previewed account's runs into this browser's runs shows the
-     moderator's own runs labelled with somebody else's name, and an account with
-     no runs at all shows the moderator's, which is the opposite of what a preview
-     is for. The previewed account's board is exactly what the account holds. */
-  const applyAccountEntries = useCallback(
-    ({ entries: incoming = [], trashedRunKeys = [], replace = false } = {}) => {
-      const hidden = new Set(trashedRunKeys)
-
-      setEntries((current) => {
-        const merged = replace
-          ? new Map()
-          : new Map(current.map((entry) => [entry.id, entry]))
-        for (const entry of incoming) {
-          if (!isValidEntry(entry) || hidden.has(entry.id)) continue
-          merged.set(entry.id, entry)
-        }
-        return [...merged.values()]
-          .filter((entry) => !hidden.has(entry.id))
-          .sort(compareEntries)
-          .slice(0, MAX_ENTRIES)
-      })
-    },
-    [],
-  )
-
-  /** Locally hides every run the account reports as trashed, without a re-read
-   *  of the whole account. Used right after a moderator's action changes things
-   *  and the server already told us which runs are affected. */
-  const hideEntries = useCallback((ids) => {
-    const hidden = new Set(ids)
-    if (!hidden.size) return
-    setEntries((current) => current.filter((entry) => !hidden.has(entry.id)))
+  /* Signing out empties the board.
+   *
+   * There is nothing left to put back. The previous behaviour restored this
+   * device's stored runs, which is exactly how one account's runs ended up on
+   * another account's board on a shared browser; with no stored copy, signing out
+   * has nothing to leak and the next sign in brings that account's runs and
+   * nobody else's. */
+  const restoreLocal = useCallback(() => {
+    setEntries([])
   }, [])
 
   const bestScore = entries.length ? Math.max(...entries.map((entry) => entry.score)) : 0
-  const completedCount = entries.filter((entry) => entry.status === 'completed').length
 
   return {
     entries,
@@ -414,8 +334,7 @@ export const useRunHistory = () => {
     deleteEntry,
     clearHistory,
     applyAccountEntries,
-    hideEntries,
+    restoreLocal,
     bestScore,
-    completedCount,
   }
 }

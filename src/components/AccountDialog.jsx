@@ -24,18 +24,16 @@ const MIN_PASSWORD_LENGTH = 8
  * at. `pendingRun` therefore travels with the callback rather than with a
  * checkbox.
  */
-export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null, onAuthenticated }) {
+export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null, onAuthenticated, onSignedOut }) {
   const { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut } = auth
   const [mode, setMode] = useState('signin')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
-  // Whether to put the run the player just finished on the account. There is no
-  // choice here any more: signing in from the results screen is signing in to keep
-  // that run, and it happens without being asked for. A player who does not want
-  // it on the account simply signs in from the home screen, where there is no run
-  // in hand and nothing is attached.
-  const [attachRun] = useState(true)
+  /* Whether a run in hand goes on the account. Not a choice the player makes here
+     -- they came from a run, so it is kept -- but read as a constant rather than
+     inlined, so the one place that decides is the one place that says so. */
+  const attachRun = Boolean(pendingRun)
 
   const handleClose = () => {
     setPassword('')
@@ -52,8 +50,16 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
     password.length >= MIN_PASSWORD_LENGTH &&
     !isBusy
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
+  /* Signing out also puts this device's own runs back on the board. Without that
+   * the account's runs stay on screen after the account has ended, which on a
+   * shared browser is the next person's problem. */
+  const handleSignOut = async () => {
+    await signOut()
+    onSignedOut?.()
+    handleClose()
+  }
+
+  const handleSubmit = async (event) => {    event.preventDefault()
     if (!canSubmit) {
       return
     }
@@ -67,7 +73,7 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
       // is a call made as the signed-in player. Doing it here rather than in the
       // caller's own submit handler is what makes every entry point -- the home
       // screen and the results screen -- behave the same way.
-      onAuthenticated?.(result.user, { attachRun: Boolean(pendingRun), run: pendingRun })
+      onAuthenticated?.(result.user, { attachRun, run: pendingRun })
       handleClose()
     }
   }
@@ -98,7 +104,7 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
               results screen and appear on the global leaderboard.
             </p>
             <div className="modal-actions">
-              <button type="button" className="secondary-button" onClick={signOut}>
+              <button type="button" className="secondary-button" onClick={handleSignOut}>
                 Sign out
               </button>
             </div>

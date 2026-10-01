@@ -3,7 +3,7 @@ import HomePage from './pages/HomePage'
 import RoulettePage from './pages/RoulettePage'
 import ResultsPage from './pages/ResultsPage'
 import { usePersistentRun } from './hooks/usePersistentRun'
-import { useRunHistory } from './hooks/useRunHistory'
+import { useRunHistory, purgeLegacyHistoryKeys } from './hooks/useRunHistory'
 import { useAuth } from './hooks/useAuth'
 import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
 import PreviewBanner from './components/PreviewBanner'
@@ -127,8 +127,14 @@ function App() {
   )
   const [run, setRun] = usePersistentRun()
   const gameRules = useGameRules()
-  const history = useRunHistory()
   const auth = useAuth()
+  /* The account the board belongs to, so runs can be told apart by whose they are.
+   *
+   * Declared before the history because the history is told which account it is
+   * holding. It used to be the other way round and had to read the account after
+   * the fact, which is why the board could end up showing one account's runs
+   * under another's name. */
+  const history = useRunHistory(auth.user?.username ?? null)
   // Identifies the run being played, so an ended run is recorded exactly once
   // even though several code paths reach the results screen.
   const trackedRunId = useRef(null)
@@ -144,6 +150,17 @@ function App() {
   // changelog entry as the on-page heading.
   useEffect(() => {
     document.title = `${SITE_NAME} ${LATEST_VERSION}`
+  }, [])
+
+  /* Deletes the copies of runs older versions kept in this browser.
+
+   * Runs used to be held in a cookie and a localStorage mirror, which meant one
+   * account's runs were readable by the next account signed in on the same
+   * browser. Runs now live only on the account, and anything left behind by an
+   * older version is a copy nobody on the site is responsible for any more, so it
+   * is removed rather than left sitting in storage. */
+  useEffect(() => {
+    purgeLegacyHistoryKeys()
   }, [])
 
   const saveCurrentRun = () => {
@@ -523,11 +540,9 @@ function App() {
    *
    * Signing in replaces what is on screen with the runs the account holds, so
    * the same account on another device shows the same board; and the server also
-   * reports the keys of any runs a moderator has trashed, which are removed from
-   * this browser's copy too. Signing out does nothing here on purpose: the board
-   * falls back to the runs this browser recorded itself, and quietly emptying
-   * somebody's leaderboard because they signed out would be a worse surprise than
-   * leaving their last board up.
+   * reports the keys of any runs a moderator has trashed, which are removed too.
+   * Signing out empties the board, because the runs on it belong to the account
+   * that ended and not to whoever signs in next on this browser.
    *
    * `nonce` is bumped by the results screen after it saves a run, so the run just
    * added to the account shows up on the board without a reload. The request
@@ -550,6 +565,14 @@ function App() {
     applyAccountEntries.current = history.applyAccountEntries
   }, [history.applyAccountEntries])
 
+  /* Nothing else to hand over on sign in.
+
+     There used to be a set-aside of runs this browser recorded that no account
+     owned, handed back to whichever account they belonged to when it signed in.
+     With the board no longer kept in the browser there is no such set-aside: the
+     account's runs come from the server and a run played signed out stays on the
+     board for the session rather than being adopted by the next account. */
+
   useEffect(() => {
     if (!auth.user) {
       return undefined
@@ -564,8 +587,13 @@ function App() {
              ordinary sign in -- this device may hold runs the account has not seen
              yet -- but it is exactly wrong for a preview: the moderator's own runs
              would stay on the board under somebody else's name, and an account with
-             no runs would appear to have the moderator's. */
-          applyAccountEntries.current({ ...payload, replace: historyRef.current.isPreviewing })
+             no runs would appear to have the moderator's.
+             `owner` is the account this board is for, so the history can tell the
+             account's runs from another account's rather than keeping both. */
+          // Replace, never merge: the board is the account's runs and nothing else,
+          // so an account with no runs shows an empty board rather than the runs of
+          // whoever was signed in here before them.
+          applyAccountEntries.current(payload)
         })
         .catch(() => {
           // A sync that did not write is not worth interrupting anybody over: the
@@ -742,6 +770,7 @@ function App() {
           savedRunCode={saveCode}
           auth={auth}
           onAccountChanged={() => setAccountNonce((value) => value + 1)}
+          onSignedOut={history.restoreLocal}
         />
       )}
     </div>

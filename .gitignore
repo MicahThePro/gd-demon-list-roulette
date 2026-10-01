@@ -1,6 +1,11 @@
 # Dependencies
 node_modules/
 
+# Build output. dist/ is what `gh-pages -d dist` publishes and `vite build`
+# regenerates from scratch every time, so committing it duplicates the whole
+# site in the repository for no benefit.
+dist/
+
 # Local wrangler state (dev caches, not needed to deploy)
 .wrangler/
 

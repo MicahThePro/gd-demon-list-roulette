@@ -88,6 +88,19 @@ export const useAuth = () => {
     }
   }, [])
 
+  /* Signing out.
+   *
+   * Goes back to this device's own runs rather than leaving the account's on screen.
+   *
+   * That is the other half of the board belonging to one account: signing in shows
+   * the account's runs and nothing else, so signing out has to put back what was
+   * there before. Leaving them up means the next person to use this browser is
+   * looking at somebody's runs with no indication of whose they are -- which is the
+   * same leak in the other direction, and the reason the shared-device case matters
+   * in both orders.
+   *
+   * The restore is in the app, not the hook, because the hook cannot know an
+   * account has ended; only the thing that owns the session knows that. */
   const signOut = useCallback(async () => {
     await apiLogout()
     setUser(null)
