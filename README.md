@@ -26,13 +26,75 @@ Simple to explain, brutal to actually do.
 - **Live data** — counts and levels are read on demand, never hardcoded
 - **Rate and version badges** — Impossible Levels entries show the TPS or FPS they need, and the game version, when the list provides one
 - **Real level IDs, names, creators and thumbnails** across every list
+- **Accounts** — a username and a password, no email address and nothing to confirm
+- **Runs follow your account** — sign in on another device and everything you have played is there, not just in this browser
+- **Global leaderboard** — five boards, filterable by list, with video proof checked before a run counts
+- **Submit whenever you like** — send a run from your own leaderboard, not only from the results screen right after you finish
 - **Save codes** — encode a run to a string and pick it up on another device
-- **Leaderboard** — your best run and full history, stored in a cookie, with per-run level breakdowns
+- **Leaderboard** — your best run and full history, with per-run level breakdowns
 - **Resumable** — your run survives a refresh, and your chosen list is remembered too
 - **Quit mid-run** — abandon a run without it counting as a give-up or reaching the leaderboard
 - **Per-level timer**, with average time per level on the results screen
 - **Works on phones and tablets** — touch-friendly controls and a layout built for small screens
-- **No accounts, no tracking**
+- **No tracking** — an account is a username and a password, and there is no analytics script anywhere on the site
+
+## What’s new in v2.2
+
+### Submitting a run whenever you like
+
+You can now send a run to the global leaderboard from your own leaderboard, not
+only from the results screen right after you finish. Open any run in **Your runs**
+and the same submit form is there: paste a link to a video, pick the file type,
+and send it.
+
+This is for the run you finished and then walked away from. Previously that run was
+only ever submittable in the moment — leave the results screen and it was gone as
+far as the leaderboard was concerned, and the only way to put it up was to play it
+again.
+
+### A run can only be sent once
+
+Sending the same run again is refused, whether it is still waiting to be checked,
+was turned down, or is already on the leaderboard. Nothing can end up on the board
+twice by accident.
+
+If you think a video was judged unfairly, send a *different* run rather than
+sending the same one again — the refusal is on the run, not on the attempt.
+
+### AREDL runs can be submitted at all
+
+Runs on the AREDL list could not be submitted, and were told they were not one of
+the five ranked lists even though AREDL is one of them. That is fixed, and AREDL
+runs now also appear under AREDL in the global leaderboard’s list filter rather
+than only under **All lists**.
+
+The underlying cause was the list of rankable names existing in three places, one
+of which had AREDL spelled out in full while the rest of the app used the
+abbreviation. There is now one list, derived from the same source the list loader
+uses, so a list cannot end up playable but unsubmittable again.
+
+### Codes survive being copied
+
+Save codes and leaderboard codes now load even if the copy wrapped onto more than
+one line.
+
+A full run is a very long code. Long codes get wrapped by text boxes, phones and
+chat apps — and a wrapped code used to report itself as invalid, which looks
+exactly like a broken code and is not one. Genuinely damaged codes are still
+rejected.
+
+### Usernames keep their capitalisation
+
+A username now keeps the capitalisation you gave it. `DemonRoulette` stays
+`DemonRoulette` on the leaderboard instead of being quietly lowercased.
+
+Signing in still ignores case — `DEMONROULETTE`, `demonroulette` and
+`DemonRoulette` all find the same account — and the handle you registered is the
+one you get back, so signing in never renames your account.
+
+Because signing in ignores case, uniqueness has to as well. A name is yours in
+every spelling: nobody else can register `demonroulette` if you hold
+`DemonRoulette`, and the sign-up form says so before you type rather than after.
 
 ## Getting started
 
@@ -54,24 +116,73 @@ Then open the local URL Vite prints, usually `http://localhost:5173`.
 | `npm run deploy` | Publish `dist/` to GitHub Pages |
 | `npm run lint` | Run ESLint |
 | `npm run preview` | Serve the production build locally |
+| `npm test` | Run the Worker and render tests |
 | `npm run worker:dev` | Run the Cloudflare Worker locally |
 | `npm run worker:deploy` | Deploy the Cloudflare Worker |
+| `npm run db:migrate` | Apply pending D1 migrations to the remote database |
 | `npm run update:challenge-list` | Re-scrape the Challenge List snapshot only |
 | `npm run update:impossible-levels` | Re-fetch the Impossible Levels snapshot only |
 
 The two `update:` scripts are optional. Lists are served live by the Worker, so
 the committed snapshots are only a fallback and rarely need refreshing.
 
-## Leaderboard storage
+`db:migrate` is not optional after a schema change — run it **before**
+`worker:deploy`, because the new Worker reads columns that do not exist until the
+migration has run.
 
-Finished runs are kept in the `demon-roulette-history` cookie — no account, no
-server, nothing leaves the browser. Click any run to see the levels you played,
-their target and achieved percentages, and per-level times, or delete it.
+## Accounts
 
-Cookies cap out around 4 KB, so the history is compacted automatically: rounds
+An account is a username, a password and an optional display name. There is no
+email address anywhere in the system, so there is nothing to confirm and no message
+to wait for.
+
+- **Passwords are 8 characters minimum**, hashed with PBKDF2-SHA256 on the server
+  before they are stored, as `iterations:salt:hash`. The plaintext is never
+  written down in any form, and there is no password reset — an account is
+  identified by its username and that is the only way back in.
+- **Usernames are 3–20 characters**, from letters, numbers, dots and underscores.
+  Capitalisation is kept, and a name is unique in every case.
+- **Display names are up to 40 characters** and are shown on the leaderboards. They
+  are separate from the username so a handle can never carry characters that would
+  break a leaderboard row.
+- **Sessions are tokens held in this browser**, and they expire. The site is served
+  from GitHub Pages while the API is a Cloudflare Worker, so the session travels in
+  an `Authorization` header on every request rather than relying on a cookie the
+  browser would refuse to attach cross-site. A `SameSite=Lax` cookie is set as
+  well, as a fallback for reloads.
+- **Signing in is deliberately quiet about who exists.** A wrong username and a
+  wrong password return the same message and take about the same time, so the
+  response never confirms that a particular account is real.
+- **Playing never requires an account.** The whole game runs offline in the
+  browser. An account is only what makes your runs follow you between devices and
+  what lets you go on the global leaderboard.
+
+## Where your runs live
+
+There are two stores, and they do different jobs.
+
+**This browser** keeps finished runs locally — in a `localStorage` mirror for
+export fidelity and a `demon-roulette-history` cookie as a fallback. This is the
+source of truth for a run you have just played, and it works with no account and no
+connection at all.
+
+**Your account** holds the runs you explicitly save to it from the results screen.
+That is a deliberate copy: saving is a separate action from playing, and a run is
+recorded locally either way, so nothing is ever lost by not saving.
+
+Signing in merges the account's runs into the local board, so the same account on
+another device shows the same history. It is a merge rather than a replacement
+because a device may hold runs the account has not seen yet — but a run deleted on
+one device does not come back on another.
+
+Cookies cap out around 4 KB, so the cookie copy is compacted automatically: rounds
 are stored as short tuples rather than objects, and the oldest runs keep fewer
-levels once you're deep into the list. A caption shows how many of the 20
+levels once you're deep into the list. The `localStorage` mirror has no such cap,
+which is why export and import read from it. A caption shows how many of the 20
 available slots are in use.
+
+The global leaderboard is separate again, and only ever holds runs that were
+submitted with a video and watched by a reviewer.
 
 ## How the list data works
 
@@ -84,6 +195,11 @@ enabled. The other three are read live from their own APIs.
 
 Every Worker request re-reads upstream, so the lists stay current without a
 rebuild or redeploy.
+
+The same Worker also owns the site’s API — accounts, runs and the global
+leaderboard — against a Cloudflare D1 database. It is one deployment and one origin
+rather than two, but the two jobs are unrelated: nothing in the list proxy reads or
+writes the database, and the API is what does.
 
 ### Rate and version badges
 
@@ -115,8 +231,15 @@ Forking this? Deploy your own Worker and point `LIST_WORKER_URL` in
 ## Tech stack
 
 - [React 19](https://react.dev/) and [Vite 8](https://vite.dev/)
-- [Cloudflare Workers](https://workers.cloudflare.com/) for the list proxy
+- [Cloudflare Workers](https://workers.cloudflare.com/) for the list proxy, the accounts and the global leaderboard
+- [Cloudflare D1](https://developers.cloudflare.com/d1/) for accounts, runs and submissions
 - [GitHub Pages](https://pages.github.com/) for hosting
+
+The site and the Worker are deployed separately. The frontend is a static bundle
+on GitHub Pages; the Worker and its database are deployed with Wrangler. Because
+Pages and the Worker are different origins, every API call is cross-origin and
+needs CORS headers, and the session token is sent as a header rather than relied
+on as a cookie.
 
 ## Credits
 
