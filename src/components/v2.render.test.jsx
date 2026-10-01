@@ -11,9 +11,12 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import process from 'node:process'
 import AccountDialog from './AccountDialog.jsx'
+import ChangelogDialog from './ChangelogDialog.jsx'
 import GlobalLeaderboard from './GlobalLeaderboard.jsx'
 import Leaderboard from './Leaderboard.jsx'
 import PreviewBanner from './PreviewBanner.jsx'
+import { isPlayable, versionUrl } from '../data/versions.js'
+import { CHANGELOG } from '../data/changelog.js'
 
 let failures = 0
 const check = (name, condition, detail = '') => {
@@ -112,6 +115,50 @@ console.log('Previewing another account')
   // No preview, no banner: it is not a dismissible notice, so it must not render
   // when there is nothing to end.
   check('no preview renders no banner', renderToStaticMarkup(<PreviewBanner username={null} />) === '')
+}
+
+console.log('Changelog, and playing an old version')
+{
+  /* The changelog offers a frozen build of each old version. The two ways it can be
+   * wrong are both worse than not offering the link at all: a link to a version that
+   * was never built looks like a broken feature, and a link on the current version
+   * is a button that reloads the page you are already on. */
+  const closed = renderToStaticMarkup(<ChangelogDialog isOpen={false} onClose={() => {}} />)
+  check('a closed changelog renders nothing', closed === '', closed.slice(0, 80))
+
+  const dialog = renderToStaticMarkup(<ChangelogDialog isOpen onClose={() => {}} />)
+  check('the current version is marked new', dialog.includes('New'))
+  // The live version is already what you are looking at, so a button that reopens it
+  // is worse than no button. It is the one entry with no link.
+  check(
+    'and never offers a link to itself',
+    !dialog.includes(versionUrl(CHANGELOG[0].version)),
+    versionUrl(CHANGELOG[0].version),
+  )
+
+  // Every release in the changelog up to the live one has a frozen build, so each
+  // offers a link rather than saying it is unavailable. This is the whole point of
+  // the feature: the list in versions.js and the built versions/ directory have to
+  // stay in step, and a silent mismatch here would only ever be found by clicking.
+  const missing = CHANGELOG.slice(1).filter((release) => !isPlayable(release.version))
+  check(
+    'every past release has a build to play',
+    missing.length === 0,
+    missing.map((release) => release.version).join(', '),
+  )
+  check('and no entry says it is unavailable', !dialog.includes('Not available'))
+  check(
+    'each playable release links to its own build',
+    CHANGELOG.slice(1).every((release) => dialog.includes(versionUrl(release.version))),
+  )
+
+  // versionUrl is relative, so it survives the site living on a repository subpath.
+  check(
+    'a version URL is relative and ends in a slash',
+    versionUrl('v1.9') === './versions/v1.9/' && versionUrl('v1.9').endsWith('/'),
+    versionUrl('v1.9'),
+  )
+  check('a version nobody has tagged is not playable', !isPlayable('v0.1'))
 }
 
 console.log('Leaderboard, with no import and no export')

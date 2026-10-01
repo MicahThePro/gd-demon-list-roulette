@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { CHANGELOG, LATEST_VERSION } from '../data/changelog'
+import { playableVersions, versionUrl } from '../data/versions'
 
 const NEW_BADGE = 'New'
 
@@ -53,21 +54,52 @@ export default function ChangelogDialog({ isOpen, onClose }) {
         </div>
 
         <div className="changelog-list">
-          {CHANGELOG.map((release, index) => (
-            <section key={release.id} className="changelog-entry">
-              <div className="changelog-entry-head">
-                <span className="changelog-version">{release.version}</span>
-                {index === 0 && <span className="changelog-new">{NEW_BADGE}</span>}
-              </div>
-              <h3>{release.title}</h3>
-              <p className="changelog-summary">{release.summary}</p>
-              <ul>
-                {release.changes.map((change) => (
-                  <li key={change}>{change}</li>
-                ))}
-              </ul>
-            </section>
-          ))}
+          {CHANGELOG.map((release, index) => {
+            /* Only a version with a frozen build gets a link. The current one has
+               none on purpose: it is the page you are already on, so a link to it
+               would be a button that reloads what is in front of you, and it would
+               be a second copy to keep current. An old version with no build --
+               because it was never built, or the folder was deleted -- says so
+               rather than offering a link to nothing. */
+            const isLive = index === 0
+            const hasBuild = playableVersions.includes(release.version)
+            const oldVersionUrl = hasBuild ? versionUrl(release.version) : null
+
+            return (
+              <section key={release.id} className="changelog-entry">
+                <div className="changelog-entry-head">
+                  <span className="changelog-version">{release.version}</span>
+                  {isLive && <span className="changelog-new">{NEW_BADGE}</span>}
+                  {!isLive && hasBuild && (
+                    <a
+                      className="changelog-play"
+                      href={oldVersionUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Play this version
+                    </a>
+                  )}
+                  {!isLive && !hasBuild && (
+                    <span className="changelog-play changelog-play-missing">Not available</span>
+                  )}
+                </div>
+                <h3>{release.title}</h3>
+                <p className="changelog-summary">{release.summary}</p>
+                <ul>
+                  {release.changes.map((change) => (
+                    <li key={change}>{change}</li>
+                  ))}
+                </ul>
+                {oldVersionUrl && (
+                  <p className="changelog-play-note">
+                    Opens in a new tab at a frozen copy of {release.version}. Nothing you
+                    do there touches the current site.
+                  </p>
+                )}
+              </section>
+            )
+          })}
         </div>
 
         <p className="changelog-foot">

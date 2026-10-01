@@ -851,6 +851,50 @@
   text-transform: uppercase;
 }
 
+/* The link to a frozen build of that version.
+   Styled as a small outline rather than as a button so it does not compete with
+   Close, and margin-left:auto pushes it to the far end of the row -- it is the
+   same place in every entry, so the eye finds it without reading the label. */
+.changelog-play {
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.changelog-play:hover {
+  border-color: rgba(56, 189, 248, 0.7);
+  background: rgba(56, 189, 248, 0.1);
+  color: #bae6fd;
+}
+
+/* A version with no build. Says so in place rather than offering a link to
+   nothing, which would read as a broken feature rather than an absent one. */
+.changelog-play-missing {
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #64748b;
+  cursor: default;
+}
+
+.changelog-play-missing:hover {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: none;
+  color: #64748b;
+}
+
+.changelog-play-note {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
 .changelog-entry h3 {
   margin: 0 0 4px;
   color: #f1f5f9;
