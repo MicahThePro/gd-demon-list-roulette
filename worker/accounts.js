@@ -167,7 +167,7 @@ export const redeemLoginCodeByHash = async (db, supplied, now, expectedUsername 
      The claim is the authoritative statement of which code was spent, so its
      RETURNING is the right place to take the id from anyway. */
   const user = await db
-    .prepare('SELECT id, username, display_name, created_at FROM users WHERE id = ?')
+    .prepare('SELECT id, username, display_name, display_name_changed_at, created_at FROM users WHERE id = ?')
     .bind(claimed.user_id)
     .first()
 
@@ -225,7 +225,7 @@ const recordAudit = async (db, { action, target, now, detail }) => {
    done and whether any of it is waiting for review. One query rather than a
    count per row, because the search is over the whole table. */
 const ACCOUNT_SQL = `
-  SELECT u.id, u.username, u.display_name, u.created_at,
+  SELECT u.id, u.username, u.display_name, u.display_name_changed_at, u.created_at,
          (SELECT COUNT(*) FROM runs r WHERE r.user_id = u.id) AS run_count,
          (SELECT COUNT(*) FROM runs r WHERE r.user_id = u.id
             AND NOT EXISTS (SELECT 1 FROM trashed_runs t WHERE t.run_id = r.id)) AS visible_run_count,
@@ -243,6 +243,7 @@ const accountSummary = (row) => ({
   id: row.id,
   username: row.username,
   displayName: row.display_name,
+  displayNameChangedAt: row.display_name_changed_at ?? null,
   createdAt: row.created_at,
   // Every run the account holds, trashed included, because that is the number a
   // moderator is about to go through. The visible count and the trashed count
@@ -439,6 +440,7 @@ export const handleLoginCodeRoutes = async ({ db, request, key }) => {
         id: user.id,
         username: user.username,
         displayName: user.display_name,
+        displayNameChangedAt: user.display_name_changed_at ?? null,
         createdAt: user.created_at,
       },
     },

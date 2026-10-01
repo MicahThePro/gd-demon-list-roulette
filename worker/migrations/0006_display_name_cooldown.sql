@@ -1,0 +1,22 @@
+-- Players can edit their display name, once a day.
+--
+-- display_name was fixed at registration and could never be changed again, so a
+-- name chosen in a hurry, or one that gave away a real identity, was permanent.
+-- This records when a change was last made, which is all the cooldown needs.
+--
+-- The rule is enforced on the server in api.js rather than only in the client.
+-- A client-side check is a rendering convenience; if the limit lived there
+-- alone, the limit would be one request body away from not existing. The column
+-- is the durable half of the rule and the client is only told what it says.
+--
+-- NULL is not "changed at the epoch", so an account that has never edited its
+-- name is not immediately allowed one. The comparison in api.js treats NULL as
+-- "no cooldown has started", which is the only reading that makes a brand new
+-- account able to edit its name -- otherwise registering would silently consume
+-- the one change the player is entitled to.
+--
+-- Nullable on purpose, matching how sessions and code hashes are already
+-- optional columns in this schema. Adding a NOT NULL column with a default to a
+-- table that already has rows would backdate every existing account and lock
+-- them all out at once, which is the opposite of what this column is for.
+ALTER TABLE users ADD COLUMN display_name_changed_at INTEGER;

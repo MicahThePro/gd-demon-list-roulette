@@ -9,7 +9,7 @@
  *   /impossible-level-rate  -> the TPS/FPS badge for one level, read from that
  *                              level's page
  *
- *   /api/register /api/login /api/logout /api/me
+ *   /api/register /api/login /api/logout /api/me (GET, PATCH)
  *   /api/runs (GET, POST) /api/runs/:id (DELETE) /api/my-entries (GET)
  *   /api/leaderboard
  *
@@ -61,7 +61,7 @@ const CORS_HEADERS = {
   // browser checks this list before the request is ever sent, so the failure was
   // invisible server-side: no route ran, no error was logged, and the console
   // said only "Failed to load resource".
-  'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'access-control-allow-headers': 'Content-Type, Authorization, X-Admin-Passcode',
   // A browser is only allowed to read a response with a custom header on it if
   // the response opts in, so the leaderboard needs this to be readable at all.
@@ -421,8 +421,15 @@ export default {
           // only result.body sent `{}` with the right status code, so a wrong
           // password came back as a 401 with no explanation and the sign in
           // form had nothing to show.
+          //
+          // A failure may carry fields beside the error, and they have to be
+          // passed through: the display name route refuses with how long is
+          // left, so the client can draw its countdown from the number the server
+          // already had instead of re-reading the account to ask again.
+          // `error` and `user` are never sent together, so a caller reading
+          // result.error cannot see a success with an error attached.
           const payload = result.error
-            ? { error: result.error }
+            ? { error: result.error, cooldown: result.cooldown ?? null }
             : (result.body ?? {})
 
           return json(payload, { status: result.status ?? 200, headers })

@@ -165,7 +165,7 @@ export const getSessionUser = async (db, request, now = Date.now()) => {
   const row = await db
     .prepare(
       `SELECT s.token AS session_token, s.expires_at,
-              u.id, u.username, u.display_name, u.created_at
+              u.id, u.username, u.display_name, u.display_name_changed_at, u.created_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token = ?`,
@@ -186,6 +186,10 @@ export const getSessionUser = async (db, request, now = Date.now()) => {
     id: row.id,
     username: row.username,
     displayName: row.display_name,
+    // Null means the name has never been edited, which is not the same as having
+    // been edited at the epoch. The client needs the distinction because it is
+    // what decides whether the once-a-day limit has been used up.
+    displayNameChangedAt: row.display_name_changed_at ?? null,
     createdAt: row.created_at,
   }
 }

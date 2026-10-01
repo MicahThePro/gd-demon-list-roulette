@@ -497,6 +497,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The @handle beside a display name. Muted and small, because it is the
+   identifier rather than the name -- it is what tells two players apart, not what
+   the row is about. */
+.lb-handle {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
 .lb-status {
   padding: 2px 8px;
   border-radius: 999px;
@@ -2557,6 +2565,83 @@
   margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
+}
+
+.account-handle {
+  margin: -8px 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.account-name-form {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid #1e293b;
+}
+
+.account-name-form label {
+  display: grid;
+  gap: 7px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #cbd5f5;
+}
+
+.account-name-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: white;
+  font: inherit;
+}
+
+/* The greying for a locked edit.
+   `not-allowed` on the pointer cursor is deliberate: it is the cursor that says
+   "this will not happen" without the reader having to hover and find out. */
+.account-name-form input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Disabled buttons, greyed out.
+   This had no rule at all, and the browser default for a disabled button on a
+   styled background is barely distinguishable from the enabled one -- so
+   "disabled" in the markup was invisible on screen and a control could look
+   available while doing nothing on click. Dimming plus the not-allowed cursor is
+   what makes the state readable without having to try the button. */
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  /* Removes the hover lift and colour shift a disabled control must not react to;
+     otherwise it still looks interactive while it cannot be used. */
+  transform: none;
+}
+
+/* Row holding the edit button and, while the daily limit runs, the countdown
+   that replaces it. Inline so the countdown sits immediately beside the control
+   it is talking about rather than on a line of its own. */
+.account-name-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Tabular figures so the countdown does not shuffle sideways every second as
+   the digits change width. A jittering timer is noticeably harder to read than a
+   still one. */
+.account-cooldown,
+.account-cooldown-timer {
+  font-variant-numeric: tabular-nums;
+}
+
+.account-cooldown strong,
+.account-cooldown-timer strong {
+  color: #cbd5f5;
 }
 
 .account-form {

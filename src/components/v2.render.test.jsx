@@ -71,6 +71,71 @@ console.log('AccountDialog')
   check('a signed in player gets a sign out button', accountHtml.includes('Sign out'))
   check('a signed in player is not asked to sign in again', !accountHtml.includes('type="password"'))
 
+  /* The display name editor and its once-a-day limit.
+   *
+   * The interesting cases are the two the feature is actually about: an account
+   * that has changed its name, and one that has not. They render differently and
+   * in opposite directions, so a check on only one of them would pass with the
+   * other broken. */
+  const neverChanged = renderToStaticMarkup(
+    <AccountDialog
+      isOpen
+      onClose={() => {}}
+      auth={{
+        ...signedIn,
+        user: { ...signedIn.user, displayNameChangedAt: null },
+        changeDisplayName: async () => ({ ok: true }),
+      }}
+    />,
+  )
+  check('an account that never changed its name can edit it', neverChanged.includes('Change display name'))
+  check('the edit is not greyed out when the limit is unused', !neverChanged.includes('available again in'))
+  check('and no countdown is shown', !neverChanged.includes('You can change your display name again in'))
+
+  const justChanged = renderToStaticMarkup(
+    <AccountDialog
+      isOpen
+      onClose={() => {}}
+      auth={{
+        ...signedIn,
+        user: {
+          ...signedIn.user,
+          displayNameChangedAt: Date.now() - 60 * 60 * 1000,
+        },
+        changeDisplayName: async () => ({ ok: true }),
+      }}
+    />,
+  )
+  check('the edit is offered while the limit runs', justChanged.includes('Change display name'))
+  check('the countdown sits where the edit was made', justChanged.includes('available again in'))
+  check('the button is genuinely disabled, not merely ignored', /<button[^>]*disabled[^>]*>Change display name/.test(justChanged))
+  check('the countdown is rendered as a live figure, not a placeholder', /available again in <strong>\d/.test(justChanged), justChanged.slice(justChanged.indexOf('available again in'), justChanged.indexOf('available again in') + 60))
+
+  /* A limit that has just expired must read as open. Date.now() past the window is
+   * the case a player hits when they leave the tab open across the deadline, and
+   * it is the one that unlocks the field rather than greying it -- so a stale
+   * "still locked" here would leave a player waiting out a day that is already up. */
+  const limitExpired = renderToStaticMarkup(
+    <AccountDialog
+      isOpen
+      onClose={() => {}}
+      auth={{
+        ...signedIn,
+        user: {
+          ...signedIn.user,
+          displayNameChangedAt: Date.now() - 25 * 60 * 60 * 1000,
+        },
+        changeDisplayName: async () => ({ ok: true }),
+      }}
+    />,
+  )
+  check('the field is open again once the day is up', !limitExpired.includes('available again in'))
+  check('and the button is enabled again', !/<button[^>]*disabled[^>]*>Change display name/.test(limitExpired))
+
+  /* The handle under the name in the dialog, so the two are distinguishable at
+   * the point of editing as well as on the leaderboard. */
+  check('the display name and the handle are shown as two separate things', accountHtml.includes('account-handle') && accountHtml.includes('@player_one'))
+
   const restoring = renderToStaticMarkup(
     <AccountDialog isOpen onClose={() => {}} auth={{ ...signedOut, isRestoring: true }} />,
   )

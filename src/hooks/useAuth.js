@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchMe, getStoredToken, login, logout as apiLogout, register as apiRegister } from '../services/apiService'
+import { fetchMe, getStoredToken, login, logout as apiLogout, register as apiRegister, updateDisplayName as apiUpdateDisplayName } from '../services/apiService'
 
 /**
  * Holds the signed-in player.
@@ -155,6 +155,36 @@ export const useAuth = () => {
     }
   }, [])
 
+  /* Changing the display name.
+   *
+   * Goes through the server rather than editing `user` here, for one reason: the
+   * once-a-day limit is the server's to enforce, and it is the server that knows
+   * when the last change counted. A local edit would render the new name at once
+   * and be silently reverted on the next read of the account -- a name that
+   * appears to have worked and then reverts is worse than one that is refused.
+   *
+   * So the response replaces the whole user object, and with it the timestamp the
+   * countdown is drawn from. A refusal comes back as { ok: false } with the
+   * server's message, and nothing is changed locally: the on-screen name stays
+   * the name the account actually has. */
+  const changeDisplayName = useCallback(async (next) => {
+    setIsBusy(true)
+    setError('')
+    try {
+      const result = await apiUpdateDisplayName(next)
+      if (result.user) {
+        setUser(result.user)
+      }
+      return { ok: true, user: result.user }
+    } catch (caught) {
+      const message = caught?.message ?? 'Could not change your display name.'
+      setError(message)
+      return { ok: false, error: message }
+    } finally {
+      setIsBusy(false)
+    }
+  }, [])
+
   return {
     user,
     isPreviewing,
@@ -165,6 +195,7 @@ export const useAuth = () => {
     signIn,
     signUp,
     signOut,
+    changeDisplayName,
     startPreview,
     endPreview,
     refresh,

@@ -24,6 +24,7 @@ const SCHEMA = [
   './migrations/0002_submissions.sql',
   './migrations/0004_trashed_runs.sql',
   './migrations/0005_username_case.sql',
+  './migrations/0006_display_name_cooldown.sql',
 ]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')
@@ -102,6 +103,16 @@ const call = (env, path, { method = 'GET', body, token, cookie } = {}) => {
 
 const post = async (env, path, body, token) => {
   const response = await call(env, path, { method: 'POST', body, token })
+  return { response, data: await response.json() }
+}
+
+/* PATCH is its own method here rather than a flag on post(): the display name
+   edit is a partial update of the signed-in account, and sending it as a POST
+   would silently test the wrong route -- a route table that only knows POST would
+   answer "Unknown endpoint" and the test would fail for a reason that has
+   nothing to do with the behaviour under test. */
+const patch = async (env, path, body, token) => {
+  const response = await call(env, path, { method: 'PATCH', body, token })
   return { response, data: await response.json() }
 }
 
@@ -537,6 +548,115 @@ console.log('your runs follow the account, and a trashed one stops showing')
   check("you only get your own runs", otherEntries.entries?.length === 1 && otherEntries.entries[0].id === 'keep-2', JSON.stringify(otherEntries.entries?.map((e) => e.id)))
   check('another trashed run does not leak into your keys', !otherEntries.trashedRunKeys?.includes('keep-1'))
   void theirs
+}
+
+console.log('changing the display name')
+{
+  const env = { DB: createDb() }
+  const created = await post(env, '/api/register', {
+    username: 'renamer',
+    password: 'correct horse',
+    displayName: 'Original Name',
+  })
+  const token = created.data.token
+  check('a new account has never changed its name', created.data.user.displayNameChangedAt === null)
+
+  // Not signed in at all.
+  const anon = await call(env, '/api/me', { method: 'PATCH', body: { displayName: 'Nope' } })
+  check('changing a name without a session is refused', anon.status === 401, String(anon.status))
+
+  // The first change, on an account that has never used the limit.
+  const first = await patch(env, '/api/me', { displayName: 'First Change' }, token)
+  check('the first change is allowed', first.response.status === 200, JSON.stringify(first.data))
+  check('and the new name is stored', first.data.user?.displayName === 'First Change')
+  check('the change is timestamped for the client to count down from', typeof first.data.user?.displayNameChangedAt === 'number')
+  check('the full cooldown is reported back', first.data.cooldown?.remainingMs === 24 * 60 * 60 * 1000, JSON.stringify(first.data.cooldown))
+
+  // Read back through /api/me, which is what the account panel renders from.
+  const me = await (await call(env, '/api/me', { token })).json()
+  check('the change survives a re-read of the account', me.user?.displayName === 'First Change', JSON.stringify(me.user))
+  check('the timestamp is on the re-read account too', typeof me.user?.displayNameChangedAt === 'number')
+
+  // Immediately again: this is the limit itself.
+  const second = await patch(env, '/api/me', { displayName: 'Second Change' }, token)
+  check('a second change on the same day is refused', second.response.status === 429, String(second.response.status))
+  check('the refusal says what the rule is', second.data.error?.includes('once a day') === true, second.data.error)
+  check('the refusal reports the time remaining', second.data.cooldown?.remainingMs > 0, JSON.stringify(second.data.cooldown))
+
+  const afterRefusal = await (await call(env, '/api/me', { token })).json()
+  check('the refused change did not alter the stored name', afterRefusal.user?.displayName === 'First Change', JSON.stringify(afterRefusal.user))
+
+  /* Backdating past the limit, rather than waiting a real day for the test.
+   * This is the same column the route reads, so it exercises the real comparison
+   * and the real query -- only the clock is moved. */
+  await env.DB.prepare(
+    'UPDATE users SET display_name_changed_at = ? WHERE username_lower = ?',
+  ).bind(Date.now() - 24 * 60 * 60 * 1000 - 1000, 'renamer').run()
+
+  const afterCooldown = await patch(env, '/api/me', { displayName: 'Second Change' }, token)
+  check('the change is allowed again once the day is up', afterCooldown.response.status === 200, JSON.stringify(afterCooldown.data))
+  check('and the second name is the one stored', afterCooldown.data.user?.displayName === 'Second Change')
+
+  /* Whitespace-only collapses to nothing, and registration falls back to the
+   * username in the same way, so an account can never be left holding a blank
+   * name that renders as an empty row on the leaderboard.
+   *
+   * Backdated first, like the change above it: the step just before this spent the
+   * day's limit, so without that the blank name would be refused for being early
+   * rather than tested for what it actually is. That refusal is correct -- it is
+   * what the check above already asserts -- so it would have passed here for the
+   * wrong reason. */
+  await env.DB.prepare(
+    'UPDATE users SET display_name_changed_at = ? WHERE username_lower = ?',
+  ).bind(Date.now() - 24 * 60 * 60 * 1000 - 1000, 'renamer').run()
+
+  const blank = await patch(env, '/api/me', { displayName: '   ' }, token)
+  check('a blank name falls back to the username', blank.data.user?.displayName === 'renamer', JSON.stringify(blank.data.user))
+
+  const spaced = await patch(env, '/api/me', { displayName: '  Spaced   Out  ' }, null)
+  check('a session is still required', spaced.response.status === 401, String(spaced.response.status))
+
+  // The username must be untouched by any of this.
+  const finalMe = await (await call(env, '/api/me', { token })).json()
+  check('the username is unchanged by a display name edit', finalMe.user?.username === 'renamer', JSON.stringify(finalMe.user))
+
+  // A brand new account is not locked out by the column being null.
+  const second2 = await post(env, '/api/register', { username: 'fresh', password: 'correct horse' })
+  const freshChange = await patch(env, '/api/me', { displayName: 'Fresh Name' }, second2.data.token)
+  check('a never-changed account can change its name at once', freshChange.response.status === 200, JSON.stringify(freshChange.data))
+}
+
+console.log('the display name on the leaderboard')
+{
+  const env = { DB: createDb() }
+  const created = await post(env, '/api/register', {
+    username: 'boarder',
+    password: 'correct horse',
+    displayName: 'Board Name',
+  })
+  const token = created.data.token
+
+  // The name as registered, then the name after a change. The board has to show
+  // the second one -- which is the whole reason the change is worth having.
+  await patch(env, '/api/me', { displayName: 'Renamed Person' }, token)
+
+  const saved = await post(env, '/api/runs', aRun({ runId: 'display-name-run' }), token)
+  const runId = saved.data.run?.id
+  check('the run was stored', Boolean(runId), JSON.stringify(saved.data))
+
+  await env.DB
+    .prepare(
+      `INSERT INTO submissions (run_id, video_url, container, note, created_at, status)
+       VALUES (?, ?, 'webm', NULL, 1, 'approved')`,
+    )
+    .bind(runId, 'https://example.com/proof.mp4')
+    .run()
+
+  const board = await (await call(env, '/api/leaderboard')).json()
+  const entry = board.entries?.[0]
+  check('the board shows the current display name, not the registered one', entry?.displayName === 'Renamed Person', JSON.stringify(entry?.displayName))
+  check('the board also carries the username the handle is built from', entry?.username === 'boarder', JSON.stringify(entry?.username))
+  check('the registered name is not what is shown', entry?.displayName !== 'Board Name')
 }
 
 console.log('the list proxy still works')

@@ -212,6 +212,27 @@ export const fetchMyEntries = async (signal) => {
   }
 }
 
+/**
+ * Changes the signed-in player's display name.
+ *
+ * The server owns the once-a-day limit and enforces it; this only reports what it
+ * said. The response carries the server's own timestamp for when the change
+ * counted, so the countdown on screen is measured from the same clock the rule
+ * was measured from -- a device whose clock is behind would otherwise unlock the
+ * field early and then be refused.
+ */
+export const updateDisplayName = async (displayName) => {
+  const result = await request('/api/me', {
+    method: 'PATCH',
+    auth: true,
+    body: { displayName },
+  })
+  return {
+    user: result.user ?? null,
+    cooldown: result.cooldown ?? null,
+  }
+}
+
 export const fetchLeaderboard = async ({ board = 'farthest', source = 'all', limit = 50, signal } = {}) => {
   const params = new URLSearchParams({ board, source, limit: String(limit) })
   const result = await request(`/api/leaderboard?${params.toString()}`, { signal })

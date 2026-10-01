@@ -147,7 +147,16 @@ export default function GlobalLeaderboard({ user }) {
               <span className="lb-rank">#{entry.rank}</span>
               <span className="lb-main">
                 <span className="lb-top">
+                  {/* The display name is what the player chose to be known by, so
+                      it leads. The @handle follows it because the two are not the
+                      same thing and only one of them is editable: a display name
+                      can be anything, so a run ranked under "Alex" beside "@alex2"
+                      is one account and not a look-alike impostor -- and printing
+                      the handle is what makes that distinguishable. Showing only
+                      the display name left no way to tell two players apart at
+                      all. */}
                   <strong>{entry.displayName}</strong>
+                  <span className="lb-handle">@{entry.username}</span>
                   {isYou && <em className="lb-you-tag">you</em>}
                   <span className="lb-sub">
                     {entry.passed} cleared · {entry.roundsPlayed} played ·{' '}

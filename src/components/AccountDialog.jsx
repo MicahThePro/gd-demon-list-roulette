@@ -1,6 +1,12 @@
 import { useState } from 'react'
+import { formatCooldown, useCooldownRemaining } from '../hooks/useCooldownRemaining'
 
 const MIN_PASSWORD_LENGTH = 8
+/* Matches the Worker's MAX_DISPLAY_NAME. Capping here as well is a courtesy
+ * that keeps the counter honest -- without it the field would happily take more
+ * characters than the server will keep, and the last few would be silently
+ * dropped on save. The server cap remains the rule. */
+const MAX_DISPLAY_NAME = 40
 
 /**
  * Sign in, sign up and account summary, in one dialog.
@@ -25,19 +31,54 @@ const MIN_PASSWORD_LENGTH = 8
  * checkbox.
  */
 export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null, onAuthenticated, onSignedOut }) {
-  const { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut } = auth
+  const { user, isRestoring, isBusy, error, setError, signIn, signUp, signOut, changeDisplayName } = auth
   const [mode, setMode] = useState('signin')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
+  /* Whether the display name is being edited, and what has been typed into it.
+     Separate from `displayName`, which belongs to the sign-up form: the two are
+     different fields that happen to share a name, and reusing one state value
+     between them meant opening the account panel showed whatever was last typed
+     into the sign-up form. */
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+
+  /* The once-a-day limit, counting down live.
+     *
+     * The user's own account is the input: a moderator previewing somebody else's
+     * account sees that account's cooldown, because that is the name they would
+     * be changing. */
+  const { remainingMs, isLocked } = useCooldownRemaining(user?.displayNameChangedAt)
+
   /* Whether a run in hand goes on the account. Not a choice the player makes here
      -- they came from a run, so it is kept -- but read as a constant rather than
      inlined, so the one place that decides is the one place that says so. */
   const attachRun = Boolean(pendingRun)
 
+  /* Leaves edit mode for a different account.
+     *
+     * A dialog can be reopened by a different player on the same device, and a
+     * half-typed name left over from the previous account would then be offered
+     * to somebody else as their own.
+     *
+     * Done as part of the state the dialog already keeps -- see handleClose, which
+     * clears it -- rather than as an effect watching the account. An effect here
+     * would both be the extra render React warns about and run on the account
+     * changing underneath a dialog that is still open, cancelling a half-typed
+     * name mid-sentence because something unrelated re-read the account. */
+
   const handleClose = () => {
     setPassword('')
     setError('')
+    // Cleared here rather than in an effect on open, for the same reason the
+    // password is: closing is the one moment the dialog knows it is going away.
+    // An effect would leave a half-typed display name sitting in the state of a
+    // dialog that is not on screen, so reopening -- or, on a shared browser,
+    // letting the next player open it -- would offer them somebody else's
+    // unsaved name as their own starting point.
+    setIsEditingName(false)
+    setNameDraft('')
     onClose()
   }
   if (!isOpen) {
@@ -49,6 +90,17 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
     username.trim().length >= 3 &&
     password.length >= MIN_PASSWORD_LENGTH &&
     !isBusy
+
+  /* Whether the name being typed is worth sending.
+     *
+     * An unchanged name is not a change, so saving it would spend the player's one
+     * daily edit on writing back the same text. The server would allow that --
+     * it cannot tell the difference either, since the two values are equal -- so
+     * the check is made here rather than by rejecting an identical name at the
+     * other end. Whitespace is compared trimmed for the same reason. */
+  const trimmedDraft = nameDraft.trim()
+  const nameIsChanged = trimmedDraft.length > 0 && trimmedDraft !== (user?.displayName ?? '')
+  const canSaveName = nameIsChanged && !isLocked && !isBusy
 
   /* Signing out also puts this device's own runs back on the board. Without that
    * the account's runs stay on screen after the account has ended, which on a
@@ -78,6 +130,38 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
     }
   }
 
+  /* Saving the new display name.
+     *
+     * The dialog closes only when the server agreed. Leaving it open on a failure
+     * keeps the typed name in the field so it can be corrected, and keeps the
+     * edit visible rather than reverting silently. The draft is seeded from the
+     * account's current name on open, so cancelling and reopening starts from
+     * what is really stored. */
+  const handleSaveName = async (event) => {
+    event.preventDefault()
+    if (!canSaveName) {
+      return
+    }
+
+    const result = await changeDisplayName(trimmedDraft)
+    if (result.ok) {
+      setIsEditingName(false)
+      setNameDraft('')
+    }
+  }
+
+  const handleStartEditingName = () => {
+    setNameDraft(user?.displayName ?? '')
+    setIsEditingName(true)
+    setError('')
+  }
+
+  const handleCancelName = () => {
+    setIsEditingName(false)
+    setNameDraft('')
+    setError('')
+  }
+
   return (
     <div className="modal-backdrop" role="presentation" onClick={handleClose}>
       <div
@@ -99,10 +183,88 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
         {user ? (
           <div className="account-panel">
             <p className="account-name">{user.displayName}</p>
+            <p className="account-handle">@{user.username}</p>
             <p className="settings-note">
               Signed in as <strong>@{user.username}</strong>. Your runs are submitted from the
               results screen and appear on the global leaderboard.
             </p>
+
+            {/* The display name editor.
+                Live countdown, and the button greys out while the daily limit is
+                running. The countdown sits exactly where the edit control is, so
+                the thing that is unavailable and the reason it is unavailable are
+                the same object on screen -- rather than a note elsewhere that the
+                reader has to connect back to this field. */}
+            {isEditingName ? (
+              <form className="account-name-form" onSubmit={handleSaveName}>
+                <label>
+                  Display name
+                  <input
+                    type="text"
+                    value={nameDraft}
+                    autoComplete="nickname"
+                    maxLength={MAX_DISPLAY_NAME}
+                    /* Disabled while the limit runs rather than merely refusing on
+                       submit, so the field cannot be typed into at all during the
+                       wait. The server refuses it either way. */
+                    disabled={isLocked || isBusy}
+                    onChange={(event) => setNameDraft(event.target.value)}
+                    placeholder="shown on the leaderboard"
+                  />
+                </label>
+
+                {isLocked && (
+                  <p className="settings-note account-cooldown">
+                    You can change your display name again in{' '}
+                    <strong>{formatCooldown(remainingMs)}</strong>. It unlocks on its own -- no
+                    need to reload the page.
+                  </p>
+                )}
+
+                {!isLocked && (
+                  <p className="settings-note">
+                    This is the name shown on the leaderboard. You can change it once a day; your
+                    username @{user.username} does not change.
+                  </p>
+                )}
+
+                {error && <div className="validation-message">{error}</div>}
+
+                <div className="modal-actions">
+                  <button type="submit" className="primary-button" disabled={!canSaveName}>
+                    {isBusy ? 'Saving...' : 'Save display name'}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleCancelName}
+                    disabled={isBusy}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="account-name-actions">
+                <button
+                  type="button"
+                  className="secondary-button small-button"
+                  onClick={handleStartEditingName}
+                  /* Greyed out for the whole wait, and not merely inert: the
+                     countdown is rendered in place of the control so the reader
+                     can see when it comes back rather than having to try. */
+                  disabled={isLocked}
+                >
+                  Change display name
+                </button>
+                {isLocked && (
+                  <span className="account-cooldown-timer">
+                    available again in <strong>{formatCooldown(remainingMs)}</strong>
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="modal-actions">
               <button type="button" className="secondary-button" onClick={handleSignOut}>
                 Sign out

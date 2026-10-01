@@ -7,6 +7,7 @@
  *   POST /api/login      { username, password }
  *   POST /api/logout
  *   GET  /api/me
+ *   PATCH /api/me        { displayName } -- one change per 24h
  *   POST /api/runs       a finished run
  *   GET  /api/runs       that player's stored runs
  *   DELETE /api/runs/:id one stored run
@@ -124,6 +125,41 @@ const usernameKey = (value) => normalizeUsername(value).toLowerCase()
 const normalizeDisplayName = (value, fallback) => {
   const cleaned = String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DISPLAY_NAME)
   return cleaned || fallback
+}
+
+/* How long a player must wait between display name changes.
+ *
+ * The rule exists because a display name is shown beside a username on the
+ * leaderboard, and a name that can be changed instantly can be swapped the
+ * instant before a screenshot -- so the name somebody is ranked under stops
+ * meaning anything. A day is long enough that a change is a decision rather than
+ * a reaction, and short enough that a name somebody regrets is not held against
+ * them for good.
+ *
+ * Rolling rather than calendar-day: the limit is measured from the last change,
+ * not from midnight. A calendar rule would mean two changes minutes apart
+ * across midnight, and a limit that can be stepped over is not a limit. */
+export const DISPLAY_NAME_COOLDOWN_MS = 24 * 60 * 60 * 1000
+
+/* Whether a display name can be changed at this moment, and if not, how long is
+ * left.
+ *
+ * Shared by the route that writes the name and by the client, so the countdown
+ * on screen and the rule that refuses the write are read from one calculation.
+ * `changedAt` is null for an account that has never edited its name, which is
+ * allowed -- see migration 0006 for why null cannot mean the epoch. */
+export const displayNameCooldown = (changedAt, now = Date.now()) => {
+  const last = Number(changedAt)
+  // Not finite means null or a missing column value, i.e. never changed. Infinity
+  // makes every remaining calculation below fall through to "allowed".
+  const lastChange = Number.isFinite(last) ? last : -Infinity
+  const remaining = lastChange + DISPLAY_NAME_COOLDOWN_MS - now
+  return {
+    allowed: remaining <= 0,
+    // 0 rather than a negative number, so a caller can render it as a countdown
+    // without having to special-case a value that is already in the past.
+    remainingMs: Math.max(0, remaining),
+  }
 }
 
 const parseJson = async (request) => {
@@ -658,7 +694,7 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
       body: {
         token: session.token,
         expiresAt: session.expiresAt,
-        user: { id: userId, username, displayName },
+        user: { id: userId, username, displayName, displayNameChangedAt: null },
       },
       setCookie: session.token,
     }
@@ -700,6 +736,7 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
             id: result.user.id,
             username: result.user.username,
             displayName: result.user.display_name,
+            displayNameChangedAt: result.user.display_name_changed_at ?? null,
             createdAt: result.user.created_at,
           },
           // So the client can raise the preview banner exactly as it does after
@@ -717,7 +754,7 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
        here. */
     const user = await db
       .prepare(
-        `SELECT id, username, display_name, password_hash, salt, created_at
+        `SELECT id, username, display_name, display_name_changed_at, password_hash, salt, created_at
            FROM users WHERE username_lower = ?`,
       )
       .bind(usernameKey(username))
@@ -745,6 +782,7 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
           id: user.id,
           username: user.username,
           displayName: user.display_name,
+          displayNameChangedAt: user.display_name_changed_at ?? null,
           createdAt: user.created_at,
         },
       },
@@ -760,6 +798,64 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
   if (request.method === 'GET' && route === 'me') {
     const user = await requireUser(db, request)
     return { status: 200, body: { user } }
+  }
+
+  /* PATCH /api/me -- change the signed-in player's display name.
+   *
+   * The one route a player may use to edit their own account, and it is checked
+   * against their own session rather than a passcode. Only display_name is
+   * writable: a PATCH that could reach username, password_hash or the id would
+   * be a privilege escalation dressed as an edit, so the column is named in the
+   * UPDATE rather than interpolated from the request.
+   *
+   * The cooldown is checked here and not merely in the UI. The greyed-out button
+   * is a courtesy; this is the rule. A client that skips the check entirely still
+   * gets a refusal, because the comparison is made against the timestamp in the
+   * database rather than anything the request asserts about it. */
+  if (route === 'me' && request.method === 'PATCH') {
+    const user = await requireUser(db, request)
+    if (!user) {
+      return { error: 'Sign in to change your display name', status: 401 }
+    }
+
+    const body = await readBody(request)
+    if (!body) {
+      return { error: 'Could not read that request', status: 400 }
+    }
+
+    /* A name that is blank falls back to the username, which is what registration
+     * does with an empty display name. Reusing normalizeDisplayName rather than
+     * reimplementing the trim and the length cap means an account cannot hold a
+     * name that registration would have refused. */
+    const displayName = normalizeDisplayName(body.displayName, user.username)
+
+    // Refused before the write, and the timestamp comes from the row rather than
+    // from the request, so a client claiming a different one changes nothing.
+    const cooldown = displayNameCooldown(user.displayNameChangedAt, now)
+    if (!cooldown.allowed) {
+      return {
+        error: 'You can change your display name once a day',
+        status: 429,
+        cooldown: { remainingMs: cooldown.remainingMs },
+      }
+    }
+
+    const updatedAt = now
+    await db
+      .prepare('UPDATE users SET display_name = ?, display_name_changed_at = ? WHERE id = ?')
+      .bind(displayName, updatedAt, user.id)
+      .run()
+
+    return {
+      status: 200,
+      body: {
+        user: { ...user, displayName, displayNameChangedAt: updatedAt },
+        // Sent so the client starts its countdown from the server's clock rather
+        // than its own, which on a device whose clock is wrong would either lock
+        // the player out or let them through early.
+        cooldown: { remainingMs: DISPLAY_NAME_COOLDOWN_MS },
+      },
+    }
   }
 
   // /api/runs and /api/runs/:id share the one sign-in check, so the id form is
