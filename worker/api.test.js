@@ -23,6 +23,7 @@ const SCHEMA = [
   './migrations/0001_init.sql',
   './migrations/0002_submissions.sql',
   './migrations/0004_trashed_runs.sql',
+  './migrations/0005_username_case.sql',
 ]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')
@@ -134,7 +135,7 @@ console.log('registration and sessions')
     displayName: 'Player One',
   })
   check('register succeeds', created.response.status === 201, JSON.stringify(created.data))
-  check('username is lowercased', created.data.user?.username === 'player_one', created.data.user?.username)
+  check('the username keeps the case it was typed in', created.data.user?.username === 'Player_One', created.data.user?.username)
   check('a session token is returned', typeof created.data.token === 'string' && created.data.token.length === 64)
   const cookie = created.response.headers.get('set-cookie') ?? ''
   check('a session cookie is set', cookie.includes('dlr_session=') && cookie.includes('SameSite=Lax'))
@@ -143,8 +144,19 @@ console.log('registration and sessions')
   const dupe = await post(env, '/api/register', { username: 'player_one', password: 'another one' })
   check('a taken username is rejected', dupe.response.status === 409, JSON.stringify(dupe.data))
 
+  /* Uniqueness is on the case-folded form, not on the bytes. "PLAYER_ONE" and
+     "PlAyEr_OnE" are the same account as "Player_One", and the old UNIQUE
+     constraint on the raw column would have taken all three. A name claimed in one
+     case cannot then be claimed in another, which is what stops two people holding
+     handles that differ only in how they are capitalised and that a case-insensitive
+     sign-in cannot tell apart. */
+  const dupeCase = await post(env, '/api/register', { username: 'PLAYER_ONE', password: 'another one' })
+  check('the same name in different case is rejected', dupeCase.response.status === 409, JSON.stringify(dupeCase.data))
+  const dupeMixed = await post(env, '/api/register', { username: 'pLaYeR_OnE', password: 'another one' })
+  check('and so is a mixed-case spelling of it', dupeMixed.response.status === 409, JSON.stringify(dupeMixed.data))
+
   const me = await call(env, '/api/me', { token: created.data.token })
-  check('the token identifies the player', (await me.json())?.user?.username === 'player_one')
+  check('the token identifies the player', (await me.json())?.user?.username === 'Player_One')
 
   const badLogin = await post(env, '/api/login', { username: 'player_one', password: 'wrong' })
   check('a wrong password is rejected', badLogin.response.status === 401)
@@ -160,6 +172,19 @@ console.log('registration and sessions')
   check(
     'signing in again issues a different token',
     goodLogin.data.token !== created.data.token,
+  )
+
+  /* Signing in ignores case, and the handle comes back as it was typed rather than
+     as whatever case was used to find it. The stored case is the one the owner
+     chose and is what the leaderboards and the admin panel show, so flattening it
+     to the case of the sign-in attempt would be a slow way of renaming somebody's
+     account every time they typed their password. */
+  const shoutyLogin = await post(env, '/api/login', { username: 'PLAYER_ONE', password: 'correct horse' })
+  check('sign in ignores the case of the username', shoutyLogin.response.status === 200, JSON.stringify(shoutyLogin.data))
+  check(
+    'and still returns the username as it was registered',
+    shoutyLogin.data.user?.username === 'Player_One',
+    shoutyLogin.data.user?.username,
   )
 
   const noToken = await call(env, '/api/me')

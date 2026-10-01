@@ -99,13 +99,27 @@ const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, v
  */
 const looksLikeLoginCode = (value) => normalizeLoginCode(value).length === LOGIN_CODE_LENGTH
 
-/** Handles are the login name, so they are kept to a small safe alphabet. */
+/* A username reduced to what the accounts table stores in the username column: the
+   handle as it was typed, with only the characters a handle may contain and the
+   length cap applied. Case is deliberately NOT changed -- a handle keeps the case
+   its owner gave it, which is the whole point of the column being the display
+   form. Uniqueness regardless of case is the separate job of the `username_lower`
+   column, and matching regardless of case is `lower()` at the lookup.
+   Registration and login both run a submitted name through this, so a name that
+   went through either is already in the shape the table holds. Trim and drop
+   anything outside the alphabet both happen here, so both sides of any comparison
+   are the same shape. */
 const normalizeUsername = (value) =>
   String(value ?? '')
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_.]/g, '')
+    .replace(/[^A-Za-z0-9_.]/g, '')
     .slice(0, 20)
+
+/* The identity form: the same name folded, which is what usernames are keyed on.
+   Unicode is not involved -- normalizeUsername has already thrown away everything
+   outside ASCII -- so lower() is the whole of it and it matches what SQLite's own
+   lower() computes for the index. */
+const usernameKey = (value) => normalizeUsername(value).toLowerCase()
 
 const normalizeDisplayName = (value, fallback) => {
   const cleaned = String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DISPLAY_NAME)
@@ -611,21 +625,23 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
 
     const displayName = normalizeDisplayName(body.displayName, username)
     const record = await createPasswordRecord(password)
+    const key = usernameKey(username)
 
     let userId
     try {
       const result = await db
         .prepare(
-          `INSERT INTO users (username, display_name, password_hash, salt, created_at)
-           VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO users (username, username_lower, display_name, password_hash, salt, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)
            RETURNING id`,
         )
-        .bind(username, displayName, record.passwordHash, record.salt, now)
+        .bind(username, key, displayName, record.passwordHash, record.salt, now)
         .first()
       userId = result?.id
     } catch (error) {
-      // The only expected failure is the unique index on username. Anything
-      // else is a real error and is not disguised as a taken name.
+      // The only expected failure is the unique index on username_lower, which is
+      // what refuses "Bob" when "bob" is taken. Anything else is a real error and
+      // is not disguised as a taken name.
       if (String(error?.message ?? '').includes('UNIQUE')) {
         return { error: 'That username is taken', status: 409 }
       }
@@ -695,12 +711,16 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
       }
     }
 
+    /* Matched on the lowercased form, so "BOB", "bob" and "Bob" are one account.
+       The handle as it was typed comes back in the row and is what the client is
+       told, which is why the case survives the sign-in rather than being flattened
+       here. */
     const user = await db
       .prepare(
         `SELECT id, username, display_name, password_hash, salt, created_at
-           FROM users WHERE username = ?`,
+           FROM users WHERE username_lower = ?`,
       )
-      .bind(username)
+      .bind(usernameKey(username))
       .first()
 
     // The same message either way, so the response does not say which usernames

@@ -18,6 +18,7 @@ const SCHEMA = [
   './migrations/0001_init.sql',
   './migrations/0002_submissions.sql',
   './migrations/0004_trashed_runs.sql',
+  './migrations/0005_username_case.sql',
 ]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')

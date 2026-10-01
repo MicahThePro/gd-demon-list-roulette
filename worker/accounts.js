@@ -36,12 +36,25 @@ const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
    and comparing that raw text against a canonical one rejects names that are the
    same account. Trim, lowercase and drop anything outside the alphabet all happen
    here, so both sides of the comparison are the same shape. */
+/* A username reduced to exactly the form the accounts table stores in the
+   username column: the handle as typed, trimmed and length-capped.
+   Registration and login both run a submitted name through this, so a name that
+   went through either is already in the stored shape. A username sent to a route
+   that does not normalise -- /api/redeem, and the code branch of /api/login -- has
+   not been, and comparing that raw text against a stored one rejects names that are
+   the same account.
+   Case is not touched here on purpose. A handle keeps the case its owner gave it,
+   so the case cannot be thrown away before a comparison -- it is compared
+   case-insensitively instead, by folding both sides to the form the uniqueness
+   index is on. That is the same fold the database keys on, so what a comparison
+   accepts and what a name can be claimed as cannot drift apart. */
 export const canonicalUsername = (value) =>
   String(value ?? '')
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_.]/g, '')
     .slice(0, 20)
+
+/** The identity form of a name: case folded, which is how usernames are unique. */
+export const usernameKey = (value) => canonicalUsername(value).toLowerCase()
 
 /* Each character as U+XXXX. The only readable way to show a difference that
    renders as nothing. */
@@ -122,8 +135,8 @@ export const redeemLoginCodeByHash = async (db, supplied, now, expectedUsername 
      match: otherwise a code pasted into the wrong account's row would sign in as
      the code's real owner and say nothing about it. Compared before the claim, so
      a mistyped username does not cost anybody the code. */
-  const wanted = canonicalUsername(expectedUsername)
-  if (wanted && wanted !== row.username) {
+  const wanted = usernameKey(expectedUsername)
+  if (wanted && wanted !== usernameKey(row.username)) {
     return {
       error:
         `That code was issued for @${row.username}, not @${wanted}. ` +

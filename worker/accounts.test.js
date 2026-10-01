@@ -19,6 +19,7 @@ const SCHEMA = [
   './migrations/0002_submissions.sql',
   './migrations/0003_admin.sql',
   './migrations/0004_trashed_runs.sql',
+  './migrations/0005_username_case.sql',
 ]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')
@@ -530,6 +531,29 @@ console.log('a login code works as a password')
   const byLink = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: new URLSearchParams('username=lt4717').get('username'), code: lizCode.code } })
   check('the name the panel puts in the link redeems', byLink.response.status === 200, JSON.stringify(byLink.data))
   check('as the account it belongs to', byLink.data.user?.username === 'lt4717', JSON.stringify(byLink.data.user))
+
+  /* A handle keeps its own case now, so the username check on a login code cannot
+     be a byte comparison or every code would fail for any account whose name is not
+     all lower case. It matches the way the database keys names -- folded -- which is
+     also what stops a code for one account being presented with a differently
+     capitalised spelling of a name belonging to somebody else. */
+  const lizShouty = await jsonCall(env, '/api/register', { method: 'POST', body: { username: 'NeXus', password: 'a good password' } }).then((r) => r.data)
+  const nexusCode = (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}/login-code`, { method: 'POST', passcode: '258456' })).data
+  check(
+    'the mixed-case handle is stored as it was typed',
+    (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}`, { passcode: '258456' })).data.account.username === 'NeXus',
+  )
+  const otherCase = await jsonCall(env, '/api/register', { method: 'POST', body: { username: 'Nexuz', password: 'a good password' } }).then((r) => r.data)
+  const otherCode = (await jsonCall(env, `/api/admin/accounts/${otherCase.user.id}/login-code`, { method: 'POST', passcode: '258456' })).data
+  const stillWrong = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'Nexuz', code: nexusCode.code } })
+  check('but a different name in any case is still refused', stillWrong.response.status === 401, JSON.stringify(stillWrong.data))
+  const nexusAnyCase = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'NEXUS', code: nexusCode.code } })
+  check('a code redeems whatever case the name is typed in', nexusAnyCase.response.status === 200, JSON.stringify(nexusAnyCase.data))
+  check('as the right account', nexusAnyCase.data.user?.username === 'NeXus', JSON.stringify(nexusAnyCase.data.user))
+  check(
+    'and its own code still works',
+    (await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'NEXUZ', code: otherCode.code } })).response.status === 200,
+  )
 
   // Passwords are untouched. A real password must not be treated as a code, and
   // the wrong password must still be refused.

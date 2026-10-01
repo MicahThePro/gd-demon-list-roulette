@@ -119,6 +119,18 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
             </label>
 
             {isSignUp && (
+              /* Says what happens to the name before it is typed, because both rules
+                 are invisible otherwise: the capitalisation chosen here is the one kept
+                 and shown everywhere, and it is also what makes the name unclaimable
+                 by anyone else -- signing in ignores case, so "Bob" and "bob" are one
+                 account and the second of them cannot be registered. */
+              <p className="settings-note">
+                Capitalisation is kept as you type it, and nobody else can take the
+                same name in any case. Signing in works whichever way you type it.
+              </p>
+            )}
+
+            {isSignUp && (
               <label>
                 Display name
                 <input
