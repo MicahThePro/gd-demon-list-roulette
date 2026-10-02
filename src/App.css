@@ -964,6 +964,17 @@
   text-align: left;
 }
 
+/* The dialog takes focus when it opens, so that Tab is trapped inside it, and
+   nothing is focused otherwise. That is a container role rather than something the
+   player is interacting with, so it must not draw a focus ring -- an outline around
+   the whole dialog reads as "this is selected" and looks like a rendering fault.
+   Accessibility is unaffected: Tab still moves to the first real control, and every
+   one of those still shows its own ring. */
+.settings-dialog:focus,
+.settings-dialog:focus-visible {
+  outline: none;
+}
+
 .settings-dialog-body {
   display: grid;
   gap: 10px;

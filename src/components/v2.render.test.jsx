@@ -690,5 +690,68 @@ console.log('\nThe uncensored-names setting')
   )
 }
 
+/* Settings focus.
+ *
+ * Opening the dialog used to focus the percentage field, and the effect that did it
+ * depended on `onCommit`, which is a new function on every render of the page above.
+ * So every commit from any field re-ran the effect and pulled focus back to the
+ * percentage box -- which is why clicking out of a text box threw the caret into it.
+ *
+ * Focus is a runtime behaviour and cannot be asserted on rendered markup, so what is
+ * checked here is the two things that can be: that the dialog is the focus container
+ * rather than one of its fields, and that nothing focuses a field on open.
+ */
+console.log('\nSettings focus')
+{
+  const common = {
+    isOpen: true,
+    onClose: () => {},
+    percentStep: 1,
+    percentStepDraft: '1',
+    onDraftChange: () => {},
+    onCommit: () => {},
+    estimatedRounds: 100,
+    allowSkip: false,
+    onAllowSkipChange: () => {},
+    levelTimeLimitDraft: '',
+    onLevelTimeLimitDraftChange: () => {},
+    onCommitLevelTimeLimit: () => {},
+    totalTimeLimitDraft: '',
+    onTotalTimeLimitDraftChange: () => {},
+    onCommitTotalTimeLimit: () => {},
+    isMasked: true,
+    onIsMaskedChange: () => {},
+  }
+  const html = renderToStaticMarkup(<SettingsDialog {...common} />)
+
+  /* tabIndex -1 on the dialog itself. Without it the container cannot take focus,
+   * so Tab would escape the dialog on the first press -- which is the other half of
+   * what the old field-focusing call was covering up. */
+  check(
+    'the dialog is the focus container',
+    /class="modal settings-dialog"[^>]*tabindex="-1"/.test(html),
+    html.slice(html.indexOf('settings-dialog'), html.indexOf('settings-dialog') + 120),
+  )
+  check('it is labelled for screen readers', html.includes('aria-labelledby="settings-title"'))
+
+  /* The regression itself, read off the source: on open, nothing may focus a form
+   * field. The container's own focus() is the point, so `dialog` is the one name
+   * allowed through -- any other ref is a control, and a control being focused is
+   * the bug. */
+  const settingsSource = readFileSync(new URL('./SettingsDialog.jsx', import.meta.url), 'utf8')
+  const focusesAField = [...settingsSource.matchAll(/(\w+)Ref\.current\?\.focus\(\)/g)]
+    .map((match) => match[1])
+    .filter((name) => name !== 'dialog')
+  check(
+    'opening the dialog focuses no form field',
+    focusesAField.length === 0,
+    focusesAField.join(', '),
+  )
+  check(
+    'and the dialog container is what takes focus instead',
+    /dialogRef\.current\?\.focus\(\)/.test(settingsSource),
+  )
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)
 process.exit(failures === 0 ? 0 : 1)

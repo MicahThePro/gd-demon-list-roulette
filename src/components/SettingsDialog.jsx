@@ -31,7 +31,6 @@ export default function SettingsDialog({
   isMasked,
   onIsMaskedChange,
 }) {
-  const inputRef = useRef(null)
   const closeRef = useRef(null)
   const dialogRef = useRef(null)
   // The dialog is the same component across opens, so a ref carries whether the
@@ -55,11 +54,28 @@ export default function SettingsDialog({
     }
     window.addEventListener('keydown', handleKeyDown)
 
-    // Focus the input, not the Close button, so typing goes to the field.
-    // The caret is deliberately NOT moved to the end and the text is NOT
-    // selected: selecting made the first keystroke replace the whole value, so
-    // typing a second digit was impossible without clicking first.
-    inputRef.current?.focus()
+    /* Focus the dialog itself, not one of its fields.
+     *
+     * It used to focus the percentage field, which put the caret in a box nobody
+     * had asked to edit -- so opening Settings to change one thing meant the first
+     * thing typed went into a field two rows above it.
+     *
+     * It also made this the wrong place to focus from. The effect depends on
+     * `onCommit`, which is a new function on every render of the page above, so a
+     * commit from *any* field re-ran the effect and pulled focus back to the
+     * percentage box. That is the second half of what was reported: clicking out of
+     * a text box threw the caret into it. Blurring is the only moment a commit
+     * happens, which is why it looked like blur was the trigger when it was only
+     * the occasion for a re-render.
+     *
+     * The dialog takes focus instead, with tabIndex -1 so it can. It accepts no
+     * keystrokes, so nothing is typed into it by accident, and Tab still lands on the
+     * first real control. Its focus ring is suppressed in CSS -- an outline round the
+     * whole dialog reads as a selection the player did not make.
+     *
+     * Only on open. The effect re-runs on every commit, and re-focusing on each of
+     * those is the bug being fixed. */
+    dialogRef.current?.focus()
 
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, onClose, onCommit, onCommitLevelTimeLimit, onCommitTotalTimeLimit])
@@ -103,6 +119,9 @@ export default function SettingsDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
+        /* tabIndex -1 so the container can hold focus, which is what keeps Tab inside the
+           dialog now that no field is focused for it. */
+        tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDownForFocus}
       >
@@ -129,7 +148,6 @@ export default function SettingsDialog({
           <label className="settings-field">
             Percentage increment
             <input
-              ref={inputRef}
               type="text"
               inputMode="numeric"
               value={percentStepDraft}
