@@ -8,9 +8,16 @@ import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fet
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
 import { SITE_NAME, LATEST_VERSION } from '../data/changelog'
+import { censorText } from '../utils/censor'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
 const IMPOSSIBLE_LEVELS_SOURCE = 'impossiblelevels'
+/* Short labels for the list dropdown.
+ *
+ * Deliberately the short forms: none of these spell out a list's full name, so the
+ * one list whose name carries a swear word is already shown as "GSL" here rather
+ * than needing a mask. censorText is still applied when they render, so this keeps
+ * working if a label is ever lengthened to a full list name. */
 const SOURCE_LABELS = {
   pointercrate: 'Pointercrate',
   aredl: 'AREDL',
@@ -28,7 +35,7 @@ const getBoundsForSource = (sourceName) => {
   return fetchAredlListBounds()
 }
 
-export default function HomePage({ onStart, onLoadRun, savedRunCode, history, gameRules, auth }) {
+export default function HomePage({ onStart, onLoadRun, savedRunCode, history, gameRules, isMasked, onIsMaskedChange, auth }) {
   const [isLoading, setIsLoading] = useState(false)
   const [isBoardOpen, setIsBoardOpen] = useState(false)
   // The board view has two halves: what this browser has played, and what
@@ -412,11 +419,14 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
               value={source}
               onChange={(event) => setSource(event.target.value)}
             >
-              <option value="pointercrate">Pointercrate Demon List</option>
-              <option value="aredl">All Rated Extreme Demons List (AREDL)</option>
-              <option value="gsl">Global Shitty List</option>
-              <option value={CHALLENGE_LIST_SOURCE}>Challenge List</option>
-              <option value={IMPOSSIBLE_LEVELS_SOURCE}>Impossible Levels List</option>
+              {/* Keys stay the raw source ids -- that is what the loader matches
+                  on. Only the text a player reads is censored, so the option is
+                  chosen by name but still selects the same list as before. */}
+              {Object.entries(SOURCE_LABELS).map(([id, label]) => (
+                <option key={id} value={id}>
+                  {censorText(label)}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -510,6 +520,8 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
         totalTimeLimitDraft={totalTimeLimitDraft}
         onTotalTimeLimitDraftChange={setTotalTimeLimitDraft}
         onCommitTotalTimeLimit={commitTotalTimeLimit}
+        isMasked={isMasked}
+        onIsMaskedChange={onIsMaskedChange}
       />
       <AccountDialog
         isOpen={isAccountOpen}

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
 import { formatDurationMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
+import { censorText } from '../utils/censor'
 import { submitEntry } from '../services/submissionService'
 import { hasSubmitted } from '../utils/submittedRuns'
 import SubmitRunForm from './SubmitRunForm'
@@ -61,7 +62,7 @@ const RunDetail = ({ entry, onClose, onDelete, auth }) => {
           &larr; Back
         </button>
         <div className="lb-detail-title">
-          <strong>{entry.source}</strong>
+          <strong>{censorText(entry.source)}</strong>
           <span>
             {formatWhen(entry.at)} &middot; step +{entry.step}% &middot; {entry.roundsPlayed} levels
           </span>
@@ -141,7 +142,7 @@ const RunDetail = ({ entry, onClose, onDelete, auth }) => {
                 )}
                 <span className="history-index">#{index + 1}</span>
                 <span className="history-copy">
-                  <strong title={round.name}>{round.name}</strong>
+                  <strong title={censorText(round.name)}>{censorText(round.name)}</strong>
                   <small>
                     {round.result === 'gaveup'
                       ? `${round.target}% was required`
@@ -328,7 +329,7 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
                   </em>
                 </span>
                 <span className="lb-sub">
-                  {entry.source} &middot; step +{entry.step}% &middot; {entry.roundsPlayed} levels
+                  {censorText(entry.source)} &middot; step +{entry.step}% &middot; {entry.roundsPlayed} levels
                   {entry.passed > 0 && ` · ${entry.passed} passed`}
                   {entry.skipped > 0 && ` · ${entry.skipped} skipped`}
                   {entry.avgMs ? ` · avg ${formatDurationMs(entry.avgMs)}` : ''}

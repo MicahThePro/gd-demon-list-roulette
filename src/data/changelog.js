@@ -35,6 +35,7 @@ export const CHANGELOG = [
       'Runs are now only saved to an account. A run finished while signed out is not saved anywhere at all — not on this device, not on the leaderboard. If you finish a run signed out, sign in or create an account and you are asked whether to keep it; say yes and it goes on your account, say no and it simply goes when you leave the page. Nobody is asked twice and nothing is saved without being agreed to.',
       'The Your runs board is gone while signed out. There would be nothing on it — no runs are stored for a signed out player — so instead of an empty board there is a line saying so and a link to sign in. Signed out, the only board you can open is Global.',
       'Anything already saved from before this change is kept, not deleted. It is simply not shown until you sign in, and signing in replaces it with the runs on your account.',
+      'You can turn the level name filter off. A few level names contain a swear word, and until now the site starred them out on every screen with no way to see the real name. Settings now has a Show uncensored level names switch. It is off by default, so the site looks exactly as it did before, and turning it on shows the names as their creators typed them everywhere they appear -- in the game, in your runs, and on the leaderboard. You are warned while it is on, and it is remembered in this browser like your other settings. The names themselves were always stored in full, so nothing about your runs or anyone else\u2019s changes: only what is drawn on screen.',
     ],
   },
   {

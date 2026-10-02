@@ -28,6 +28,8 @@ export default function SettingsDialog({
   totalTimeLimitDraft,
   onTotalTimeLimitDraftChange,
   onCommitTotalTimeLimit,
+  isMasked,
+  onIsMaskedChange,
 }) {
   const inputRef = useRef(null)
   const closeRef = useRef(null)
@@ -210,10 +212,45 @@ export default function SettingsDialog({
               : 'A speedrun: see how many levels you can clear before the clock runs out.'}
           </p>
 
+          <hr className="settings-divider" />
+
+          {/* The mask, and the only setting that changes what a player reads rather
+              than how a run behaves.
+
+              It is the one control here with a consequence that needs saying out
+              loud, so the warning stays on screen for as long as the setting is off
+              rather than being a one-off confirm the player can dismiss and forget.
+              It says what to expect and how to undo it, which is what a player
+              choosing this actually needs to know. */}
+          <label className="settings-toggle-row">
+            <input
+              type="checkbox"
+              checked={!isMasked}
+              onChange={(event) => onIsMaskedChange(!event.target.checked)}
+            />
+            <span>
+              <strong>Show uncensored level names</strong>
+              <small>
+                Off by default. Level names are stored exactly as their creator typed
+                them, and a few of those contain a swear word. Turning this off shows
+                them as they really are, everywhere a level name appears.
+              </small>
+            </span>
+          </label>
+
+          {!isMasked && (
+            <p className="settings-censor-warning">
+              Uncensored names are switched on. Level names here may contain profanity,
+              and anyone who opens a run you send in will see them the same way. You
+              can turn this back off at any time.
+            </p>
+          )}
+
           <p className="settings-note">
-            These rules are saved to this browser and are locked in when a run
-            starts, so changing them mid-run will not affect the run you are
-            playing.
+            The run rules above are saved to this browser and are locked in when a run
+            starts, so changing them mid-run will not affect the run you are playing.
+            The mask is not one of them: it only changes what is on screen, so it
+            applies straight away and to the run you are already playing.
           </p>
         </div>
       </div>

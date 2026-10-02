@@ -18,6 +18,9 @@ import GlobalLeaderboard from './GlobalLeaderboard.jsx'
 import Leaderboard from './Leaderboard.jsx'
 import PreviewBanner from './PreviewBanner.jsx'
 import ResultsPage from '../pages/ResultsPage.jsx'
+import RoulettePage from '../pages/RoulettePage.jsx'
+import SettingsDialog from './SettingsDialog.jsx'
+import { censorText, isCensoring, setCensoring } from '../utils/censor.js'
 import { isPlayable, versionUrl, PLAYABLE_VERSIONS } from '../data/versions.js'
 import { CHANGELOG, LATEST_VERSION } from '../data/changelog.js'
 
@@ -555,6 +558,126 @@ console.log('Results, for a run played signed out')
     leakedSource.length === 0 && parseError === '',
     [parseError, ...leakedSource].join(' | '),
   )
+}
+
+/* The profanity mask, and the player's opt-out from it.
+ *
+ * The mask used to be applied when a list was loaded, which meant the real name was
+ * destroyed before anything could render it. A setting that unmasked words could
+ * therefore never work for level names -- which is most of what a player reads. The
+ * name is kept intact now and masked where it is shown, so these check both halves
+ * of that: that the data survives, and that the screen respects the choice.
+ *
+ * `setCensoring` is restored after every check because the mask is module state
+ * shared by the whole render, so a check that left it off would quietly disarm every
+ * masking check after it. */
+console.log('\nThe profanity mask')
+{
+  const NAME = 'Super Shitty Song'
+  const run = {
+    status: 'playing',
+    currentTarget: 1,
+    source: 'gsl',
+    target: 1,
+    rounds: [],
+    currentLevel: { id: 'level-1', name: NAME, creator: 'someone' },
+  }
+  const renderRoulette = () =>
+    renderToStaticMarkup(
+      <RoulettePage
+        run={run}
+        gameRules={{ allowSkip: true }}
+        onSkip={() => {}}
+        onGiveUp={() => {}}
+        onStartOver={() => {}}
+      />,
+    )
+
+  setCensoring(true)
+  check('the mask is on by default', isCensoring())
+  check('and masks the word it is there for', censorText(NAME) === 'Super S****y Song', censorText(NAME))
+
+  const maskedHtml = renderRoulette()
+  check('a level name is masked on the page', maskedHtml.includes('S****y') && !maskedHtml.includes(NAME))
+
+  setCensoring(false)
+  check('switching it off reaches the mask itself', !isCensoring())
+  check('and the word comes back', censorText(NAME) === NAME, censorText(NAME))
+  const shownHtml = renderRoulette()
+  check('the level name is really shown when opted out', shownHtml.includes(NAME))
+  check('and nothing is left starred', !/S\*+y/i.test(shownHtml))
+
+  /* The data has to survive the load for any of the above to mean anything: the
+   * mask used to be applied as each list was loaded, which overwrote the real name
+   * before anything could render it, so a player who opted out could never see it.
+   *
+   * Asserted on the source rather than by calling fetchList, because that needs the
+   * network and a test that quietly skips itself when the network is gone is not a
+   * test. What matters is that the load path does not touch the name at all, which
+   * is a property of the file rather than of any one response. */
+  const listSource = readFileSync(new URL('../services/listService.js', import.meta.url), 'utf8')
+  const loadPath = listSource.slice(
+    listSource.indexOf('const censorLevels'),
+    listSource.indexOf('export const fetchList'),
+  )
+  check(
+    'the list loader does not rewrite the level name',
+    !/censorText\s*\(/.test(loadPath),
+    loadPath.slice(0, 200),
+  )
+  /* And the components that show a level name must still mask it themselves, since
+   * nothing does it for them now. Checked by rendering rather than by reading, so a
+   * name that stops being masked on screen fails here even if this file never
+   * changes again. */
+  check('masking still happens where the name is read', maskedHtml.includes('S****y'))
+  setCensoring(true)
+  check('the mask is restored for the checks that follow', isCensoring())
+}
+
+/* The opt-out itself, in the settings dialog.
+ *
+ * Checked as rendered markup because the whole of this feature is a checkbox and
+ * the text around it: a player who cannot tell what the box does, or who turns it on
+ * without being warned, has still not been given the choice. */
+console.log('\nThe uncensored-names setting')
+{
+  const common = {
+    isOpen: true,
+    onClose: () => {},
+    percentStep: 1,
+    percentStepDraft: '1',
+    onDraftChange: () => {},
+    onCommit: () => {},
+    estimatedRounds: 100,
+    allowSkip: false,
+    onAllowSkipChange: () => {},
+    levelTimeLimitDraft: '',
+    onLevelTimeLimitDraftChange: () => {},
+    onCommitLevelTimeLimit: () => {},
+    totalTimeLimitDraft: '',
+    onTotalTimeLimitDraftChange: () => {},
+    onCommitTotalTimeLimit: () => {},
+  }
+  const maskedHtml = renderToStaticMarkup(<SettingsDialog {...common} isMasked onIsMaskedChange={() => {}} />)
+  const shownHtml = renderToStaticMarkup(<SettingsDialog {...common} isMasked={false} onIsMaskedChange={() => {}} />)
+
+  check('the setting is offered in settings', maskedHtml.includes('Show uncensored level names'))
+  check('it explains that it is off by default', /off by default/i.test(maskedHtml))
+  /* The box is "show uncensored", so off-by-default has to mean unchecked. Asserting
+   * the absence of the attribute rather than counting checked boxes elsewhere in the
+   * dialog, since Allow skipping is a checkbox too and is on in this render. */
+  const censorRow = maskedHtml.slice(maskedHtml.indexOf('Show uncensored level names') - 400)
+  check(
+    'and it starts unchecked, so words stay masked',
+    /type="checkbox"/.test(censorRow) && !/type="checkbox" checked/.test(censorRow),
+  )
+  check('the box is checked once the player opts in', /type="checkbox" checked/.test(
+    shownHtml.slice(shownHtml.indexOf('Show uncensored level names') - 400),
+  ))
+  check('no warning is shown while the mask is on', !maskedHtml.includes('Uncensored names are switched on'))
+  check('the player is warned once they switch it off', shownHtml.includes('Uncensored names are switched on'))
+  check('and told it may contain profanity', /profanity/i.test(shownHtml))
+  check('and told how to undo it', /turn this back off/i.test(shownHtml))
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)

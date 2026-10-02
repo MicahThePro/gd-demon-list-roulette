@@ -6,6 +6,7 @@ import { usePersistentRun } from './hooks/usePersistentRun'
 import { useRunHistory, purgeLegacyHistoryKeys } from './hooks/useRunHistory'
 import { useAuth } from './hooks/useAuth'
 import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
+import { useCensorSetting } from './hooks/useCensorSetting'
 import PreviewBanner from './components/PreviewBanner'
 import RedeemCodePage from './pages/RedeemCodePage'
 import { getPreviewUser, syncPlayerData } from './services/adminService'
@@ -127,6 +128,11 @@ function App() {
   )
   const [run, setRun] = usePersistentRun()
   const gameRules = useGameRules()
+  /* Whether swear words are masked. Held up here rather than inside the settings
+   * dialog because the mask is applied by a plain function that components call
+   * directly, so a change has to redraw the whole app -- not just the dialog that
+   * owns the checkbox. See the note on `censorText` for why it is not a prop. */
+  const [isMasked, setIsMasked] = useCensorSetting()
   const auth = useAuth()
   /* The account the board belongs to, so runs can be told apart by whose they are.
    *
@@ -745,6 +751,8 @@ function App() {
           run={run}
           savedRunCode={saveCode}
           gameRules={gameRules}
+          isMasked={isMasked}
+          onIsMaskedChange={setIsMasked}
           auth={auth}
         />
       )}

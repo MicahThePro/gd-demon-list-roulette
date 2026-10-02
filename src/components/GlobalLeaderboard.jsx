@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LEADERBOARD_BOARDS, fetchLeaderboard } from '../services/apiService'
 import { LIST_SOURCES, LIST_SOURCE_LABELS } from '../services/listService'
+import { censorText } from '../utils/censor'
 import { formatDurationMs } from '../utils/roulette'
 
 /* The list filter, built from the same names the list loader gives a run.
  * These were retyped here and drifted once: this filter expected 'All Rated
  * Extreme Demons List' while runs were stored as 'AREDL', so selecting AREDL
- * matched nothing and its runs were only ever visible under "All lists". */
+ * matched nothing and its runs were only ever visible under "All lists".
+ *
+ * `id` is the raw stored name and `label` is the censored one. Keeping them apart
+ * is the whole point: `id` is what is sent to the Worker and matched with an exact
+ * comparison, so it has to be the string runs are actually stored under. Censoring
+ * the id would filter on a value no run has, and the option would select nothing. */
 const SOURCES = [
   { id: 'all', label: 'All lists' },
   ...Object.values(LIST_SOURCES).map((name) => ({
     id: name,
-    label: LIST_SOURCE_LABELS[name] ?? name,
+    label: censorText(LIST_SOURCE_LABELS[name] ?? name),
   })),
 ]
 
@@ -165,7 +171,10 @@ export default function GlobalLeaderboard({ user }) {
                   </span>
                 </span>
                 <span className="lb-sub">
-                  {entry.source}
+                  {/* Masked at render, from the raw stored source. A run's source
+                      is the list's identity string and is compared exactly on the
+                      server, so it is never rewritten -- only what is printed. */}
+                  {censorText(entry.source)}
                   {entry.percentStep !== 1 ? ` · +${entry.percentStep}% steps` : ''} ·{' '}
                   {STATUS_LABELS[entry.status] ?? entry.status}
                 </span>

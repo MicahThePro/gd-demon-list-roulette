@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatDurationMs, getRunElapsedMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
+import { censorText } from '../utils/censor'
 
 export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit, onSaveRun }) {
   const [achievedPercent, setAchievedPercent] = useState('')
@@ -207,7 +208,7 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
                 <img
                   className="level-thumbnail"
                   src={run.currentLevel.thumbnail}
-                  alt={`${run.currentLevel.name} thumbnail`}
+                  alt={`${censorText(run.currentLevel.name)} thumbnail`}
                   loading="lazy"
                 />
               </a>
@@ -231,7 +232,7 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
                 )}
               </div>
             )}
-            <h3>{run.currentLevel.name}</h3>
+            <h3>{censorText(run.currentLevel.name)}</h3>
             <p>{run.currentLevel.creator ? `By ${run.currentLevel.creator}` : 'Community pick'}</p>
             <div className="timer-badge">Time: {formatDurationMs(displayElapsed)}</div>
             {/* Only the clock that is actually running is shown. The level
@@ -348,12 +349,12 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
                     put in it. Omitting it would pull the level name into the
                     thumbnail's grid column and squeeze the text. */}
                 {entry.thumbnail ? (
-                  <img src={entry.thumbnail} alt={`${entry.name} thumbnail`} className="challenge-thumb" loading="lazy" />
+                  <img src={entry.thumbnail} alt={`${censorText(entry.name)} thumbnail`} className="challenge-thumb" loading="lazy" />
                 ) : (
                   <span className="challenge-thumb challenge-thumb-empty" aria-hidden="true" />
                 )}
                 <div className="challenge-copy">
-                  <strong>{entry.name}</strong>
+                  <strong>{censorText(entry.name)}</strong>
                   <span>{entry.creator}</span>
                   <small>
                     {entry.result === 'skipped'

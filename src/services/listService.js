@@ -1,3 +1,5 @@
+import { censorText } from '../utils/censor'
+
 const POINTERCRATE_URL = import.meta.env.PROD 
   ? 'https://pointercrate.com' 
   : '/api/pointercrate'
@@ -407,11 +409,11 @@ const fetchGslPage = async (offset, fetcher, limit = GSL_PAGE_SIZE) => {
   const url = `${GSL_URL}?list=${GSL_LIST_TYPE}&limit=${limit}&offset=${offset}`
   const response = await fetcher(url)
   if (!response?.ok) {
-    throw new Error('Failed to load the Global Shitty List.')
+    throw new Error(censorText(`Failed to load the ${LIST_SOURCES.GSL}.`))
   }
   const payload = await response.json()
   if (!payload?.ok) {
-    throw new Error('Failed to load the Global Shitty List.')
+    throw new Error(censorText(`Failed to load the ${LIST_SOURCES.GSL}.`))
   }
   const rows = Array.isArray(payload?.data) ? payload.data : []
   return {
@@ -461,13 +463,13 @@ const fetchGslRange = async ({ start, end } = {}, fetcher = fetch) => {
 const fetchGslList = async ({ start, end } = {}, fetcher = fetch) => {
   const rawLevels = await fetchGslRange({ start, end }, fetcher)
   if (!rawLevels.length) {
-    throw new Error('Global Shitty List data could not be parsed.')
+    throw new Error(censorText(`${LIST_SOURCES.GSL} data could not be parsed.`))
   }
   const listView = rawLevels.map(mapGslLevelToLevel)
   const uniqueLevels = Array.from(new Map(listView.map((level) => [level.id, level])).values())
   const filteredLevels = filterLevelsByRange(uniqueLevels, start, end)
   if (!filteredLevels.length) {
-    throw new Error('No Global Shitty List levels were found for that range.')
+    throw new Error(censorText(`No ${LIST_SOURCES.GSL} levels were found for that range.`))
   }
   return {
     source: 'gsl',
@@ -702,25 +704,67 @@ export const fetchImpossibleLevelsBounds = async (fetcher = fetch) => {
   }
 }
 
+/* The one place every level passes through on its way into the app.
+ *
+ * The level name is left exactly as it arrived.
+ *
+ * It used to be masked here. That was sound reasoning for the case it was written
+ * for -- this is the single point all five loaders converge on, so masking in each
+ * of them would be five chances to forget one, and masking at the source would mean
+ * masking upstream text the Worker does not control either.
+ *
+ * But it made the mask irreversible. Once the real name had been overwritten here
+ * there was nothing left for a player who opted out of the mask to read, so the
+ * setting could switch the mask off everywhere except level names -- which is most of
+ * what a player ever sees. A toggle that cannot un-mask the main thing people look at
+ * is not a toggle.
+ *
+ * So the name is kept verbatim and masked where it is read, by `censorText` in the
+ * component that shows it. Every place a level name reaches the screen already calls
+ * that function, and the render tests check both halves: that the load leaves the
+ * name alone, and that the screen still masks it.
+ *
+ * This is also what the note at the top of censor.js has always described.
+ *
+ * `sourceTitle` is likewise left alone, for the same reason and a stronger one: it is
+ * the stored identity of every run played on the list, so it has to reach the Worker
+ * exactly as the Worker knows it, and is masked at render like any other name.
+ *
+ * The payload shape is unchanged either way. The level id, video, rank and thumbnail
+ * are what the rest of the app uses to identify and play a level, and none of them are
+ * ever masked: that would be a different function from this one, since this is about
+ * what a player reads rather than what the app looks a level up by.
+ */
+const censorLevels = (payload) => ({
+  ...payload,
+  levels: (payload?.levels ?? []).map((level) =>
+    level && typeof level === 'object' ? { ...level } : level,
+  ),
+})
+
 export const fetchList = async (request = {}) => {
   const normalizedRequest = normalizeListRequest(request)
   if (normalizedRequest.source === 'aredl') {
-    return fetchAredlList(normalizedRequest)
+    return censorLevels(await fetchAredlList(normalizedRequest))
   }
   if (normalizedRequest.source === 'gsl') {
-    return fetchGslList(normalizedRequest)
+    return censorLevels(await fetchGslList(normalizedRequest))
   }
   if (normalizedRequest.source === 'impossiblelevels') {
-    return fetchImpossibleLevels({
-      start: normalizedRequest.start ?? 1,
-      end: normalizedRequest.end ?? IMPOSSIBLE_LEVELS_SIZE,
-    })
+    return censorLevels(
+      await fetchImpossibleLevels({
+        start: normalizedRequest.start ?? 1,
+        end: normalizedRequest.end ?? IMPOSSIBLE_LEVELS_SIZE,
+      }),
+    )
   }
   if (normalizedRequest.source === 'challengelist') {
-    return fetchChallengeList({
-      start: normalizedRequest.start ?? 1,
-      end: normalizedRequest.end ?? CHALLENGE_LIST_MAIN_SIZE,
-    })
+    return censorLevels(
+      await fetchChallengeList({
+        start: normalizedRequest.start ?? 1,
+        end: normalizedRequest.end ?? CHALLENGE_LIST_MAIN_SIZE,
+      }),
+    )
   }
-  return fetchPointercrateList()
+  return censorLevels(await fetchPointercrateList())
 }

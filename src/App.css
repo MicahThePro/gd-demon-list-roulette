@@ -1144,6 +1144,24 @@
   line-height: 1.5;
 }
 
+/* The uncensored-names warning.
+   Its own rule rather than the shared `validation-message`, which is
+   inline-flex and fit-content sized for a one-line message beside a field. This is a
+   paragraph of prose that has to wrap, so it is a block that spans the dialog body.
+   Amber rather than red: nothing is wrong, the player has simply been told what they
+   turned on, and red reads as an error being reported. */
+.settings-censor-warning {
+  display: block;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
 /* The skip reason picker. Wider than a confirm dialog because the five reasons
    are full-width buttons in a single column and read badly when they are. */
 .skip-picker {

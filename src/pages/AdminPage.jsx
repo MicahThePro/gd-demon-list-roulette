@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
+import { censorText } from '../utils/censor'
 import { adminDecide, fetchAdminSubmissions } from '../services/submissionService'
 import { PLAYABLE, getHostLabel } from '../utils/videoFile'
 import AccountsTab from '../components/AccountsTab'
@@ -292,7 +293,7 @@ export default function AdminPage({ onExit }) {
               >
                 <strong>{entry.displayName}</strong>
                 <small>
-                  {entry.score}% · {entry.source} · {formatWhen(entry.createdAt)}
+                  {entry.score}% · {censorText(entry.source)} · {formatWhen(entry.createdAt)}
                 </small>
                 <em className={`lb-sub admin-status-${entry.status}`}>{entry.status}</em>
               </button>
@@ -307,7 +308,7 @@ export default function AdminPage({ onExit }) {
                 <div className="admin-detail-head">
                   <h3>{selected.displayName}</h3>
                   <p className="lb-sub">
-                    @{selected.username} · {selected.source} · submitted {formatWhen(selected.createdAt)}
+                    @{selected.username} · {censorText(selected.source)} · submitted {formatWhen(selected.createdAt)}
                   </p>
                 </div>
 
@@ -368,7 +369,7 @@ export default function AdminPage({ onExit }) {
                         <span className="lb-rank">#{index + 1}</span>
                         <span className="lb-main">
                           <span className="lb-top">
-                            <strong>{round.name}</strong>
+                            <strong>{censorText(round.name)}</strong>
                           </span>
                           <span className="lb-sub">
                             {round.result === 'success'
