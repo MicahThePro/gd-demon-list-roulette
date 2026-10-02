@@ -36,25 +36,25 @@ const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
    and comparing that raw text against a canonical one rejects names that are the
    same account. Trim, lowercase and drop anything outside the alphabet all happen
    here, so both sides of the comparison are the same shape. */
-/* A username reduced to exactly the form the accounts table stores in the
-   username column: the handle as typed, trimmed and length-capped.
-   Registration and login both run a submitted name through this, so a name that
-   went through either is already in the stored shape. A username sent to a route
-   that does not normalise -- /api/redeem, and the code branch of /api/login -- has
-   not been, and comparing that raw text against a stored one rejects names that are
-   the same account.
-   Case is not touched here on purpose. A handle keeps the case its owner gave it,
-   so the case cannot be thrown away before a comparison -- it is compared
-   case-insensitively instead, by folding both sides to the form the uniqueness
-   index is on. That is the same fold the database keys on, so what a comparison
-   accepts and what a name can be claimed as cannot drift apart. */
+/* A username reduced to exactly the form the accounts table stores in the username
+   column: lowercased, with only the characters a handle may contain and the length
+   cap applied.
+   A handle is an identity key rather than a label, so it has exactly one spelling.
+   See the longer note on normalizeUsername in api.js, which is the copy that
+   explains why. Registration and login both fold through this, so both sides of any
+   comparison are the same shape and no lookup needs to think about case.
+   Case is touched HERE, on the way in, so a username sent to a route that does not
+   normalise -- /api/redeem, and the code branch of /api/login -- is still folded
+   before it is compared against a stored one. */
 export const canonicalUsername = (value) =>
   String(value ?? '')
     .trim()
+    .replace(/[^A-Za-z0-9_.]/g, '')
+    .toLowerCase()
     .slice(0, 20)
 
-/** The identity form of a name: case folded, which is how usernames are unique. */
-export const usernameKey = (value) => canonicalUsername(value).toLowerCase()
+/** The identity form of a name: the same thing, since usernames are stored folded. */
+export const usernameKey = (value) => canonicalUsername(value)
 
 /* Each character as U+XXXX. The only readable way to show a difference that
    renders as nothing. */

@@ -100,28 +100,55 @@ const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, v
  */
 const looksLikeLoginCode = (value) => normalizeLoginCode(value).length === LOGIN_CODE_LENGTH
 
-/* A username reduced to what the accounts table stores in the username column: the
-   handle as it was typed, with only the characters a handle may contain and the
-   length cap applied. Case is deliberately NOT changed -- a handle keeps the case
-   its owner gave it, which is the whole point of the column being the display
-   form. Uniqueness regardless of case is the separate job of the `username_lower`
-   column, and matching regardless of case is `lower()` at the lookup.
-   Registration and login both run a submitted name through this, so a name that
-   went through either is already in the shape the table holds. Trim and drop
-   anything outside the alphabet both happen here, so both sides of any comparison
-   are the same shape. */
+/* A username reduced to exactly what the users.username column stores: lowercased,
+   with only the characters a handle may contain and the length cap applied.
+   *
+   * Case is folded HERE, on the way in, rather than being restored and compared
+   around later. A handle is an identity key, not a label: it is what a player
+   types to sign in, what is unique, and what @mentions resolve to. Those only
+   work if there is one spelling of each handle -- if "DemonRoulette" and
+   "demonroulette" could both exist, then a link to one, a sign in typed in the
+   other case, and a search for either would all have to know which spelling was
+   meant, and every one of those is a place to get it wrong. Folding once, at the
+   only place a username enters the system, means there is a single stored form
+   and no comparison anywhere needs to think about case at all.
+   *
+   * This is what the columns were already built for. `username_lower` is the
+   * unique index and the login lookup key, so uniqueness regardless of case and
+   * matching regardless of case were never the display form's job -- they were
+   * already handled here. All this changes is that the display form stops being
+   * something different, which also removes the one class of bug that came with
+   * it: a handle whose case drifted from its own index.
+   *
+   * Order matters. The alphabet filter runs before the fold so it cannot be
+   * widened by a multi-byte character, and the cap is applied last so it counts
+   * the characters that are actually stored. */
 const normalizeUsername = (value) =>
   String(value ?? '')
     .trim()
     .replace(/[^A-Za-z0-9_.]/g, '')
+    .toLowerCase()
     .slice(0, 20)
 
-/* The identity form: the same name folded, which is what usernames are keyed on.
-   Unicode is not involved -- normalizeUsername has already thrown away everything
-   outside ASCII -- so lower() is the whole of it and it matches what SQLite's own
-   lower() computes for the index. */
-const usernameKey = (value) => normalizeUsername(value).toLowerCase()
+/* The identity form: the same name folded.
+   Now identical to normalizeUsername, because a username is stored folded. Kept as
+   a named function rather than removed, because it says what the column is FOR --
+   the thing uniqueness and lookup compare -- and that meaning does not change just
+   because the two forms stopped differing. Every write goes through both, so they
+   cannot drift apart later without this being the place that notices. */
+const usernameKey = (value) => normalizeUsername(value)
 
+/* A display name, which is the opposite of a username in every respect that
+   matters here.
+   *
+   * Case is preserved exactly as typed -- "Alex" and "alex" are different display
+   * names -- and nothing enforces that display names are unique, because two
+   * players are allowed to be called the same thing. The username beside them is
+   * what tells those two apart, which is why the leaderboard prints both.
+   *
+   * Not folded, and never a key. Folding it would make two players who chose the
+   * same name appear as one spelling of it, and making it unique would stop one of
+   * them having the name they wanted at all. */
 const normalizeDisplayName = (value, fallback) => {
   const cleaned = String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DISPLAY_NAME)
   return cleaned || fallback
@@ -748,10 +775,11 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
       }
     }
 
-    /* Matched on the lowercased form, so "BOB", "bob" and "Bob" are one account.
-       The handle as it was typed comes back in the row and is what the client is
-       told, which is why the case survives the sign-in rather than being flattened
-       here. */
+    /* Matched on username_lower, so "BOB", "bob" and "Bob" are one account.
+       The submitted name is folded by normalizeUsername before it gets here, and so
+       is every stored one, so this lookup finds the account whichever way it was
+       typed -- and the row it returns holds the one canonical spelling, which is
+       what the client is told. */
     const user = await db
       .prepare(
         `SELECT id, username, display_name, display_name_changed_at, password_hash, salt, created_at

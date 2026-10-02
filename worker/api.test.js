@@ -25,6 +25,7 @@ const SCHEMA = [
   './migrations/0004_trashed_runs.sql',
   './migrations/0005_username_case.sql',
   './migrations/0006_display_name_cooldown.sql',
+  './migrations/0007_username_lowercase.sql',
 ]
   .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
   .join('\n')
@@ -146,7 +147,11 @@ console.log('registration and sessions')
     displayName: 'Player One',
   })
   check('register succeeds', created.response.status === 201, JSON.stringify(created.data))
-  check('the username keeps the case it was typed in', created.data.user?.username === 'Player_One', created.data.user?.username)
+  check(
+    'the username is stored lowercase, whatever case it was typed in',
+    created.data.user?.username === 'player_one',
+    created.data.user?.username,
+  )
   check('a session token is returned', typeof created.data.token === 'string' && created.data.token.length === 64)
   const cookie = created.response.headers.get('set-cookie') ?? ''
   check('a session cookie is set', cookie.includes('dlr_session=') && cookie.includes('SameSite=Lax'))
@@ -167,7 +172,7 @@ console.log('registration and sessions')
   check('and so is a mixed-case spelling of it', dupeMixed.response.status === 409, JSON.stringify(dupeMixed.data))
 
   const me = await call(env, '/api/me', { token: created.data.token })
-  check('the token identifies the player', (await me.json())?.user?.username === 'Player_One')
+  check('the token identifies the player', (await me.json())?.user?.username === 'player_one')
 
   const badLogin = await post(env, '/api/login', { username: 'player_one', password: 'wrong' })
   check('a wrong password is rejected', badLogin.response.status === 401)
@@ -185,18 +190,59 @@ console.log('registration and sessions')
     goodLogin.data.token !== created.data.token,
   )
 
-  /* Signing in ignores case, and the handle comes back as it was typed rather than
-     as whatever case was used to find it. The stored case is the one the owner
-     chose and is what the leaderboards and the admin panel show, so flattening it
-     to the case of the sign-in attempt would be a slow way of renaming somebody's
-     account every time they typed their password. */
+  /* Signing in ignores the case of the username, and what comes back is the one
+     stored spelling rather than the case of the attempt. Those are now the same
+     thing -- every handle is stored folded -- which is the point of folding on the
+     way in: the handle a player signs in with, the handle that is unique, and the
+     handle printed on the leaderboard are one value rather than three that have to
+     be kept in agreement. Typing your name in capitals no longer risks renaming
+     your account. */
   const shoutyLogin = await post(env, '/api/login', { username: 'PLAYER_ONE', password: 'correct horse' })
   check('sign in ignores the case of the username', shoutyLogin.response.status === 200, JSON.stringify(shoutyLogin.data))
   check(
-    'and still returns the username as it was registered',
-    shoutyLogin.data.user?.username === 'Player_One',
+    'and the handle comes back in its stored lowercase form',
+    shoutyLogin.data.user?.username === 'player_one',
     shoutyLogin.data.user?.username,
   )
+
+  /* The other half of the rule, which is that only the username folds. A display
+     name is a label and keeps the case it was chosen with -- otherwise "Alex" and
+     "alex" would be the same name and two players could not both have it. */
+  const mixedDisplay = await post(
+    env,
+    '/api/register',
+    { username: 'MixedCase', password: 'correct horse', displayName: 'MiXeD CaSe' },
+  )
+  check('the username still folds on a second registration', mixedDisplay.data.user?.username === 'mixedcase', mixedDisplay.data.user?.username)
+  check(
+    'but the display name keeps its capitalisation exactly',
+    mixedDisplay.data.user?.displayName === 'MiXeD CaSe',
+    mixedDisplay.data.user?.displayName,
+  )
+
+  /* Two accounts may share a display name, since only the username is unique. This
+   is the case that makes the two rules worth having apart: identical display names
+   are allowed, and identical usernames are not, and neither check being on the
+   wrong column would show up here. */
+  const dupDisplayA = await post(env, '/api/register', { username: 'twinone', password: 'correct horse', displayName: 'Alex' })
+  const dupDisplayB = await post(env, '/api/register', { username: 'twintwo', password: 'correct horse', displayName: 'Alex' })
+  check('two accounts can share a display name', dupDisplayA.response.status === 201 && dupDisplayB.response.status === 201, `${dupDisplayA.response.status}/${dupDisplayB.response.status}`)
+  check('and both keep it as typed', dupDisplayB.data.user?.displayName === 'Alex', dupDisplayB.data.user?.displayName)
+
+  // The same display name at different capitalisation is a different name, and is
+  // also allowed: nothing about a label is constrained.
+  const caseDisplay = await post(env, '/api/register', { username: 'twintree', password: 'correct horse', displayName: 'alex' })
+  check('and a display name differing only in case is its own name', caseDisplay.data.user?.displayName === 'alex', caseDisplay.data.user?.displayName)
+
+  /* The username is still unique, and folding is what makes that true across case:
+   * these three are all one name, so the first must win and the other two be
+   * refused. Uniqueness by exact bytes alone would have let all three through. */
+  const takenLower = await post(env, '/api/register', { username: 'player_one', password: 'correct horse' })
+  check('the same username in the same case is still taken', takenLower.response.status === 409, String(takenLower.response.status))
+  const takenUpper = await post(env, '/api/register', { username: 'PLAYER_ONE', password: 'correct horse' })
+  check('and so is the same username in a different case', takenUpper.response.status === 409, String(takenUpper.response.status))
+  const takenMixed = await post(env, '/api/register', { username: 'PlAyEr_OnE', password: 'correct horse' })
+  check('and in a mixed case', takenMixed.response.status === 409, String(takenMixed.response.status))
 
   const noToken = await call(env, '/api/me')
   check('no token means signed out', (await noToken.json())?.user === null)

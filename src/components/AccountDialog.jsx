@@ -289,14 +289,19 @@ export default function AccountDialog({ isOpen, onClose, auth, pendingRun = null
             </label>
 
             {isSignUp && (
-              /* Says what happens to the name before it is typed, because both rules
-                 are invisible otherwise: the capitalisation chosen here is the one kept
-                 and shown everywhere, and it is also what makes the name unclaimable
-                 by anyone else -- signing in ignores case, so "Bob" and "bob" are one
-                 account and the second of them cannot be registered. */
+              /* The two names are different things with different rules, and both rules
+                 are invisible until they surprise you -- so both are said here, before
+                 anything is typed.
+                 The username is an identity: folded to lower case, so it is one handle
+                 with one spelling, and nobody else can take it in any case. The display
+                 name is a label: kept exactly as typed, and two players are allowed to
+                 have the same one. Which of the two a player is looking at is the whole
+                 difference between the two sentences. */
               <p className="settings-note">
-                Capitalisation is kept as you type it, and nobody else can take the
-                same name in any case. Signing in works whichever way you type it.
+                Your username is always lowercase, so it is one name with one spelling, and nobody
+                else can take it. Your display name keeps the capitalisation you type, and another
+                player can have the same display name as you -- your username is what tells your
+                runs apart. You can change your display name later; your username is yours for good.
               </p>
             )}
 

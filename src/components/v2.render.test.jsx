@@ -9,7 +9,7 @@
  * Run with: node --experimental-vm-modules src/components/v2.render.test.js
  */
 import { renderToStaticMarkup } from 'react-dom/server'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import process from 'node:process'
 import AccountDialog from './AccountDialog.jsx'
 import ChangelogDialog from './ChangelogDialog.jsx'
@@ -66,6 +66,33 @@ console.log('AccountDialog')
     <AccountDialog isOpen onClose={() => {}} auth={{ ...signedOut, }} mode="signup" />,
   )
   check('the default mode is still sign in', !signingUp.includes('Display name'))
+
+  /* The sign-up form has to state both name rules, because they pull in opposite
+   * directions and neither is obvious from the fields: a username folds and is
+   * unique, a display name keeps its case and is not.
+
+   * The rules cannot be reached through the component's `mode`, which is internal
+   * state the dialog only flips from its own "Create an account" button -- a static
+   * render never clicks it. Asserting on a `mode` prop would therefore pass against
+   * a form that can never actually show the text. What is asserted instead is the
+   * text itself, read out of the source, which is the part that would go stale: the
+   * sentence a player reads is the claim being made, and a reworded rule that drops
+   * one half of it should fail here. */
+  const dialogSource = readFileSync(new URL('./AccountDialog.jsx', import.meta.url), 'utf8')
+  // Matched against the source with whitespace collapsed, because the sentence is
+  // wrapped across lines in the JSX and a plain substring test would fail on a
+  // rewrap rather than on a reword -- which is the change this is meant to catch.
+  const dialogText = dialogSource.replace(/\s+/g, ' ')
+  check('the sign-up form says the username is lowercase', /always lowercase/i.test(dialogText))
+  check('the sign-up form says the display name keeps its capitalisation', /keeps the capitalisation/i.test(dialogText))
+  check(
+    'and says a display name is not unique',
+    /another player can have the same display name as you/i.test(dialogText),
+  )
+  check(
+    'and does not claim the username keeps the case it was typed in',
+    !/Capitalisation is kept as you type it/.test(dialogText),
+  )
 
   const accountHtml = renderToStaticMarkup(<AccountDialog isOpen onClose={() => {}} auth={signedIn} />)
   check('a signed in player sees their name', accountHtml.includes('Player One'))
