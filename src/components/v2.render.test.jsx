@@ -19,6 +19,7 @@ import Leaderboard from './Leaderboard.jsx'
 import PreviewBanner from './PreviewBanner.jsx'
 import ResultsPage from '../pages/ResultsPage.jsx'
 import RoulettePage from '../pages/RoulettePage.jsx'
+import HomePage from '../pages/HomePage.jsx'
 import SettingsDialog from './SettingsDialog.jsx'
 import { censorText, isCensoring, setCensoring } from '../utils/censor.js'
 import { isPlayable, versionUrl, PLAYABLE_VERSIONS } from '../data/versions.js'
@@ -751,6 +752,54 @@ console.log('\nSettings focus')
     'and the dialog container is what takes focus instead',
     /dialogRef\.current\?\.focus\(\)/.test(settingsSource),
   )
+}
+
+console.log('\nThe list dropdown')
+{
+  const options = (masked) => {
+    setCensoring(masked)
+    const html = renderToStaticMarkup(
+      <HomePage
+        onStart={() => {}}
+        onLoadRun={() => {}}
+        history={{}}
+        gameRules={{}}
+        auth={{ user: null }}
+        isMasked={masked}
+        onIsMaskedChange={() => {}}
+      />,
+    )
+    const select = html.split('<select')[1]?.split('</select>')[0] ?? ''
+    setCensoring(true)
+    return [...select.matchAll(/<option[^>]*value="([^"]*)"[^>]*>([\s\S]*?)<\/option>/g)].map(
+      (match) => ({ value: match[1], label: match[2].replace(/<[^>]+>/g, '').trim() }),
+    )
+  }
+
+  const masked = options(true)
+  const unmasked = options(false)
+
+  const aredl = masked.find((option) => option.value === 'aredl')
+  check('AREDL is spelled out in the dropdown', aredl?.label === 'All Rated Extreme Demons List (AREDL)', aredl?.label)
+
+  const gslMasked = masked.find((option) => option.value === 'gsl')
+  const gslShown = unmasked.find((option) => option.value === 'gsl')
+  check('GSL is masked while the mask is on', gslMasked?.label === 'Global S****y List', gslMasked?.label)
+  check('and spelled out once the player opts out', gslShown?.label === 'Global Shitty List', gslShown?.label)
+
+  /* The label is display only. If it ever leaks into what a run is stamped with, an
+   * AREDL run stops matching the value the Worker accepts -- which is the drift
+   * sourceNames.test.js guards against. So each option must carry a value that is the
+   * raw source id and nothing else, which is what the loaders and the submission check
+   * match on. Asserted against the ids themselves rather than against "has no spaces",
+   * since one of them legitimately does. */
+  const expectedIds = ['pointercrate', 'aredl', 'gsl', 'challengelist', 'impossiblelevels']
+  check(
+    'the option values are still the raw source ids',
+    JSON.stringify(masked.map((option) => option.value)) === JSON.stringify(expectedIds),
+    JSON.stringify(masked.map((o) => `${o.value}=${o.label}`)),
+  )
+  check('every list is still offered', masked.length === 5, `${masked.length} options`)
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)

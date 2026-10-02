@@ -4,7 +4,7 @@ import GlobalLeaderboard from '../components/GlobalLeaderboard'
 import AccountDialog from '../components/AccountDialog'
 import ChangelogDialog from '../components/ChangelogDialog'
 import SettingsDialog from '../components/SettingsDialog'
-import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds } from '../services/listService'
+import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds, LIST_SOURCES } from '../services/listService'
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
 import { SITE_NAME, LATEST_VERSION } from '../data/changelog'
@@ -12,18 +12,28 @@ import { censorText } from '../utils/censor'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
 const IMPOSSIBLE_LEVELS_SOURCE = 'impossiblelevels'
-/* Short labels for the list dropdown.
+/* Full names for the list dropdown.
  *
- * Deliberately the short forms: none of these spell out a list's full name, so the
- * one list whose name carries a swear word is already shown as "GSL" here rather
- * than needing a mask. censorText is still applied when they render, so this keeps
- * working if a label is ever lengthened to a full list name. */
+ * GSL is taken from LIST_SOURCES and passes through censorText when it renders, so it
+ * reads "Global S****y List" while the mask is on and "Global Shitty List" once the
+ * player has turned it off, with no second string kept here to fall out of step with
+ * that setting.
+ *
+ * AREDL is the exception and cannot come from LIST_SOURCES, because there the value
+ * 'AREDL' is data, not a label -- it is what a run is stamped with and what the
+ * submission check and the global board's filter match on. The long form belongs to
+ * the dropdown alone. Writing it there is safe precisely because nothing keys off it;
+ * putting it in LIST_SOURCES is the drift sourceNames.test.js exists to catch, and its
+ * "the long form of the AREDL name is not used as data" check is what fails if so.
+ *
+ * The option *values* stay the raw source ids either way, so the name shown can change
+ * without changing which list is played or what a finished run is recorded as. */
 const SOURCE_LABELS = {
-  pointercrate: 'Pointercrate',
-  aredl: 'AREDL',
-  gsl: 'GSL',
-  [CHALLENGE_LIST_SOURCE]: 'Challenge List',
-  [IMPOSSIBLE_LEVELS_SOURCE]: 'Impossible Levels List',
+  pointercrate: LIST_SOURCES.POINTERCRATE,
+  aredl: 'All Rated Extreme Demons List (AREDL)',
+  gsl: LIST_SOURCES.GSL,
+  [CHALLENGE_LIST_SOURCE]: LIST_SOURCES.CHALLENGE,
+  [IMPOSSIBLE_LEVELS_SOURCE]: LIST_SOURCES.IMPOSSIBLE,
 }
 const RANKABLE_SOURCES = ['aredl', 'gsl', CHALLENGE_LIST_SOURCE, IMPOSSIBLE_LEVELS_SOURCE]
 const DEFAULT_MAX = 150
