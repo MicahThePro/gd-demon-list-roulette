@@ -662,7 +662,7 @@ console.log('\nThe uncensored-names setting')
   const shownHtml = renderToStaticMarkup(<SettingsDialog {...common} isMasked={false} onIsMaskedChange={() => {}} />)
 
   check('the setting is offered in settings', maskedHtml.includes('Show uncensored level names'))
-  check('it explains that it is off by default', /off by default/i.test(maskedHtml))
+  check('it explains that it is off by default', /off is the default/i.test(maskedHtml))
   /* The box is "show uncensored", so off-by-default has to mean unchecked. Asserting
    * the absence of the attribute rather than counting checked boxes elsewhere in the
    * dialog, since Allow skipping is a checkbox too and is on in this render. */
@@ -674,10 +674,20 @@ console.log('\nThe uncensored-names setting')
   check('the box is checked once the player opts in', /type="checkbox" checked/.test(
     shownHtml.slice(shownHtml.indexOf('Show uncensored level names') - 400),
   ))
-  check('no warning is shown while the mask is on', !maskedHtml.includes('Uncensored names are switched on'))
-  check('the player is warned once they switch it off', shownHtml.includes('Uncensored names are switched on'))
+  check('no warning is shown while the mask is on', !maskedHtml.includes('Uncensored names are on'))
+  check('the player is warned once they switch it off', shownHtml.includes('Uncensored names are on'))
   check('and told it may contain profanity', /profanity/i.test(shownHtml))
-  check('and told how to undo it', /turn this back off/i.test(shownHtml))
+  /* Asserted as "warns without rambling" rather than on any one wording. The copy
+   * here is deliberately one line, because a warning long enough to need reading
+   * carefully stops being read as a warning -- so the thing to protect is its
+   * length, not its phrasing. */
+  const warningEl = shownHtml.match(/<p class="settings-censor-warning">([\s\S]*?)<\/p>/)
+  check(
+    'the warning stays short',
+    warningEl !== null
+      && warningEl[1].split(/\s+/).filter(Boolean).length <= 30,
+    warningEl ? warningEl[1].split(/\s+/).filter(Boolean).length + ' words' : 'no warning element',
+  )
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)

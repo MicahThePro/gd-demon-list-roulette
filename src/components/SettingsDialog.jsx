@@ -214,14 +214,14 @@ export default function SettingsDialog({
 
           <hr className="settings-divider" />
 
-          {/* The mask, and the only setting that changes what a player reads rather
+          {/* The mask, and the only setting here that changes what a player reads rather
               than how a run behaves.
 
-              It is the one control here with a consequence that needs saying out
-              loud, so the warning stays on screen for as long as the setting is off
-              rather than being a one-off confirm the player can dismiss and forget.
-              It says what to expect and how to undo it, which is what a player
-              choosing this actually needs to know. */}
+              Kept to one line each on purpose. A warning that runs to a paragraph
+              stops being read as a warning and starts being furniture, and the
+              point here is only ever "these names can contain swearing" -- which
+              fits in a sentence, and which stays visible rather than needing a
+              confirm the player can dismiss and forget. */}
           <label className="settings-toggle-row">
             <input
               type="checkbox"
@@ -230,27 +230,21 @@ export default function SettingsDialog({
             />
             <span>
               <strong>Show uncensored level names</strong>
-              <small>
-                Off by default. Level names are stored exactly as their creator typed
-                them, and a few of those contain a swear word. Turning this off shows
-                them as they really are, everywhere a level name appears.
-              </small>
+              <small>Some level names contain a swear word. Off is the default.</small>
             </span>
           </label>
 
           {!isMasked && (
             <p className="settings-censor-warning">
-              Uncensored names are switched on. Level names here may contain profanity,
-              and anyone who opens a run you send in will see them the same way. You
-              can turn this back off at any time.
+              Uncensored names are on, so level names may contain profanity — including
+              in runs you send in.
             </p>
           )}
 
           <p className="settings-note">
             The run rules above are saved to this browser and are locked in when a run
             starts, so changing them mid-run will not affect the run you are playing.
-            The mask is not one of them: it only changes what is on screen, so it
-            applies straight away and to the run you are already playing.
+            The mask is not a run rule, so it applies straight away.
           </p>
         </div>
       </div>
