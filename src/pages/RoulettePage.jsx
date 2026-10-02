@@ -176,7 +176,7 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
               <h2>Target {run.currentTarget}%</h2>
             </div>
             <div className="status-actions">
-              <span className="badge">{run.source}</span>
+              <span className="badge">{censorText(run.source)}</span>
               <div className="save-copy-inline">
                 <button
                   className="secondary-button small-button"

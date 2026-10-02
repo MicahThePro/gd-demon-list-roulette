@@ -9,7 +9,9 @@
  * Run with: node --experimental-vm-modules src/components/v2.render.test.js
  */
 import { renderToStaticMarkup } from 'react-dom/server'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { parse } from '@babel/parser'
 import process from 'node:process'
 import AccountDialog from './AccountDialog.jsx'
@@ -41,6 +43,21 @@ function visitNodes(node, visit) {
     visitNodes(node[key], visit)
   }
 }
+
+/* Every .jsx under src/, so a check can be a rule over the whole app rather than an
+ * assertion about one screen. Test files are left out: they are full of deliberate
+ * counter-examples that would trip the rule. */
+function listJsxFiles(importMetaUrl) {
+  const root = fileURLToPath(new URL('..', importMetaUrl))
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.jsx'))
+    .filter((entry) => !entry.name.endsWith('.test.jsx'))
+    /* `entry.parentPath` is already absolute in this node, so it is used on its own
+     * rather than joined onto root -- which would produce a doubled absolute path. */
+    .map((entry) => (entry.parentPath ? join(entry.parentPath, entry.name) : join(root, entry.name)))
+}
+
+const relativeName = (file) => file.slice(file.indexOf('/src/') + 1)
 
 const check = (name, condition, detail = '') => {
   if (condition) {
@@ -800,6 +817,37 @@ console.log('\nThe list dropdown')
     JSON.stringify(masked.map((o) => `${o.value}=${o.label}`)),
   )
   check('every list is still offered', masked.length === 5, `${masked.length} options`)
+}
+
+/* The run's own source chip.
+ *
+ * A `run.source` rendered without `censorText` is invisible to the existing checks:
+ * it is a page nobody tests, a single word in a badge, and it still looks correct.
+ * That is exactly how "Global Shitty List" sat unstarred next to a level name that
+ * was starred, in the same screenshot, until somebody noticed.
+ *
+ * So this is checked as a rule over the whole of src/ rather than as one more
+ * assertion about one screen: any JSX expression that renders a `.source` must pass
+ * it through the mask. A source name reaching the page raw is a bug wherever it
+ * appears, and there are enough of them that finding them one at a time is how the
+ * last one stayed broken. */
+console.log('\nSource names are masked wherever they render')
+{
+  const offenders = []
+  for (const file of listJsxFiles(import.meta.url)) {
+    const source = readFileSync(file, 'utf8')
+    for (const match of source.matchAll(/\{([^{}\n]*\.source)\}/g)) {
+      if (!match[1].includes('censorText')) {
+        const line = source.slice(0, match.index).split('\n').length
+        offenders.push(`${relativeName(file)}:${line} {${match[1]}}`)
+      }
+    }
+  }
+  check(
+    'no source name is rendered without the mask',
+    offenders.length === 0,
+    offenders.join(' | '),
+  )
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)

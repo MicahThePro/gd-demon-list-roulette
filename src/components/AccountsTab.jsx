@@ -9,6 +9,7 @@ import {
   trashRun,
   untrashRun,
 } from '../services/adminService'
+import { censorText } from '../utils/censor'
 
 /* The two things a moderator does with an account, and the two ways they can go
    wrong. Issued and issued are worded so a glance at the screen says whether a
@@ -418,7 +419,7 @@ const AccountDetail = ({ passcode, accountId, redeemUrl, onBack, onChanged }) =>
                 {history.map((entry) => (
                   <div key={entry.id} className="admin-data-row">
                     <strong>{entry.score}%</strong>
-                    <span>{entry.source}</span>
+                    <span>{censorText(entry.source)}</span>
                     <span>{entry.status}</span>
                     <span>{entry.roundsPlayed} levels</span>
                     <span>{formatWhen(entry.at)}</span>
@@ -455,7 +456,7 @@ const AccountDetail = ({ passcode, accountId, redeemUrl, onBack, onChanged }) =>
             {liveRuns.map((run) => (
               <div key={run.id} className="admin-data-row">
                 <strong>{run.score}%</strong>
-                <span>{run.source}</span>
+                <span>{censorText(run.source)}</span>
                 <span>{run.passed} passed &middot; {run.roundsPlayed} levels</span>
                 <em className={`lb-sub ${run.submission ? `admin-status-${run.submission.status}` : ''}`}>
                   {run.submission ? (SUBMISSION_LABELS[run.submission.status] ?? run.submission.status) : 'Not submitted'}
@@ -554,7 +555,7 @@ const AccountDetail = ({ passcode, accountId, redeemUrl, onBack, onChanged }) =>
                 {trashedRuns.map((run) => (
                   <div key={run.id} className="admin-data-row admin-data-row-trashed">
                     <strong>{run.score}%</strong>
-                    <span>{run.source}</span>
+                    <span>{censorText(run.source)}</span>
                     <span>{run.passed} passed &middot; {run.roundsPlayed} levels</span>
                     <em className="admin-trash-flag">
                       Trashed{run.trashedAt ? ` ${formatAgo(run.trashedAt)}` : ''}
