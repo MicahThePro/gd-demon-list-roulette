@@ -182,14 +182,26 @@ export const compareEntries = (a, b) => {
 export const useRunHistory = (ownerKey = null) => {
   /* Starts empty and stays empty until the server says otherwise.
    *
-   * There is no longer a device-held copy to read back, so the board is whatever
-   * the signed-in account holds. A signed-out player sees the runs they played in
-   * this session and nothing else, and a reload loses them -- which is the price
-   * of not keeping one person's runs where the next person can read them. The
-   * results screen is where a run is handed to an account, and once it is there
-   * it survives a reload, a new device, and every sign in afterwards. */
+   * The board is whatever the signed-in account holds, and a run that ends while
+   * signed out is never put on it. There is no device-held copy to read back, so
+   * there is nothing a signed-out player's board could hold even if we wanted it
+   * to: the results screen is where a run is handed to an account, and until that
+   * happens the run is not a run anybody is keeping. */
   const [entries, setEntries] = useState([])
   const [isPreviewing, setIsPreviewing] = useState(false)
+
+  /* Whether the board belongs to an account, read by recordRun through a ref.
+   *
+   * A ref rather than a parameter because recordRun is called from endRun, which is
+   * a useCallback in the app; taking ownerKey as an argument would mean the app had
+   * to pass it at every call site, and reading it from a closure would rebuild the
+   * callback whenever the account changed. Written in an effect like entriesRef,
+   * for the same reason: a ref written during render is a value React can discard
+   * under concurrent rendering. */
+  const ownerRef = useRef(ownerKey)
+  useEffect(() => {
+    ownerRef.current = ownerKey
+  }, [ownerKey])
 
   /* The current board, readable from a callback that does not want to depend on it.
    *
@@ -242,13 +254,24 @@ export const useRunHistory = (ownerKey = null) => {
 
   /* Records a run that just ended.
    *
-   * Signed out, it is kept for this session only, so the player can see it on the
-   * board and delete it while the page is open. Signed in, the run is on the
-   * account by the time the server read happens, and that read is what puts it on
-   * the board -- so this is only a provisional row, and the account's own copy is
-   * what survives. */
+   * Signed out, it records nothing at all. This is the whole point of the rule
+   * that a run only saves to an account: a run finished by somebody who is not
+   * signed in has no owner to be saved to, and the alternatives were both worse.
+   * Keeping it here for the session put it on a board that is now hidden while
+   * signed out, so it could never be seen or deleted -- a run that existed,
+   * counted towards the best score, and could not be reached. Storing it would put
+   * exactly the copy this feature exists to remove back into the browser, where the
+   * next person to sign in on a shared machine could read it.
+   *
+   * So a signed-out run is simply not recorded here. It still exists as the run
+   * being played, which the results screen holds and offers to save once there is
+   * an account to save it to. See ResultsPage for that question.
+   *
+   * Signed in, the row added here is provisional: the account's own copy is what
+   * the server read returns, and this is what it looks like until that lands. */
   const recordRun = useCallback((runState, endedAt = Date.now()) => {
     if (!runState) return
+    if (!ownerRef.current) return
 
     setEntries((current) => {
       const entry = summarizeRun(runState, endedAt)
@@ -327,6 +350,10 @@ export const useRunHistory = (ownerKey = null) => {
 
   return {
     entries,
+    /* Whether this board has an account behind it. What the home screen asks
+     * before offering a personal board at all: with no account there is nothing
+     * the board could be showing, so it is not reachable rather than empty. */
+    hasOwner: Boolean(ownerKey),
     isPreviewing,
     beginPreview,
     endPreview,

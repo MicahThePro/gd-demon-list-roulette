@@ -63,6 +63,25 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
   const estimatedRounds = Math.ceil(100 / percentStep)
   const isRankable = RANKABLE_SOURCES.includes(source)
 
+  /* Whether there is an account to hold runs.
+   *
+   * A personal board with no account behind it could only be empty: runs are not
+   * saved while signed out, so there is nothing for it to show and nothing the
+   * player could do on it. Rather than render an empty board and a tab that leads
+   * nowhere, the personal board is simply not there, and a signed-out player gets
+   * the global one. This is the same question the history answers for itself, read
+   * from the one place that already knows. */
+  const hasAccount = Boolean(auth.user)
+
+  /* Which board is on screen.
+   *
+   * Derived rather than stored on purpose: a stored tab would remember 'mine' from
+   * a session where an account was signed in, and signing out would leave a signed
+   * out player staring at the personal board with no way to have chosen it. Forced
+   * to 'global' while signed out means the tab the player cannot use is never the
+   * one they land on, and signing back in restores their own board. */
+  const activeTab = hasAccount ? boardTab : 'global'
+
   const clampValue = (value, minimum = 1, maximum = rangeMax) => {
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) {
@@ -263,31 +282,47 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
               the row count is unchanged and the strip is only as tall as it
               needs to be. */}
           <div className="board-body">
-            <div className="board-view-tabs" role="tablist" aria-label="Leaderboard">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={boardTab === 'mine'}
-                className={boardTab === 'mine' ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
-                onClick={() => setBoardTab('mine')}
-              >
-                Your runs
-                {history.entries.length > 0 && (
-                  <span className="lb-badge">{history.entries.length}</span>
-                )}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={boardTab === 'global'}
-                className={boardTab === 'global' ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
-                onClick={() => setBoardTab('global')}
-              >
-                Global
-              </button>
-            </div>
+            {/* The tab strip only exists with an account. Signed out there is one
+                board, so a strip offering a choice that is not really there would
+                be decoration pretending to be a control. */}
+            {hasAccount && (
+              <div className="board-view-tabs" role="tablist" aria-label="Leaderboard">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'mine'}
+                  className={activeTab === 'mine' ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
+                  onClick={() => setBoardTab('mine')}
+                >
+                  Your runs
+                  {history.entries.length > 0 && (
+                    <span className="lb-badge">{history.entries.length}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'global'}
+                  className={activeTab === 'global' ? 'board-view-tab board-view-tab-active' : 'board-view-tab'}
+                  onClick={() => setBoardTab('global')}
+                >
+                  Global
+                </button>
+              </div>
+            )}
 
-          {boardTab === 'global' ? (
+          {!hasAccount && (
+              /* Says why the other board is not here, rather than leaving its
+                 absence to be noticed. A player who has run on this site before
+                 will look for their own runs, and "nothing here" reads as lost
+                 data unless it is explained. */
+              <p className="settings-note board-signed-out-note">
+                Sign in to see your own runs. Runs are saved to an account, so a signed out player
+                has no personal board -- there would be nothing on it.
+              </p>
+          )}
+
+          {activeTab === 'global' ? (
             <GlobalLeaderboard user={auth.user} />
           ) : (
             <div className="board-personal">
@@ -341,7 +376,9 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
               aria-expanded={isBoardOpen}
             >
               {isBoardOpen ? 'Hide leaderboard' : 'Leaderboard'}
-              {history.entries.length > 0 && (
+              {/* The count is the account's runs, so it is only shown to somebody
+                  signed in who can actually open the board it counts. */}
+              {hasAccount && history.entries.length > 0 && (
                 <span className="lb-badge">{history.entries.length}</span>
               )}
             </button>
@@ -361,7 +398,10 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
             </button>
             <span className="settings-summary">
               Step: +{percentStep}% ({estimatedRounds} levels to finish)
-              {history.entries.length > 0 && ` · Best ${history.bestScore}%`}
+              {/* Best score is read off the account's runs, so signed out there is
+                  no best to report -- and showing a bare "Best 0%" would read as a
+                  claim that the player has done nothing. */}
+              {hasAccount && history.entries.length > 0 && ` · Best ${history.bestScore}%`}
             </span>
           </div>
 

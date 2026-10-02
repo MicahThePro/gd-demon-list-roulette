@@ -16,6 +16,7 @@ import ChangelogDialog from './ChangelogDialog.jsx'
 import GlobalLeaderboard from './GlobalLeaderboard.jsx'
 import Leaderboard from './Leaderboard.jsx'
 import PreviewBanner from './PreviewBanner.jsx'
+import ResultsPage from '../pages/ResultsPage.jsx'
 import { isPlayable, versionUrl, PLAYABLE_VERSIONS } from '../data/versions.js'
 import { CHANGELOG, LATEST_VERSION } from '../data/changelog.js'
 
@@ -397,6 +398,72 @@ console.log('GlobalLeaderboard')
   const directChildren = boardHtml.match(/<section class="panel board-page">([\s\S]*?)<\/header>[\s\S]*?<\/section>/)?.[1] ?? ''
   check('the tab strip is not a direct child of the three row grid', !/<div class="board-view-tabs">/.test(directChildren))
   check('the tab strip sits inside the list row', boardHtml.includes('<div class="board-body">'))
+}
+
+console.log('Results, for a run played signed out')
+{
+  const aRun = {
+    status: 'failed',
+    startingPercent: 1,
+    endingPercent: 2,
+    skippedCount: 0,
+    rounds: [],
+    source: 'AREDL',
+    currentTarget: 2,
+  }
+  const noop = () => {}
+  const auth = {
+    user: null,
+    isRestoring: false,
+    isBusy: false,
+    error: '',
+    setError: noop,
+    signIn: async () => ({ ok: true }),
+    signUp: async () => ({ ok: true }),
+    signOut: async () => {},
+  }
+  const renderResults = (extra = {}) =>
+    renderToStaticMarkup(
+      <ResultsPage
+        run={aRun}
+        runKey="run-1"
+        onRestart={noop}
+        auth={auth}
+        {...extra}
+      />,
+    )
+
+  /* The signed out case is the one the whole rule is about, so it is asserted on
+   * the words that would be a lie rather than on the words that are merely
+   * different. These panels used to tell a signed out player their run was already
+   * recorded on the device, which stopped being true the moment runs stopped saving
+   * there -- a claim like that is the reason the copy was reworded at all. */
+  const signedOut = renderResults()
+  check('a signed out player is told to sign in to save', signedOut.includes('Sign in to save this run'))
+  check(
+    'and is not told the run is already saved somewhere',
+    !signedOut.includes('already recorded on this device'),
+    signedOut.includes('already recorded on this device') ? 'still claims the run is on the device' : '',
+  )
+  check('nor that it is saved in this browser', !signedOut.includes('already saved in this browser'))
+  check('and is told plainly that it is not saved anywhere', signedOut.includes('not saved anywhere'))
+
+  /* The prompt. It only appears once there is an account to attach the run to, so
+   * the signed out render above must not contain it -- otherwise it would be
+   * asking a question about an account that does not exist yet. */
+  check('the keep-or-discard question is not shown before signing in', !signedOut.includes('Keep this run?'))
+
+  /* Signing in mid-run is what raises the question, so the state has to be
+   * reachable from the callback the account dialog reports through. The default
+   * render has no way to drive that callback, so what is asserted here is that a
+   * signed-in player with no decision pending gets the ordinary save offer rather
+   * than the prompt -- i.e. the prompt is not simply always on. */
+  const signedIn = renderResults({
+    auth: { ...auth, user: { id: 1, username: 'player_one', displayName: 'Player One' } },
+  })
+  check('a run ended while already signed in gets the ordinary save offer', signedIn.includes('Save to my account'))
+  check('and is not asked a question it did not need asking', !signedIn.includes('Keep this run?'))
+  check('the ordinary offer names the account it saves to', signedIn.includes('@player_one'))
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)

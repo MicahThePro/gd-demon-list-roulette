@@ -17,7 +17,7 @@ export const CHANGELOG = [
   {
     id: 'v2-3',
     version: 'v2.3',
-    title: 'Runs that follow your account, and a name you can change',
+    title: 'Runs belong to an account now',
     summary: 'Finished runs save to your account on their own, every run can be deleted, your display name is editable once a day, and old versions of the site are playable again.',
     changes: [
       'A run you finish is now saved to your account straight away, without being asked. If you finish a run while signed in, it is on your account by the time you see the results screen -- there is no box to tick and nothing to remember to do. You do not have to submit it to the global leaderboard for this to happen; saving it to your account and putting it on the public board are still two separate things.',
@@ -31,6 +31,9 @@ export const CHANGELOG = [
       'Usernames keep the capitalisation you typed. “DemonRoulette” used to be stored as “demonroulette”, so you could never have the name you wanted. Signing in still works whichever way you type it, and nobody else can claim your name in any case.',
       'Every past version of the site is playable again from the What’s new dialog. Each release has a Play this version link that opens a frozen copy of that version in a new tab. Nothing you do there touches the current site.',
       'Disabled buttons are now actually greyed out. They had no styling for the disabled state at all, so a button that could not be pressed looked exactly like one that could, and the only way to find out was to click it and see nothing happen.',
+      'Runs are now only saved to an account. A run finished while signed out is not saved anywhere at all — not on this device, not on the leaderboard. If you finish a run signed out, sign in or create an account and you are asked whether to keep it; say yes and it goes on your account, say no and it simply goes when you leave the page. Nobody is asked twice and nothing is saved without being agreed to.',
+      'The Your runs board is gone while signed out. There would be nothing on it — no runs are stored for a signed out player — so instead of an empty board there is a line saying so and a link to sign in. Signed out, the only board you can open is Global.',
+      'Anything already saved from before this change is kept, not deleted. It is simply not shown until you sign in, and signing in replaces it with the runs on your account.',
     ],
   },
   {

@@ -2598,6 +2598,17 @@
   font: inherit;
 }
 
+/* Explains, on the board page, why there is no personal board for a signed out
+   player. Sits in the list area rather than floating above it, so it reads as part
+   of the board it is explaining rather than as a banner about the page. */
+.board-signed-out-note {
+  padding: 16px;
+  margin: 0 0 12px;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  background: #0b1220;
+}
+
 /* The greying for a locked edit.
    `not-allowed` on the pointer cursor is deliberate: it is the cursor that says
    "this will not happen" without the reader having to hover and find out. */

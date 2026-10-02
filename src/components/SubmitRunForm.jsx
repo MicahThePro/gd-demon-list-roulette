@@ -111,12 +111,14 @@ export default function SubmitRunForm({
     return (
       <>
         <p>
-          Sign in and this run can be submitted to the global leaderboard, where everyone can
-          see how far it got. It is optional: the run is already saved in this browser.
+          Sign in and this run can be submitted to the global leaderboard, where everyone can see
+          how far it got.
         </p>
         <p className="settings-hint">
-          Signing in needs a username and a password. There is no email address, so nothing
-          to lose and no waiting on a message.
+          Runs are saved to an account rather than to this browser, so signing in is what gives
+          this run somewhere to live. Until you do, it is not saved anywhere. Signing in needs a
+          username and a password — there is no email address, so nothing to lose and no waiting
+          on a message.
         </p>
       </>
     )

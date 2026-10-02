@@ -30,6 +30,18 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
   const [isAccountOpen, setIsAccountOpen] = useState(false)
   const [saveState, setSaveState] = useState({ state: 'idle', message: '' })
   const [isSaving, setIsSaving] = useState(false)
+
+  /* Whether this run is waiting on the player to say whether to keep it.
+   *
+   * Set when a run that ended while signed out is followed by a sign in. It is a
+   * question rather than a decision because the run has no owner until somebody
+   * signs in, and silently saving it would put somebody's run on an account they
+   * did not choose. Silently dropping it would lose a run they had just finished
+   * without ever being told it was at stake. So it is asked.
+   *
+   * A tri-state rather than a boolean: 'idle' is before the sign in, so the prompt
+   * cannot flash on a player who was already signed in when the run ended. */
+  const [keepDecision, setKeepDecision] = useState('idle')
   if (!run) {
     return null
   }
@@ -98,6 +110,22 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
     } finally {
       setIsSaving(false)
     }
+  }
+
+  /* The player chose to keep the run they finished while signed out. */
+  const handleKeepRun = async () => {
+    setKeepDecision('kept')
+    await handleSaveToAccount()
+  }
+
+  /* The player chose not to keep it.
+   *
+   * Nothing is written anywhere -- which is the point. The run was never recorded
+   * while signed out, so there is nothing on this device to delete and nothing on
+   * an account to remove; discarding is simply doing nothing, and saying so is
+   * better than showing a success message for a delete that never happened. */
+  const handleDiscardRun = () => {
+    setKeepDecision('discarded')
   }
 
   return (
@@ -221,11 +249,71 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
         <p className="results-section-label">Keep this run</p>
         <div className="submit-panel">
           {auth.user ? (
-            isSavedToAccount ? (
+            /* The prompt, in place of the usual panel.
+             *
+             * Rendered instead of rather than above the save button because the
+             * save button would be the answer already: showing it while the
+             * question is open invites the player to save without ever having been
+             * asked, which is the thing being avoided. Once they have answered,
+             * the normal panel comes back -- with "already saved" if they kept it,
+             * and an ordinary save offer if they discarded it. */
+            keepDecision === 'pending' ? (
+              <>
+                <p>
+                  <strong>Keep this run?</strong> You finished it before signing in, so it was not
+                  saved to anything. You are now signed in as <strong>@{auth.user.username}</strong> —
+                  save it to that account, or leave it unsaved.
+                </p>
+                <p className="settings-hint">
+                  Saving puts it on Your runs and on any other device you sign in on. Leaving it
+                  unsaved keeps nothing: it goes when you leave this page, and it is not on any
+                  leaderboard.
+                </p>
+                {saveState.message && (
+                  <p className={saveState.state === 'done' ? 'export-status' : 'validation-message'}>
+                    {saveState.message}
+                  </p>
+                )}
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={handleKeepRun}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Keep it on my account'}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleDiscardRun}
+                    disabled={isSaving}
+                  >
+                    Don't save it
+                  </button>
+                </div>
+              </>
+            ) : isSavedToAccount ? (
               <p className="export-status">
                 This run is on your account as <strong>@{auth.user.username}</strong>. It appears on
                 your board here and on any other device you sign in on.
               </p>
+            ) : keepDecision === 'discarded' ? (
+              <>
+                <p>
+                  This run is not saved. It was never written anywhere, so there is nothing on this
+                  device holding it and nothing on your account.
+                </p>
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setKeepDecision('idle')}
+                  >
+                    Changed your mind — save it
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <p>
@@ -253,14 +341,14 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
           ) : (
             <>
               <p>
-                <strong>Sign in to save this run.</strong> An account is what keeps your runs:
-                sign in on another device and everything you have played is there, instead of
-                only in this browser.
+                <strong>Sign in to save this run.</strong> Runs are saved to an account, so signing
+                in on another device means everything you have played is there, instead of only in
+                this browser.
               </p>
               <p className="settings-hint">
-                You can sign in or create an account right here, and the run you just finished is
-                saved to it straight away. Either way the run is already recorded on this device,
-                so nothing is lost if you do not.
+                You can sign in or create an account right here, and then you will be asked whether
+                to keep this run. Until you do, it is not saved anywhere — it is not on your board,
+                and it is not on the global leaderboard either.
               </p>
               <div className="action-row">
                 <button
@@ -307,12 +395,16 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
         onAuthenticated={async (_user, { attachRun }) => {
           setIsAccountOpen(false)
           onAccountChanged?.()
-          /* Nothing to decide any more: signing in from here is signing in to keep
-             this run, so it is saved without being asked about. The `attachRun`
-             branch stays because the account dialog also opens from the home
-             screen with no run in hand, where there is nothing to save. */
-          if (!attachRun) return
-          await handleSaveToAccount()
+          /* A run played signed out was never recorded, so signing in does not hand
+             it over -- it creates the question. The player is asked whether to keep
+             it, because putting a run on an account the player did not choose is
+             not a decision we get to make for them, and throwing away a run they
+             just finished without asking is the same mistake pointed the other way.
+             With no run in hand the dialog was opened from the home screen and
+             there is nothing to ask about. */
+          if (attachRun) {
+            setKeepDecision('pending')
+          }
         }}
       />
     </main>
