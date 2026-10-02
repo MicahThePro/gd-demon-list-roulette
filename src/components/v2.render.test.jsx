@@ -10,6 +10,7 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { existsSync, readFileSync } from 'node:fs'
+import { parse } from '@babel/parser'
 import process from 'node:process'
 import AccountDialog from './AccountDialog.jsx'
 import ChangelogDialog from './ChangelogDialog.jsx'
@@ -21,6 +22,22 @@ import { isPlayable, versionUrl, PLAYABLE_VERSIONS } from '../data/versions.js'
 import { CHANGELOG, LATEST_VERSION } from '../data/changelog.js'
 
 let failures = 0
+
+/* Walks every node of a Babel AST. Written out rather than pulled in, because
+ * @babel/traverse is CommonJS and does not survive Vite's SSR interop. */
+function visitNodes(node, visit) {
+  if (node == null || typeof node !== 'object') return
+  if (Array.isArray(node)) {
+    for (const child of node) visitNodes(child, visit)
+    return
+  }
+  if (typeof node.type === 'string') visit(node)
+  for (const key of Object.keys(node)) {
+    if (key === 'loc' || key === 'leadingComments' || key === 'trailingComments') continue
+    visitNodes(node[key], visit)
+  }
+}
+
 const check = (name, condition, detail = '') => {
   if (condition) {
     console.log(`  pass  ${name}`)
@@ -488,9 +505,56 @@ console.log('Results, for a run played signed out')
   const signedIn = renderResults({
     auth: { ...auth, user: { id: 1, username: 'player_one', displayName: 'Player One' } },
   })
-  check('a run ended while already signed in gets the ordinary save offer', signedIn.includes('Save to my account'))
+  /* The offer is now the button alone, in the action row at the bottom rather
+   * than inside its own panel. What is asserted is that the control is still
+   * there and still names the account -- not that it sits in a box. */
+  check('a run ended while already signed in gets the save button', signedIn.includes('Save run to @'))
   check('and is not asked a question it did not need asking', !signedIn.includes('Keep this run?'))
-  check('the ordinary offer names the account it saves to', signedIn.includes('@player_one'))
+  check('the button names the account it saves to', signedIn.includes('Save run to @player_one'))
+  /* The two ways out of the page both have to say what they do, since one of
+   * them destroys the run and the other keeps it. "New run" did not. */
+  check('the way out of the page says the run is discarded', signedIn.includes('Discard and go home'))
+  check('and it is no longer the ambiguous bare "New run"', !signedIn.includes('New run'))
+
+  /* Guard against the keep-or-discard ternary chain losing its expression braces.
+   *
+   * That panel is only reachable after a sign in mid-run, so no render above can
+   * reach it -- but when the `{` is missing the ternaries parse as literal JSX
+   * *text* rather than as an expression, and the page renders the page's own
+   * source code to the player: conditionals, question and answer, all of it. No
+   * exception is thrown, no existing check renders it, and it ships because the
+   * broken build looks exactly as healthy as the working one.
+   *
+   * So the guard is on the AST, not on rendered output and not on a regex over
+   * source lines: parse the file and fail on any JSXText child that still looks
+   * like the expression it should have been. That catches the brace being lost
+   * anywhere in the file, not just on the line it happened on. */
+  const resultsSource = readFileSync(new URL('../pages/ResultsPage.jsx', import.meta.url), 'utf8')
+  const leakedSource = []
+  let parseError = ''
+  try {
+    visitNodes(parse(resultsSource, { sourceType: 'module', plugins: ['jsx'] }), (node) => {
+      if (node.type !== 'JSXText') return
+      const text = node.value.trim()
+      if (text === '') return
+      // Source that leaked into the DOM keeps the punctuation of code: a bare
+      // `? (` chain, or a condition naming one of the component's state
+      // variables. Rendered copy contains neither.
+      if (/\?\s*\(/.test(text) || /\b(keepDecision|isSavedToAccount|isSubmitting)\b/.test(text)) {
+        leakedSource.push(JSON.stringify(text))
+      }
+    })
+  } catch (error) {
+    // A brace can also be lost in a way that leaves the file unparseable. That is
+    // a build error rather than a test result, so it is reported as a failure of
+    // this check instead of crashing the whole run and hiding every other check.
+    parseError = error?.message ?? String(error)
+  }
+  check(
+    'the results page parses and no JSX expression has collapsed into literal text',
+    leakedSource.length === 0 && parseError === '',
+    [parseError, ...leakedSource].join(' | '),
+  )
 }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)

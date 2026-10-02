@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
+import { censorText } from '../utils/censor'
 import { saveRunToAccount, submitRun } from '../services/submissionService'
 import { hasSavedToAccount, hasSubmitted, markSavedToAccount } from '../utils/submittedRuns'
 import AccountDialog from '../components/AccountDialog'
@@ -184,7 +185,7 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
           </div>
           <div className="stat-card result-card">
             <span>Source</span>
-            <strong className="stat-value-small">{run.source}</strong>
+            <strong className="stat-value-small">{censorText(run.source)}</strong>
           </div>
         </div>
 
@@ -229,13 +230,13 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
                     <img
                       className="history-thumb"
                       src={round.level.thumbnail}
-                      alt={`${round.level.name} thumbnail`}
+                      alt={`${censorText(round.level.name)} thumbnail`}
                       loading="lazy"
                     />
                   ) : null}
                   <span className="history-index">#{index + 1}</span>
                   <span className="history-copy">
-                    <strong>{round.level.name}</strong>
+                    <strong>{censorText(round.level.name)}</strong>
                     <small>{detail}</small>
                   </span>
                   <em className={`history-result history-result-${result}`}>{resultLabel}</em>
@@ -246,18 +247,20 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
           )}
         </div>
 
-        <p className="results-section-label">Keep this run</p>
-        <div className="submit-panel">
-          {auth.user ? (
-            /* The prompt, in place of the usual panel.
-             *
-             * Rendered instead of rather than above the save button because the
-             * save button would be the answer already: showing it while the
-             * question is open invites the player to save without ever having been
-             * asked, which is the thing being avoided. Once they have answered,
-             * the normal panel comes back -- with "already saved" if they kept it,
-             * and an ordinary save offer if they discarded it. */
-            keepDecision === 'pending' ? (
+        {/* The only case that still gets a box of its own: a run that ended while
+            signed out and has since been signed in to, so the player has an
+            account but has not yet said whether this run belongs on it. That
+            is a question with two answers, and it is asked rather than decided
+            for them -- putting a run on an account they did not choose is not
+            ours to do, and dropping one they just finished without asking is
+            the same mistake pointed the other way. */}
+        {auth.user && keepDecision !== 'idle' && (
+          <div className="submit-panel">
+            {/* The prompt. Rendered instead of rather than above the answer,
+                because showing the save button while the question is open
+                invites saving without ever having been asked -- which is the
+                thing being avoided. */}
+            {keepDecision === 'pending' ? (
               <>
                 <p>
                   <strong>Keep this run?</strong> You finished it before signing in, so it was not
@@ -314,54 +317,24 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
                   </button>
                 </div>
               </>
-            ) : (
-              <>
-                <p>
-                  Save this run to <strong>@{auth.user.username}</strong> so it follows you to
-                  other devices. It is not on the global leaderboard until you send it for review
-                  below.
-                </p>
-                <div className="action-row">
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={handleSaveToAccount}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? 'Saving...' : 'Save to my account'}
-                  </button>
-                </div>
-                {saveState.message && (
-                  <p className={saveState.state === 'done' ? 'export-status' : 'validation-message'}>
-                    {saveState.message}
-                  </p>
-                )}
-              </>
-            )
-          ) : (
-            <>
-              <p>
-                <strong>Sign in to save this run.</strong> Runs are saved to an account, so signing
-                in on another device means everything you have played is there, instead of only in
-                this browser.
-              </p>
-              <p className="settings-hint">
-                You can sign in or create an account right here, and then you will be asked whether
-                to keep this run. Until you do, it is not saved anywhere — it is not on your board,
-                and it is not on the global leaderboard either.
-              </p>
-              <div className="action-row">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => setIsAccountOpen(true)}
-                >
-                  Sign in or create an account
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+            ) : null}
+          </div>
+        )}
+
+        {auth.user ? null : (
+          <>
+            <p>
+              <strong>Sign in to save this run.</strong> Runs are saved to an account, so signing
+              in on another device means everything you have played is there, instead of only in
+              this browser.
+            </p>
+            <p className="settings-hint">
+              You can sign in or create an account right here, and then you will be asked whether
+              to keep this run. Until you do, it is not saved anywhere — it is not on your board,
+              and it is not on the global leaderboard either.
+            </p>
+          </>
+        )}
 
         <p className="results-section-label">Global leaderboard</p>
         <div className="submit-panel">
@@ -375,11 +348,51 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
           />
         </div>
 
+        {/* Both ways out of the page sit together at the bottom, and both say what
+            they do. "Discard and go home" names the thing "New run" never
+            said: that the run is thrown away rather than banked. That is the
+            third option a player has, and it has to be here -- walking away
+            without touching anything must always be possible, so declining to
+            save a run never requires finding a button first.
+            The save button appears only when there is something to save: not
+            while the keep-or-discard question is open (that question carries
+            its own answers), not once it is already saved, and never to a
+            signed out player, who is offered the account dialog instead --
+            signing in is not the same decision as saving, so it stays its own
+            control rather than becoming the save button. */}
         <div className="action-row">
           <button className="secondary-button" type="button" onClick={onRestart}>
-            New run
+            Discard and go home
           </button>
+          {auth.user ? (
+            keepDecision !== 'pending' &&
+            keepDecision !== 'discarded' &&
+            !isSavedToAccount && (
+              <button
+                className="primary-button"
+                type="button"
+                onClick={handleSaveToAccount}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : `Save run to @${auth.user.username}`}
+              </button>
+            )
+          ) : (
+            <button className="primary-button" type="button" onClick={() => setIsAccountOpen(true)}>
+              Sign in or create an account
+            </button>
+          )}
         </div>
+
+        {/* The save's own result, below the buttons rather than inside the row,
+            so the row stays two buttons wide and a long message does not
+            stretch it. Suppressed once the run is on the account: the row
+            drops its save button at that point and the panel says so. */}
+        {saveState.message && !isSavedToAccount && (
+          <p className={saveState.state === 'done' ? 'export-status' : 'validation-message'}>
+            {saveState.message}
+          </p>
+        )}
       </section>
 
       {/* The same account dialog the home screen opens. `onAuthenticated` runs
