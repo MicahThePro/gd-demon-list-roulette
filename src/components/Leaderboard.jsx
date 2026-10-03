@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
 import { formatDurationMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
+import { LIST_SOURCES, LIST_SOURCE_LABELS } from '../services/listService'
 import { censorText } from '../utils/censor'
 import { submitEntry } from '../services/submissionService'
 import { hasSubmitted } from '../utils/submittedRuns'
@@ -229,6 +230,14 @@ const TABS = [
   { key: 'failed', label: 'Failed', statuses: ['failed'], filters: FILTERS.failed },
 ]
 
+const SOURCES = [
+  { id: 'all', label: 'All lists' },
+  ...Object.values(LIST_SOURCES).map((name) => ({
+    id: name,
+    label: censorText(LIST_SOURCE_LABELS[name] ?? name),
+  })),
+]
+
 const EMPTY_TAB_MESSAGES = {
   cleared: 'No cleared runs yet. Hit a 100% level to make this list.',
   gaveup: 'No runs given up yet.',
@@ -238,6 +247,7 @@ const EMPTY_TAB_MESSAGES = {
 export default function Leaderboard({ entries, onDelete, auth }) {
   const [tab, setTab] = useState('cleared')
   const [filter, setFilter] = useState(FILTERS.gaveup[0].key)
+  const [source, setSource] = useState('all')
   /* Which Pointercrate list to narrow to, on any of the tabs.
    *
    * Local to this device and not a run rule, so unlike the sort filters it is not
@@ -253,10 +263,12 @@ export default function Leaderboard({ entries, onDelete, auth }) {
    * that matters. */
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
 
+  const filteredEntries = source === 'all' ? entries : entries.filter((entry) => entry.source === source)
+
   const tabs = useMemo(() => {
     const built = TABS.map((definition) => ({
       ...definition,
-      items: entries.filter((e) => definition.statuses.includes(e.status)),
+      items: filteredEntries.filter((e) => definition.statuses.includes(e.status)),
     }))
     /* Anything the tabs above do not claim, so no run can be counted but invisible.
        A status written by a newer version of the site would otherwise land here:
@@ -264,7 +276,7 @@ export default function Leaderboard({ entries, onDelete, auth }) {
        swallowed. Nothing produces one today, which is exactly why it is worth
        rendering rather than trusting the list above to stay complete. */
     const claimed = new Set(TABS.flatMap((t) => t.statuses))
-    const unlisted = entries.filter((entry) => !claimed.has(entry.status))
+    const unlisted = filteredEntries.filter((entry) => !claimed.has(entry.status))
     if (unlisted.length) {
       built.push({
         key: 'other',
@@ -275,12 +287,17 @@ export default function Leaderboard({ entries, onDelete, auth }) {
       })
     }
     return built
-  }, [entries])
+  }, [filteredEntries])
 
   const activeTab = tabs.find((t) => t.key === tab) ?? tabs[0]
   const activeFilters = activeTab?.filters ?? []
   const activeFilter =
     activeFilters.find((f) => f.key === filter) ?? activeFilters[0] ?? null
+  const handleSourceChange = (value) => {
+    setSource(value)
+    setParts('')
+  }
+
   /* Narrowed after the tabs are built, so the tab counts keep reporting what is
    * actually on the board rather than what the filter happens to be showing. A
    * count that changed with the filter would make the tab totals stop adding up
@@ -301,7 +318,7 @@ export default function Leaderboard({ entries, onDelete, auth }) {
 
   /* Offered only when the account actually holds a Pointercrate run in some tab,
    * so the control is not offered to somebody it can never match. */
-  const hasPointercrateRuns = entries.some((entry) => entry.source === POINTERCRATE_SOURCE)
+  const hasPointercrateRuns = filteredEntries.some((entry) => entry.source === POINTERCRATE_SOURCE)
   const openEntry = openId ? entries.find((entry) => entry.id === openId) : null
 
   /* The delete goes through this rather than straight to onDelete.
@@ -366,6 +383,17 @@ export default function Leaderboard({ entries, onDelete, auth }) {
           </button>
         ))}
       </div>
+
+      <label className="global-board-source">
+        <span className="visually-hidden">Filter by list</span>
+        <select value={source} onChange={(event) => handleSourceChange(event.target.value)}>
+          {SOURCES.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {activeFilters.length > 0 && activeTab.items.length > 0 && (
         <div className="lb-filters" role="group" aria-label="Sort runs">
