@@ -18,7 +18,7 @@ export const CHANGELOG = [
     id: 'v2-5',
     version: 'v2.5',
     title: 'A whole new look, plus the latest fixes and polish',
-    summary: 'The app gets a complete modern redesign, the updated site experience is now the live version, and the recent fixes from the last few releases are all included in the current build.',
+    summary: 'The app gets a complete modern redesign, with profile badges, clearer run rules, leaderboard recording guidance, and a settings menu that adapts to smaller screens.',
     changes: [
       'The whole site has been rebuilt with a more modern dark dashboard aesthetic: a cleaner shell, a more premium top bar, brighter neon gradients, sharper panels, and a far more contemporary app feel rather than the older plain layout.',
       'The home screen, forms, and leaderboard styling were refreshed together so the entire app feels like one coherent product instead of a collection of old panels with new accents.',
@@ -28,6 +28,13 @@ export const CHANGELOG = [
       'The current build also keeps the very latest changes from the Git history, including the redesigned visual treatment and the polish work done since the v2.4 release.',
       'The What’s new dialog now shows the current v2.5 release at the top and keeps v2.4 as the previous release in the archive list, matching the actual release history and the frozen build setup.',
       'Live updates stay in the current site only, while older versions remain playable as frozen archives that cannot sign in, submit, or reach the leaderboard.',
+      'Profiles can now display multiple administrator-assigned badges. Administrators can manage badges, and the protected Owner badge identifies the site owner.',
+      'Profile run history now respects the profanity-censor setting, so list names are masked there whenever censoring is enabled.',
+      'Starting a run now reminds players to begin recording before their first attempt if they plan to submit it. The guidance explains that a continuous video should show the level, attempts, and results for review.',
+      'Portable in-progress run save codes, including GDLRS1 codes, have been removed. Active runs can still be recovered in the same browser, and completed runs can be saved to a signed-in account.',
+      'The Settings menu now adapts to short screens: it uses extra width for a two-column layout when available, tightens spacing on very short screens, and keeps its contents scrollable rather than clipping them.',
+      'The header once again includes a “See project on GitHub” link with the GitHub logo.',
+      'The /admin page and custom-domain configuration were restored so the admin entry point and site domain continue to work when the frontend is published.',
     ],
   },
   {
