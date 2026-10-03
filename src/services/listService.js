@@ -3,7 +3,7 @@ import {
   DEFAULT_POINTERCRATE_PARTS,
   normalizePointercrateParts,
   pointercratePartRanges,
-} from './pointercrateParts'
+} from './pointercrateParts.js'
 
 const POINTERCRATE_URL = import.meta.env.PROD
   ? 'https://pointercrate.com'
@@ -159,6 +159,15 @@ export const normalizeListRequest = ({ source = 'pointercrate', start, end, poin
             : 'pointercrate'
   const normalizedStart = parsePositiveInteger(start)
   const normalizedEnd = parsePositiveInteger(end)
+  /* Normalized once here, on the way in, so every source below carries a valid
+   * selection whatever the caller passed -- including the Pointercrate branch,
+   * which is the one that actually reads it. It used to be added only to the
+   * rankable sources' return, so Pointercrate fell through to the plain return
+   * below with no `pointercrateParts` on it at all. That read as undefined and
+   * normalized back to the default, so ticking Legacy appeared to do nothing:
+   * the draw was Main and Extended whichever box was on. */
+  const parts = normalizePointercrateParts(pointercrateParts)
+
   if (
     resolvedSource === 'aredl' ||
     resolvedSource === 'gsl' ||
@@ -182,16 +191,14 @@ export const normalizeListRequest = ({ source = 'pointercrate', start, end, poin
       source: resolvedSource,
       start: safeStart,
       end: safeEnd,
-      // Only Pointercrate has parts; normalized here so a value arriving from
-      // anywhere -- the form, a save code, a hand-typed request -- is reduced to
-      // known part ids in the same pass as everything else the request carries.
-      pointercrateParts: normalizePointercrateParts(pointercrateParts),
+      pointercrateParts: parts,
     }
   }
   return {
     source: resolvedSource,
     start: normalizedStart,
     end: normalizedEnd,
+    pointercrateParts: parts,
   }
 }
 
@@ -271,6 +278,11 @@ const fetchPointercrateList = async (parts = DEFAULT_POINTERCRATE_PARTS) => {
   return {
     source: 'pointercrate',
     sourceTitle: LIST_SOURCES.POINTERCRATE,
+    /* The parts this response was actually drawn from, not the ones asked for.
+     * The ranges are clipped to what loaded, so a part that ran past the end of
+     * the list could have been narrowed -- and the badge has to say what the run
+     * was really played from. */
+    pointercrateParts: ranges.map((range) => range.id),
     count: finalLevels.length,
     totalCount: allLevels.length,
     /* Every demon in the ticked parts, not a capped slice.

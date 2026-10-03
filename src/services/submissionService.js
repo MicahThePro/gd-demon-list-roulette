@@ -1,3 +1,5 @@
+import { normalizePointercrateParts } from './pointercrateParts.js'
+
 /**
  * Uploading a run's recording, and the moderation API.
  *
@@ -165,6 +167,11 @@ export const buildRunPayload = (run, endedAt = Date.now()) => {
     runId: run?.runId ?? `${endedAt}-${run?.source ?? 'run'}`,
     source: run?.source ?? 'Unknown list',
     percentStep: Number.isFinite(run?.percentStep) ? run.percentStep : 1,
+    /* Which Pointercrate lists this run drew from, so the global board can show
+     * it. Null on every other list, which the Worker also enforces. */
+    pointercrateParts: run?.source === 'Pointercrate Demon List' && Array.isArray(run?.pointercrateParts)
+      ? normalizePointercrateParts(run.pointercrateParts)
+      : null,
     status: run?.status === 'completed' ? 'completed' : run?.gaveUp === true ? 'gaveup' : 'failed',
     endedAt,
     rounds: rounds.map((round) => ({
@@ -212,6 +219,11 @@ export const buildRunPayloadFromEntry = (entry, endedAt = Date.now()) => ({
   runId: entry?.id ?? `${endedAt}-${entry?.source ?? 'run'}`,
   source: entry?.source ?? 'Unknown list',
   percentStep: Number.isFinite(entry?.step) ? entry.step : 1,
+    /* Same, read off the stored entry. A run recorded before the lists existed has
+     * no such field and sends null, which the board renders as no badge. */
+    pointercrateParts: entry?.source === 'Pointercrate Demon List' && Array.isArray(entry?.pointercrateParts)
+      ? normalizePointercrateParts(entry.pointercrateParts)
+      : null,
   status: entry?.status ?? 'failed',
   endedAt: Number.isFinite(Number(entry?.at)) ? Number(entry.at) : endedAt,
   rounds: (entry?.rounds ?? []).map((packed) => ({

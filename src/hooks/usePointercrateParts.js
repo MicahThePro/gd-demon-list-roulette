@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react'
 import {
   DEFAULT_POINTERCRATE_PARTS,
   normalizePointercrateParts,
-} from '../services/pointercrateParts'
+} from '../services/pointercrateParts.js'
 
 /**
  * Which parts of the Pointercrate Demon List to draw from, kept in a cookie.

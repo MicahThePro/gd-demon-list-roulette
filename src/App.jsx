@@ -266,6 +266,9 @@ function App() {
       allowSkip: gameRules.allowSkip,
       levelTimeLimitMs: timeLimitMinutesToMs(gameRules.levelTimeLimitMinutes),
       totalTimeLimitMs: timeLimitMinutesToMs(gameRules.totalTimeLimitMinutes),
+      // Which Pointercrate lists this run draws from, so the leaderboard can say
+      // afterwards. Null on every other list, which is what createRun stores.
+      pointercrateParts: importedList.pointercrateParts ?? null,
     })
 
     const hydratedCurrentLevel = await hydrateLevelForRun(createdRun, createdRun.currentLevel)

@@ -10,7 +10,7 @@ import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
 import { SITE_NAME, LATEST_VERSION } from '../data/changelog'
 import { usePointercrateParts } from '../hooks/usePointercrateParts'
-import { POINTERCRATE_PARTS } from '../services/pointercrateParts'
+import { POINTERCRATE_PARTS } from '../services/pointercrateParts.js'
 import { censorText } from '../utils/censor'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
@@ -362,7 +362,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
               <Leaderboard
                 entries={history.entries}
                 onDelete={(id) => history.deleteEntry(id, { onServerError: reportBoardError })}
-                onClear={() => history.clearHistory({ onServerError: reportBoardError })}
                 auth={auth}
               />
             </div>

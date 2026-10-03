@@ -368,20 +368,37 @@ console.log('Leaderboard, with no import and no export')
     ],
   }
 
-  const props = { onDelete: () => {}, onClear: () => {}, auth: signedOut }
+  const props = { onDelete: () => {}, auth: signedOut }
   const withRuns = renderToStaticMarkup(<Leaderboard {...props} entries={[anEntry]} />)
   check('a run is listed', withRuns.includes('100%') && withRuns.includes('AREDL'))
   check('there is no export button', !withRuns.includes('Copy leaderboard code'))
   check('there is no import button', !withRuns.includes('Import leaderboard code'))
   check('and no dialog for one either', !withRuns.includes('DLRH1:'))
-  check('clearing the board is still offered', withRuns.includes('Clear all runs'))
-  // With nothing on the board there is nothing to clear, so the button goes
-  // rather than sitting there doing nothing.
+  /* No clear-all. It was the only control here that could destroy something
+     permanently in one unconfirmed click, including a ranked run whose delete
+     also takes the submission with it. Each run keeps its own delete. */
+  check('there is no clear all button', !withRuns.includes('Clear all runs'))
+  // With nothing on the board there is nothing to delete at all.
   const empty = renderToStaticMarkup(<Leaderboard {...props} entries={[]} />)
-  check('an empty board offers no clear either', !empty.includes('Clear all runs'))
   // The empty message points at signing in rather than at a code that no longer
   // exists, because that is now how a run reaches another device.
   check('the empty message points at the account', empty.includes('sign in') && !empty.includes('leaderboard code'))
+
+  /* Deleting a run that is on the global leaderboard.
+   *
+   * The delete cascade takes the submission with it, so the run leaves the public
+   * board for good and cannot be resubmitted. That has to be said before the click
+   * rather than discovered afterwards, and the warning is only for a ranked run --
+   * putting it on every delete would only teach people to dismiss it. */
+  const ranked = renderToStaticMarkup(
+    <Leaderboard {...props} entries={[{ ...anEntry, id: 'ranked-1', onGlobalBoard: true }]} />,
+  )
+  check('the warning is not rendered until a ranked delete is asked for', !ranked.includes('Remove this run from the leaderboard'))
+  check('a ranked run is not announced on the row itself', !ranked.includes('on the leaderboard'))
+
+  /* An ordinary run gets no warning at all -- it is not ranked, so there is
+     nothing to lose but the run itself, which the delete button already names. */
+  check('an unranked run is not treated as ranked', !withRuns.includes('Remove this run from the leaderboard'))
 
   /* Every run on the board has to be reachable somewhere, or it is a run the
    * player can count, see the total of, and never find or remove. That happened
@@ -416,6 +433,41 @@ console.log('Leaderboard, with no import and no export')
   )
   check('a run with an unfamiliar status is not swallowed', withUnknown.includes('4 of 20 runs stored'), withUnknown.slice(0, 300))
   check('it gets a tab of its own so it can be found and deleted', withUnknown.includes('Other'), withUnknown.slice(0, 300))
+
+  /* The two filter strips must not share one grid row.
+   *
+   * The Pointercrate part filter was added as a second `.lb-filters` child, and
+   * the leaderboard's grid has exactly one `filters` area. Two children in one
+   * named area are placed into the same cell, so the sort chips and the part
+   * chips were painted on top of each other on the Gave up tab -- two sets of
+   * buttons occupying the same pixels. Asserted here on the CSS rather than on
+   * geometry, because this harness renders markup and never lays anything out:
+   * what has to hold is that the two strips name two different areas. */
+  const css = readFileSync(new URL('../App.css', import.meta.url), 'utf8')
+  const areas = css.match(/grid-template-areas:\s*([^;]+);/g)?.join('\n') ?? ''
+  check('the leaderboard grid gives each filter strip its own row', /'filters'\s*\n\s*'partfilters'/.test(areas), areas)
+  check('and the part strip is placed in the second one', /\.lb-part-filters\s*\{[^}]*grid-area:\s*partfilters/s.test(css))
+  // Both strips rendering at once is the case that overlapped, so it is built:
+  // a Pointercrate run gives the part filter something to offer.
+  const withPointercrate = renderToStaticMarkup(
+    <Leaderboard
+      {...props}
+      entries={[
+        { ...anEntry, id: 'pc-1', source: 'Pointercrate Demon List', status: 'gaveup', pointercrateParts: ['legacy'] },
+        { ...anEntry, id: 'pc-2', source: 'Pointercrate Demon List', status: 'gaveup', pointercrateParts: ['main'] },
+      ]}
+    />,
+  )
+  check(
+    'a board holding a Pointercrate run offers all three part buttons',
+    ['Main list only', 'Extended list only', 'Legacy list only']
+      .every((label) => withPointercrate.includes(label)),
+    withPointercrate.slice(0, 300),
+  )
+  check(
+    'and it uses its own class rather than the sort strip class',
+    withPointercrate.includes('class="lb-part-filters"') && !withPointercrate.includes('class="lb-filters" lb-part'),
+  )
 }
 
 console.log('GlobalLeaderboard')
@@ -446,6 +498,17 @@ console.log('GlobalLeaderboard')
   // message in a grid area that does not exist on this page, which is why it
   // drifted off to the right instead of sitting under the board.
   check('the empty message does not reuse the leaderboard grid class', !html.includes('lb-empty'))
+
+  /* The Pointercrate part filter is chips, not a second dropdown.
+   *
+   * It was a <select>, and a native popup is not part of the document: any
+   * re-render that changes the <option> list makes the browser drop the open
+   * popup. This board re-reads itself every 30 seconds and again on every input
+   * change, so the list menu closed under the player's cursor and the next
+   * click merely reopened it -- the dropdown looked broken. The chips are the
+   * same buttons the personal board uses, and cannot be closed by a re-render. */
+  check('there is only one dropdown, the list filter', (html.match(/<select/g) ?? []).length === 1, `${(html.match(/<select/g) ?? []).length} selects`)
+  check('and no part dropdown is offered at all', !html.includes('All Pointercrate lists'))
 
   const boardHtml = renderToStaticMarkup(
     <div className="panel board-page">

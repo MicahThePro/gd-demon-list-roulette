@@ -1,11 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { unpackRound, MAX_ENTRIES } from '../hooks/useRunHistory'
 import { formatDurationMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 import { SUBMITTABLE_SOURCES } from '../services/apiService'
 import { censorText } from '../utils/censor'
 import { submitEntry } from '../services/submissionService'
 import { hasSubmitted } from '../utils/submittedRuns'
+import PointercratePartsBadge from './PointercratePartsBadge'
+import { POINTERCRATE_PARTS, pointercratePartsLabel } from '../services/pointercrateParts.js'
 import SubmitRunForm from './SubmitRunForm'
+
+const POINTERCRATE_SOURCE = 'Pointercrate Demon List'
 
 const STATUS_LABELS = {
   completed: 'Cleared',
@@ -38,7 +42,7 @@ const formatWhen = (timestamp) => {
   })} · ${time}`
 }
 
-const RunDetail = ({ entry, onClose, onDelete, auth }) => {
+const RunDetail = ({ entry, onClose, onRequestDelete, auth }) => {
   const totalTime = entry.totalMs ? formatDurationMs(entry.totalMs) : '--:--'
   const avgTime = entry.avgMs ? formatDurationMs(entry.avgMs) : '--:--'
   // Re-read whenever the entry or the user changes, so signing in or submitting
@@ -66,12 +70,15 @@ const RunDetail = ({ entry, onClose, onDelete, auth }) => {
           <span>
             {formatWhen(entry.at)} &middot; step +{entry.step}% &middot; {entry.roundsPlayed} levels
           </span>
+          {/* Repeated here as well as on the row, because the detail view is where
+              somebody goes to check exactly what a run was played from. */}
+          <PointercratePartsBadge parts={entry.pointercrateParts} />
         </div>
         <button
           type="button"
           className="lb-delete"
           onClick={() => {
-            onDelete(entry.id)
+            onRequestDelete(entry)
             onClose()
           }}
         >
@@ -228,10 +235,23 @@ const EMPTY_TAB_MESSAGES = {
   failed: 'No failed runs yet. Missing a target ends a run, and that is recorded here.',
 }
 
-export default function Leaderboard({ entries, onDelete, onClear, auth }) {
+export default function Leaderboard({ entries, onDelete, auth }) {
   const [tab, setTab] = useState('cleared')
   const [filter, setFilter] = useState(FILTERS.gaveup[0].key)
+  /* Which Pointercrate list to narrow to, on any of the tabs.
+   *
+   * Local to this device and not a run rule, so unlike the sort filters it is not
+   * per-tab: a player asking "show me the Legacy runs I did" wants that answer
+   * whichever tab they are on. */
+  const [parts, setParts] = useState('')
   const [openId, setOpenId] = useState(null)
+  /* The run a delete is about to happen to, held until the player confirms.
+   *
+   * Only ever set for a run that is on the global leaderboard. Deleting an
+   * ordinary run has nothing to warn about, so it stays a single click -- a
+   * confirmation on every delete would train people to click through the one
+   * that matters. */
+  const [pendingDeleteId, setPendingDeleteId] = useState(null)
 
   const tabs = useMemo(() => {
     const built = TABS.map((definition) => ({
@@ -261,17 +281,70 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
   const activeFilters = activeTab?.filters ?? []
   const activeFilter =
     activeFilters.find((f) => f.key === filter) ?? activeFilters[0] ?? null
+  /* Narrowed after the tabs are built, so the tab counts keep reporting what is
+   * actually on the board rather than what the filter happens to be showing. A
+   * count that changed with the filter would make the tab totals stop adding up
+   * to the number of runs, which is the check the tabs exist to guarantee. */
+  const partItems = activeTab.items.filter((entry) =>
+    parts
+      ? entry.source === POINTERCRATE_SOURCE &&
+        Array.isArray(entry.pointercrateParts) &&
+        entry.pointercrateParts.includes(parts)
+      : true,
+  )
+
   // Sorting a device-local list of runs is cheap, so it just happens per render
   // instead of through a memo that would depend on a fresh object each time.
   const visibleItems = activeFilter
-    ? [...activeTab.items].sort(activeFilter.compare)
-    : activeTab.items
+    ? [...partItems].sort(activeFilter.compare)
+    : partItems
+
+  /* Offered only when the account actually holds a Pointercrate run in some tab,
+   * so the control is not offered to somebody it can never match. */
+  const hasPointercrateRuns = entries.some((entry) => entry.source === POINTERCRATE_SOURCE)
   const openEntry = openId ? entries.find((entry) => entry.id === openId) : null
+
+  /* The delete goes through this rather than straight to onDelete.
+   *
+   * A ranked run is one whose entry says so, which the server decides by the same
+   * approved-submission rule the board itself uses. The delete cascade takes the
+   * submission with it, so the run leaves the public board permanently and cannot
+   * be resubmitted -- that is worth one interruption. */
+  const requestDelete = (entry) => {
+    if (entry.onGlobalBoard) {
+      setPendingDeleteId(entry.id)
+      return
+    }
+    onDelete(entry.id)
+  }
+
+  const confirmDelete = () => {
+    if (!pendingDeleteId) return
+    onDelete(pendingDeleteId)
+    setPendingDeleteId(null)
+    // The run it belonged to is gone, so its detail view has to close rather than
+    // sit there describing a row that is no longer on the board.
+    setOpenId((current) => (current === pendingDeleteId ? null : current))
+  }
+
+  const pendingEntry = pendingDeleteId ? entries.find((entry) => entry.id === pendingDeleteId) : null
+
+  /* Escape backs out of the warning, as it backs out of the quit dialog. A click
+   * on the backdrop does the same. */
+  useEffect(() => {
+    if (!pendingDeleteId) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setPendingDeleteId(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [pendingDeleteId])
 
   if (openEntry) {
     return (
       <div className="lb-detail-wrap">
-        <RunDetail entry={openEntry} onClose={() => setOpenId(null)} onDelete={onDelete} auth={auth} />
+        <RunDetail entry={openEntry} onClose={() => setOpenId(null)} onRequestDelete={requestDelete} auth={auth} />
       </div>
     )
   }
@@ -310,11 +383,44 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
         </div>
       )}
 
-      {activeTab.items.length === 0 ? (
+      {hasPointercrateRuns && (
+        /* Its own class rather than a second `.lb-filters`: the grid has one
+           `filters` area, and two children in one named area are placed into the
+           same cell, which painted these chips on top of the sort chips. */
+        <div className="lb-part-filters" role="group" aria-label="Filter by Pointercrate list">
+          <button
+            type="button"
+            className={parts === '' ? 'lb-filter lb-filter-active' : 'lb-filter'}
+            aria-pressed={parts === ''}
+            onClick={() => setParts('')}
+          >
+            All lists
+          </button>
+          {POINTERCRATE_PARTS.map((part) => (
+            <button
+              key={part.id}
+              type="button"
+              className={parts === part.id ? 'lb-filter lb-filter-active' : 'lb-filter'}
+              aria-pressed={parts === part.id}
+              onClick={() => setParts(parts === part.id ? '' : part.id)}
+            >
+              {part.label} only
+            </button>
+          ))}
+        </div>
+      )}
+
+      {partItems.length === 0 ? (
         <p className="lb-empty">
-          {entries.length === 0
-            ? 'No runs yet. Hit a 100% level to make this list, or sign in to pick up the runs saved on your account.'
-            : (EMPTY_TAB_MESSAGES[activeTab.key] ?? 'Nothing in this list yet.')}
+          {/* A filter that emptied the board needs a different sentence from a tab
+              that was already empty. "No cleared runs yet" would be a claim about
+              the account that is simply false -- there are cleared runs, they are
+              just not the ones being asked for. */}
+          {parts
+            ? `No ${POINTERCRATE_PARTS.find((p) => p.id === parts)?.label ?? parts} runs on this tab.`
+            : entries.length === 0
+              ? 'No runs yet. Hit a 100% level to make this list, or sign in to pick up the runs saved on your account.'
+              : (EMPTY_TAB_MESSAGES[activeTab.key] ?? 'Nothing in this list yet.')}
         </p>
       ) : (
         <div className="lb-list">
@@ -330,6 +436,11 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
                 </span>
                 <span className="lb-sub">
                   {censorText(entry.source)} &middot; step +{entry.step}% &middot; {entry.roundsPlayed} levels
+                  {/* The parts, inline rather than as a pill in the top row: this
+                      sub-line is already the "what was this run" line, and a pill
+                      above it would pull the eye away from the score. */}
+                  {pointercratePartsLabel(entry.pointercrateParts) &&
+                    ` · Pointercrate ${pointercratePartsLabel(entry.pointercrateParts)}`}
                   {entry.passed > 0 && ` · ${entry.passed} passed`}
                   {entry.skipped > 0 && ` · ${entry.skipped} skipped`}
                   {entry.avgMs ? ` · avg ${formatDurationMs(entry.avgMs)}` : ''}
@@ -339,7 +450,7 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
               <button
                 type="button"
                 className="lb-delete"
-                onClick={() => onDelete(entry.id)}
+                onClick={() => requestDelete(entry)}
                 aria-label="Delete run"
               >
                 Delete
@@ -357,13 +468,55 @@ export default function Leaderboard({ entries, onDelete, onClear, auth }) {
 
       {/* No export and no import: a signed-in account is where runs are kept now,
           so moving to another device is a matter of signing in rather than of
-          copying a code between browsers. Clear stays, because it is about this
-          board rather than about moving it. */}
-      {entries.length > 0 && (
-        <div className="action-row">
-          <button type="button" className="secondary-button" onClick={onClear}>
-            Clear all runs
-          </button>
+          copying a code between browsers.
+
+          No "clear all" either. It was the one control on this board that could
+          destroy something the player could not get back, and it did so in a
+          single click with no confirmation -- including runs that were ranked on
+          the global leaderboard, where the delete takes the submission with it
+          and the run cannot be resubmitted. Every run has its own delete, and a
+          ranked one now warns first, so removing runs is still possible; it just
+          cannot happen by accident. */}
+      {pendingEntry && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setPendingDeleteId(null)}
+          role="presentation"
+        >
+          {/* role="dialog" with aria-modal marks this as a real dialog for
+              assistive tech, and the click on the inner box is stopped so
+              clicking inside it does not dismiss. */}
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-ranked-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="delete-ranked-title">Remove this run from the leaderboard?</h2>
+            <p>
+              This run is on the global leaderboard. Deleting it removes it from
+              there as well as from your own board, and it cannot be put back or
+              submitted again.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setPendingDeleteId(null)}
+                autoFocus
+              >
+                Keep the run
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={confirmDelete}
+              >
+                Delete from leaderboard
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

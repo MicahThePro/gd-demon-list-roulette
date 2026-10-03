@@ -675,5 +675,119 @@ console.log('the list proxy still works')
   check('the message names the problem', (await noDb.json()).error.includes('database'))
 }
 
+console.log('which Pointercrate list a run came from')
+{
+  const env = { DB: createDb() }
+  const player = (await post(env, '/api/register', { username: 'pointer', password: 'a good password' })).data
+  const rival = (await post(env, '/api/register', { username: 'rival', password: 'a good password' })).data
+
+  const PC = 'Pointercrate Demon List'
+  const pcRun = (over = {}) =>
+    aRun({ source: PC, ...over })
+
+  await post(env, '/api/runs', pcRun({ runId: 'pc-main', pointercrateParts: ['main'] }), player.token)
+  await post(env, '/api/runs', pcRun({ runId: 'pc-both', pointercrateParts: ['main', 'extended'] }), player.token)
+  await post(env, '/api/runs', pcRun({ runId: 'pc-legacy', pointercrateParts: ['legacy'] }), rival.token)
+  // A run from before the field existed: no parts at all, and a non-Pointercrate
+  // run claiming some. Both must come back as no parts rather than be believed.
+  await post(env, '/api/runs', pcRun({ runId: 'pc-none' }), player.token)
+  await post(env, '/api/runs', aRun({ runId: 'aredl-claim', pointercrateParts: ['legacy'] }), player.token)
+
+  /* The board has to be able to say which list a run came from, so the column has
+   * to survive the round trip through D1. Read back off the player's own runs,
+   * which is the same read the local leaderboard renders from. */
+  const mine = await (await call(env, '/api/my-entries', { token: player.token })).json()
+  // Keyed on `id`, which is where this route puts the client's own run key. It is
+// NOT the numeric database row -- that stays on the server.
+const byId = Object.fromEntries((mine.entries ?? []).map((e) => [e.id, e]))
+
+  check('a Pointercrate run keeps its parts', JSON.stringify(byId['pc-main']?.pointercrateParts) === '["main"]', JSON.stringify(byId['pc-main']?.pointercrateParts))
+  check('both ranked parts are kept in order', JSON.stringify(byId['pc-both']?.pointercrateParts) === '["main","extended"]', JSON.stringify(byId['pc-both']?.pointercrateParts))
+  check('a run with no parts reads as none', byId['pc-none']?.pointercrateParts === null, JSON.stringify(byId['pc-none']?.pointercrateParts))
+  check('a non-Pointercrate run is refused the field', byId['aredl-claim']?.pointercrateParts === null, JSON.stringify(byId['aredl-claim']?.pointercrateParts))
+
+  /* Order is a contract, not cosmetics: the parts are compared as a stored JSON
+   * string, so "legacy" submitted as ["extended","legacy"] and as ["legacy"] are
+   * different values for what a player means as the same choice. */
+  await post(env, '/api/runs', pcRun({ runId: 'pc-order', pointercrateParts: ['extended', 'legacy'] }), player.token)
+  const ordered = await (await call(env, '/api/my-entries', { token: player.token })).json()
+  const orderEntry = ordered.entries?.find((e) => e.id === 'pc-order')
+  check('the parts are stored in the site order whatever order they arrived in',
+    JSON.stringify(orderEntry?.pointercrateParts) === '["extended","legacy"]', JSON.stringify(orderEntry?.pointercrateParts))
+
+  /* An unknown part is dropped rather than refusing the run: the parts are
+   * decoration beside the score, and a future fourth list must not stop old
+   * clients submitting. */
+  await post(env, '/api/runs', pcRun({ runId: 'pc-bogus', pointercrateParts: ['main', 'nonsense'] }), player.token)
+  const bogus = await (await call(env, '/api/my-entries', { token: player.token })).json()
+  const bogusEntry = bogus.entries?.find((e) => e.id === 'pc-bogus')
+  check('an unknown part is dropped', JSON.stringify(bogusEntry?.pointercrateParts) === '["main"]', JSON.stringify(bogusEntry?.pointercrateParts))
+
+  /* The filter. It only means anything on Pointercrate, and an unrecognized value
+   * must not narrow to nothing rather than being ignored. */
+  const asQuery = async (q) =>
+  (await call(env, `/api/leaderboard?source=${encodeURIComponent(PC)}${q}`)).json()
+
+  const ignoredUnknown = await asQuery('&parts=nonsense')
+  check('an unrecognized part filter is ignored, not applied',
+    ignoredUnknown.parts === null, JSON.stringify(ignoredUnknown.parts))
+  check('a part filter on another list is ignored',
+    (await (await call(env, '/api/leaderboard?source=AREDL&parts=legacy')).json()).parts === null)
+}
+
+console.log('which runs are on the global leaderboard')
+{
+  const env = { DB: createDb() }
+  const player = (await post(env, '/api/register', { username: 'ranked', password: 'a good password' })).data
+
+  const submitted = await post(env, '/api/runs', aRun({ runId: 'rank-1' }), player.token)
+  const unranked = await post(env, '/api/runs', aRun({ runId: 'rank-2' }), player.token)
+
+  /* The flag has to mean the same thing the board means by being on it.
+   *
+   * The personal board uses this to warn that a delete will take the run off the
+   * global leaderboard. If it were "has been submitted" instead, a run still
+   * waiting on a moderator would be described as ranked, and the player would be
+   * warned about losing a rank they never had -- and a genuinely approved run
+   * that the flag missed would be deleted with no warning at all. */
+  const setStatus = async (runId, status) => {
+    await env.DB
+      .prepare(
+        `INSERT INTO submissions (run_id, video_url, container, note, created_at, status)
+         VALUES (?, ?, 'webm', NULL, 1, ?)`,
+      )
+      .bind(runId, `https://example.com/p-${runId}.mp4`, status)
+      .run()
+  }
+
+  const readFlags = async () => {
+    const mine = await (await call(env, '/api/my-entries', { token: player.token })).json()
+    return Object.fromEntries((mine.entries ?? []).map((e) => [e.id, e.onGlobalBoard]))
+  }
+
+  check('a run with no submission is not on the board',
+    (await readFlags())['rank-1'] === false, JSON.stringify(await readFlags()))
+
+  await setStatus(submitted.data.run.id, 'pending')
+  check('a run still awaiting review is not on the board',
+    (await readFlags())['rank-1'] === false, JSON.stringify(await readFlags()))
+
+  await env.DB.prepare('UPDATE submissions SET status = ? WHERE run_id = ?')
+    .bind('approved', submitted.data.run.id).run()
+  check('an approved run is on the board',
+    (await readFlags())['rank-1'] === true, JSON.stringify(await readFlags()))
+
+  await setStatus(unranked.data.run.id, 'approved')
+  const both = await readFlags()
+  check('each run reports its own state',
+    both['rank-1'] === true && both['rank-2'] === true, JSON.stringify(both))
+
+  /* A missing field is read as "not ranked" rather than trusted as truth. The
+   * client shows the warning off this value, so an old response that predates it
+   * must not have an undefined quietly treated as a ranked run. */
+  check('the flag is a boolean the client can branch on',
+    typeof both['rank-1'] === 'boolean' && typeof both['rank-2'] === 'boolean')
+}
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`)
 process.exit(failures === 0 ? 0 : 1)

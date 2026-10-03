@@ -67,6 +67,63 @@ const SOURCE_NAMES = new Set([
   'Unknown list',
 ])
 
+/* The three Pointercrate lists, in the order the site lists them.
+ *
+ * Deliberately duplicated from the client's src/services/pointercrateParts.js
+ * rather than imported: the Worker is deployed as its own bundle with no build
+ * step and no shared module graph, so an import would not resolve. It is a list
+ * of three strings that has to stay in step with the client, and the test below
+ * is what holds it there.
+ *
+ * The order matters and is not alphabetical: a run's parts are stored and
+ * compared as an ordered array, so "main,legacy" and "legacy,main" would be two
+ * different values for the same selection and the filter would miss half of
+ * whatever a player picked. The client normalizes to this order on the way in. */
+const POINTERCRATE_PART_IDS = ['main', 'extended', 'legacy']
+
+const POINTERCRATE_SOURCE = 'Pointercrate Demon List'
+
+/**
+ * The parts of a submitted run, or null.
+ *
+ * Null rather than a default for anything that is not a well-formed Pointercrate
+ * selection: every other list, a Pointercrate run sent by a client old enough not
+ * to know the field existed, and a selection naming nothing we recognise. All
+ * three render as no badge, which is the honest answer -- better than showing
+ * "Main" on a run that may never have used it.
+ */
+const normalizePointercrateParts = (value, source) => {
+  if (source !== POINTERCRATE_SOURCE) return null
+  if (!Array.isArray(value)) return null
+
+  const wanted = new Set(value.filter((id) => POINTERCRATE_PART_IDS.includes(id)))
+  if (!wanted.size) return null
+
+  const parts = POINTERCRATE_PART_IDS.filter((id) => wanted.has(id))
+  return parts.length ? parts : null
+}
+
+/* Reads back the stored JSON, tolerating null, junk and older rows.
+ *
+ * A row written before this column existed has no value at all, and one written
+ * by a client that sent something unexpected has whatever it sent. Neither may
+ * take the leaderboard down, so anything unparseable reads as "no parts" -- the
+ * same answer a non-Pointercrate run gets, and the badge simply does not appear. */
+const parseStoredPointercrateParts = (value) => {
+  if (typeof value !== 'string' || !value) return null
+  try {
+    return normalizePointercrateParts(JSON.parse(value), POINTERCRATE_SOURCE)
+  } catch {
+    return null
+  }
+}
+
+/* Exported for worker/accounts.js, which reads the same column for a player's
+ * own runs. One reader for both, so the two cannot disagree about what a stored
+ * value means -- and a disagreement here would show the same run with a badge on
+ * the personal board and none on the global one. */
+export const readPointercrateParts = parseStoredPointercrateParts
+
 /** The boards a client may ask for, and how each is ordered. */
 const BOARDS = {
   farthest: { order: 'r.score DESC, r.passed DESC, r.total_ms ASC', label: 'Farthest % reached' },
@@ -228,6 +285,20 @@ const normalizeRun = (payload, now) => {
   }
 
   const percentStep = clamp(asInteger(payload?.percentStep) ?? 1, 1, 100)
+
+  /* Which Pointercrate lists this run was drawn from.
+   *
+   * Validated against the same three ids the client uses, and forced to null on
+   * any other list. A run on AREDL that claims to be from the Legacy list is not
+   * a Pointercrate run with odd parts, it is a run whose stored fields would
+   * contradict each other -- and the badge renders off this value, so trusting it
+   * unfiltered would let a client put "Legacy" beside a run that never touched
+   * Pointercrate.
+   *
+   * An unrecognised part is dropped rather than refusing the whole run: the parts
+   * are decoration next to the score, and a site update that adds a fourth list
+   * must not stop old clients from submitting. */
+  const pointercrateParts = normalizePointercrateParts(payload?.pointercrateParts, source)
   const rawRounds = Array.isArray(payload?.rounds) ? payload.rounds : null
   if (!rawRounds || !rawRounds.length) {
     return { error: 'A run needs at least one round' }
@@ -305,6 +376,7 @@ const normalizeRun = (payload, now) => {
       runKey: clientId,
       source,
       percentStep,
+      pointercrateParts,
       status: declaredStatus,
       timedOut,
       score,
@@ -329,9 +401,14 @@ const NOT_TRASHED = 'NOT EXISTS (SELECT 1 FROM trashed_runs t WHERE t.run_id = r
 const listRuns = async (db, userId, limit) => {
   const result = await db
     .prepare(
-      `SELECT r.id, r.run_key, r.source, r.percent_step, r.status, r.timed_out, r.score,
+      `SELECT r.id, r.run_key, r.source, r.percent_step, r.pointercrate_parts, r.status,
+              r.timed_out, r.score,
               r.target_reached, r.rounds_played, r.passed, r.skipped, r.total_ms, r.avg_ms,
-              r.skip_reasons, r.created_at
+              r.skip_reasons, r.created_at,
+              EXISTS (
+                SELECT 1 FROM submissions s
+                 WHERE s.run_id = r.id AND s.status = 'approved'
+              ) AS on_global_board
          FROM runs r
         WHERE r.user_id = ? AND ${NOT_TRASHED}
         ORDER BY r.score DESC, r.passed DESC, r.created_at DESC
@@ -399,6 +476,16 @@ const getMyEntries = async (db, userId) => {
         at: run.createdAt,
         source: run.source,
         step: run.percentStep,
+        /* Which Pointercrate lists this run drew from. The local leaderboard
+         * renders a badge from it, so it has to travel with the entry -- and this
+         * is also where a run re-synced from another device lands, so it goes
+         * through the same normalization rather than being trusted as stored. */
+        pointercrateParts: run.pointercrateParts ?? null,
+        // Carried onto the local entry so the personal board can warn before a
+        // delete takes a ranked run off the global board. Absent on a run this
+        // device recorded itself and that has never been sent, which is the same
+        // thing as "not on the board" for that warning.
+        onGlobalBoard: Boolean(run.onGlobalBoard),
         status: run.status,
         score: run.score,
         targetReached: run.targetReached,
@@ -424,6 +511,22 @@ const toRunRow = (row) => ({
   runKey: row.run_key,
   source: row.source,
   percentStep: row.percent_step,
+  /* Which Pointercrate lists this run was played from, or null.
+   *
+   * On the shared row mapper rather than on each read, so every path that shows a
+   * run -- the global board, the player's own entries, the admin panel's run
+   * list -- reports the same answer. Reading it in one place and not the others
+   * is how the same run ends up with a badge on one screen and without one on
+   * another. */
+  pointercrateParts: parseStoredPointercrateParts(row.pointercrate_parts),
+  /* Whether this run is currently ranked on the global leaderboard.
+   *
+   * Mirrors the EXISTS in the board's own query rather than reporting "has been
+   * submitted": the board only counts a run whose submission is approved, so a
+   * run still awaiting review is not on it and must not be described as though
+   * deleting it would cost a ranking. The flag is what lets the personal board
+   * warn before a delete takes a ranked run off the public board. */
+  onGlobalBoard: Boolean(row.on_global_board),
   status: row.status,
   timedOut: Boolean(row.timed_out),
   score: row.score,
@@ -454,12 +557,13 @@ const writeRun = async (db, userId, run) => {
   const result = await db
     .prepare(
       `INSERT INTO runs (
-         user_id, run_key, source, percent_step, status, timed_out, score, target_reached,
-         rounds_played, passed, skipped, total_ms, avg_ms, skip_reasons, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         user_id, run_key, source, percent_step, pointercrate_parts, status, timed_out, score,
+         target_reached, rounds_played, passed, skipped, total_ms, avg_ms, skip_reasons, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (user_id, run_key) DO UPDATE SET
          source = excluded.source,
          percent_step = excluded.percent_step,
+         pointercrate_parts = excluded.pointercrate_parts,
          status = excluded.status,
          timed_out = excluded.timed_out,
          score = excluded.score,
@@ -477,6 +581,7 @@ const writeRun = async (db, userId, run) => {
       run.runKey,
       run.source,
       run.percentStep,
+      run.pointercrateParts ? JSON.stringify(run.pointercrateParts) : null,
       run.status,
       run.timedOut ? 1 : 0,
       run.score,
@@ -542,6 +647,23 @@ const getLeaderboard = async (db, url) => {
 
   const source = url.searchParams.get('source')
   const hasSource = Boolean(source) && source !== 'all' && source !== 'null'
+  /* Which Pointercrate parts to narrow to, e.g. `parts=legacy`.
+   *
+   * Matched by equality against the stored JSON array, which is why both sides
+   * normalize to the same fixed order: a run saved as ["main","legacy"] and the
+   * same choice asked for as ["legacy","main"] are the same selection, and
+   * comparing the raw strings would find neither.
+   *
+   * Applied only on top of a Pointercrate source. On any other list no row can
+   * carry parts, so the filter would silently return an empty board -- worse than
+   * ignoring it, because the board would look broken rather than empty by
+   * definition. */
+  const rawParts = url.searchParams.get('parts')
+  const partsFilter = hasSource && source === POINTERCRATE_SOURCE && rawParts
+    ? normalizePointercrateParts([rawParts], POINTERCRATE_SOURCE)
+    : null
+  const partsWhere = partsFilter ? 'AND r.pointercrate_parts = ?' : ''
+  const partsArg = partsFilter ? JSON.stringify(partsFilter) : null
   const board = BOARDS[boardName]
   // Only approved runs reach the public board. A run sits out of sight until
   // somebody has watched the recording, so the leaderboard can never show a
@@ -550,9 +672,9 @@ const getLeaderboard = async (db, url) => {
   // trashed run is excluded here too, so hiding one takes it off the board for
   // everybody at once rather than only from the account it belongs to.
   const baseSql = `
-    SELECT r.id, r.source, r.percent_step, r.status, r.timed_out, r.score, r.target_reached,
-           r.rounds_played, r.passed, r.skipped, r.total_ms, r.avg_ms, r.created_at,
-           u.username, u.display_name
+    SELECT r.id, r.source, r.percent_step, r.pointercrate_parts, r.status, r.timed_out, r.score,
+           r.target_reached, r.rounds_played, r.passed, r.skipped, r.total_ms, r.avg_ms,
+           r.created_at, u.username, u.display_name
       FROM runs r
       JOIN users u ON u.id = r.user_id
      WHERE EXISTS (
@@ -562,10 +684,15 @@ const getLeaderboard = async (db, url) => {
        AND ${NOT_TRASHED}
   `
 
+  /* The parts bind only when set, and always between the source and the limit, so
+   the placeholder order matches the SQL above in every combination of the two
+   filters. One query rather than a branch per combination: a parts filter that
+   silently dropped the source, or the other way round, would return the wrong
+   board rather than an obvious error. */
   const rows = hasSource
     ? await db
-        .prepare(`${baseSql} AND r.source = ? ORDER BY ${board.order} LIMIT ?`)
-        .bind(source, limit)
+        .prepare(`${baseSql} AND r.source = ? ${partsWhere} ORDER BY ${board.order} LIMIT ?`)
+        .bind(...(partsFilter ? [source, partsArg, limit] : [source, limit]))
         .all()
     : await db.prepare(`${baseSql} ORDER BY ${board.order} LIMIT ?`).bind(limit).all()
 
@@ -579,6 +706,7 @@ const getLeaderboard = async (db, url) => {
     runId: row.id,
     source: row.source,
     percentStep: row.percent_step,
+    pointercrateParts: parseStoredPointercrateParts(row.pointercrate_parts),
     status: row.status,
     timedOut: Boolean(row.timed_out),
     score: row.score,
@@ -595,6 +723,7 @@ const getLeaderboard = async (db, url) => {
     board: boardName,
     label: board.label,
     source: hasSource ? source : 'all',
+    parts: partsFilter ? partsFilter[0] : null,
     entries,
     you: null,
     personal: null,
@@ -605,6 +734,16 @@ const getPersonalStanding = async (db, user, url) => {
   const boardName = url.searchParams.get('board') ?? 'farthest'
   const board = BOARDS[boardName] ?? BOARDS.farthest
   const source = url.searchParams.get('source')
+  /* The same parts filter the board used, read from the same query string, so a
+   * player's own rank on a narrowed board is counted against that board and not
+   * against the whole list. Without it the board would show one set of rows and
+   * rank you among a different set, which is the sort of thing that makes a
+   * leaderboard look broken rather than wrong. */
+  const rawParts = url.searchParams.get('parts')
+  const partsFilter = source === POINTERCRATE_SOURCE && rawParts
+    ? normalizePointercrateParts([rawParts], POINTERCRATE_SOURCE)
+    : null
+  const partsWhere = partsFilter ? 'AND r.pointercrate_parts = ?' : ''
 
   // The same approval gate as the board, so a pending run is not counted as
   // the player's own standing on a board they cannot actually appear on.
@@ -634,6 +773,9 @@ const getPersonalStanding = async (db, user, url) => {
   if (source && source !== 'all') {
     args.push(source)
   }
+  if (partsFilter) {
+    args.push(JSON.stringify(partsFilter))
+  }
 
   const ahead = await db
     .prepare(
@@ -641,7 +783,8 @@ const getPersonalStanding = async (db, user, url) => {
         WHERE (r.score > ? OR (r.score = ? AND r.passed > ?))
           AND EXISTS (SELECT 1 FROM submissions s WHERE s.run_id = r.id AND s.status = 'approved')
           AND ${NOT_TRASHED}
-        ${filter}`,
+        ${filter}
+        ${partsWhere}`,
     )
     .bind(...args)
     .all()

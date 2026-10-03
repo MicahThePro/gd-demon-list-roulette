@@ -1,0 +1,16 @@
+-- Which Pointercrate lists a run was drawn from.
+--
+-- Pointercrate publishes three lists that are all stamped "Pointercrate Demon List"
+-- on a run, so before this there was no way to tell a Legacy run from a Main one on
+-- the leaderboard: both read as the same list, from pools of 552 and 150 demons
+-- respectively. The client sends the parts it actually used and the board shows them.
+--
+-- JSON array of part ids ("main", "extended", "legacy"), or NULL for every other
+-- list. Stored as JSON text rather than a join table because it is read as a whole
+-- or not at all: nothing ever asks "which runs used Extended" on the row, and the
+-- leaderboard filter compares the whole array as a string.
+--
+-- NULL rather than an empty string for the other four lists, so "not a Pointercrate
+-- run" and "a Pointercrate run whose parts we failed to record" stay
+-- distinguishable -- and an existing row keeps reading as whatever it was before.
+ALTER TABLE runs ADD COLUMN pointercrate_parts TEXT;

@@ -18,6 +18,7 @@
 
 import { checkAdminPasscode } from './admin.js'
 import { createSession, getSessionUser } from './auth.js'
+import { readPointercrateParts } from './api.js'
 
 const MAX_SEARCH_LENGTH = 60
 const PAGE_SIZE = 50
@@ -271,6 +272,7 @@ const listUserRuns = async (db, userId) => {
   const result = await db
     .prepare(
       `SELECT r.id, r.run_key, r.source, r.status, r.score, r.percent_step,
+              r.pointercrate_parts,
               r.passed, r.rounds_played, r.skipped, r.total_ms, r.created_at,
               s.id AS submission_id, s.status AS submission_status, s.review_note,
               t.run_id AS trashed_id, t.reason AS trashed_reason, t.trashed_at
@@ -291,6 +293,10 @@ const listUserRuns = async (db, userId) => {
     status: row.status,
     score: row.score,
     percentStep: row.percent_step,
+    /* Which Pointercrate lists this run was played from, or null. Read back the
+     * same defensive way as on the leaderboard: a row written before the column
+     * existed has no value, and either way the badge simply does not appear. */
+    pointercrateParts: readPointercrateParts(row.pointercrate_parts),
     passed: row.passed,
     roundsPlayed: row.rounds_played,
     skipped: row.skipped,

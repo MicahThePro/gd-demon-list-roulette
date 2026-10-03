@@ -1,3 +1,5 @@
+import { normalizePointercrateParts } from '../services/pointercrateParts.js'
+
 export const clampPercent = (value) => {
   const number = Number(value)
   if (!Number.isFinite(number)) return 1
@@ -140,7 +142,7 @@ export const decodeRunState = (encoded) => {
 // allowSkip defaults to false, matching the settings default: a run has to
 // opt in to skipping rather than out of it. App always passes the player's own
 // setting, so this only covers a caller that does not.
-export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1, allowSkip = false, levelTimeLimitMs = 0, totalTimeLimitMs = 0 }) => {
+export const createRun = ({ startingPercent, levels, source, allowDuplicates, percentStep = 1, allowSkip = false, levelTimeLimitMs = 0, totalTimeLimitMs = 0, pointercrateParts = null }) => {
   const safeStep = normalizePercentStep(percentStep)
   const seedStart = clampPercent(Math.max(safeStep, startingPercent ?? safeStep))
   const currentLevel = pickNextLevel(levels, [], allowDuplicates)
@@ -169,6 +171,17 @@ export const createRun = ({ startingPercent, levels, source, allowDuplicates, pe
     allowSkip,
     levelTimeLimitMs,
     totalTimeLimitMs,
+    /* Which Pointercrate lists this run was drawn from, or null on every other
+     * list.
+     *
+     * Frozen onto the run alongside the rules, for the same reason: the badge on
+     * the leaderboard has to say what the run was actually played from, and a
+     * setting read while the result is displayed would report whatever the boxes
+     * say now rather than what they said when the run started.
+     *
+     * Normalized on the way in, so a run loaded from an old save code -- which
+     * has no such field -- reports null and simply shows no badge. */
+    pointercrateParts: source === 'Pointercrate Demon List' ? normalizePointercrateParts(pointercrateParts) : null,
     // The clock the total limit counts down from. Separate from startedAt, which
     // is the run's own start and is also written into every history entry.
     rulesStartedAt: startedAt,

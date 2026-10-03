@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { LEADERBOARD_BOARDS, fetchLeaderboard } from '../services/apiService'
 import { LIST_SOURCES, LIST_SOURCE_LABELS } from '../services/listService'
 import { censorText } from '../utils/censor'
 import { formatDurationMs } from '../utils/roulette'
+import PointercratePartsBadge from './PointercratePartsBadge'
+import { POINTERCRATE_PARTS } from '../services/pointercrateParts.js'
 
 /* The list filter, built from the same names the list loader gives a run.
  * These were retyped here and drifted once: this filter expected 'All Rated
@@ -49,24 +51,101 @@ const formatWhen = (timestamp) => {
 export default function GlobalLeaderboard({ user }) {
   const [board, setBoard] = useState('farthest')
   const [source, setSource] = useState('all')
+  /* Which Pointercrate list to narrow to. Empty means no narrowing.
+   *
+   * Its own state rather than folded into `source`, because it is only meaningful
+   * on one of the five lists: folded in, the id would have to mean both "which
+   * list" and "which part of it", and switching to AREDL would leave a stale part
+   * filter behind that silently emptied the board. */
+  const [parts, setParts] = useState('')
   const [data, setData] = useState(null)
-  // The board and list currently on screen, and the pair the data on hand is
+  // The board and list currently on screen, and the trio the data on hand is
   // for. Loading is derived from those rather than a flag, so switching board
   // or list shows the loading state without an effect having to set it.
-  const [loaded, setLoaded] = useState({ board: null, source: null })
+  const [loaded, setLoaded] = useState({ board: null, source: null, parts: null })
   const [error, setError] = useState('')
 
-  const isLoading = loaded.board !== board || loaded.source !== source
+  const isLoading = loaded.board !== board || loaded.source !== source || loaded.parts !== parts
+
+  /* Whether the pointer or the keyboard is currently inside the control bar.
+   *
+   * A native <select> popup lives outside the page's DOM, so a re-render that
+   * touches the options closes it -- the browser does not repaint a popup over
+   * changed markup, it drops it. The board re-reads itself every 30 seconds and
+   * again whenever the effect below fires, so a player who opened the list
+   * dropdown had it shut under their cursor roughly once a poll landed, which is
+   * what made the dropdown look broken rather than merely unlucky.
+
+   * Polling is therefore held while the bar has focus. It resumes the moment the
+   * player leaves, and the one thing it would have told them -- that somebody
+   * else submitted a run -- is not worth a control that fights the hand. */
+  const [isBarBusy, setIsBarBusy] = useState(false)
+  const barRef = useRef(null)
+
+  /* `load` is called from a 30s interval that does not re-run on every render, so
+   * it cannot read `isBarBusy` from a closure without re-subscribing that timer on
+   * every pointer movement. The ref is how the interval learns the current value. */
+  const isBarBusyRef = useRef(false)
+
+  /* Synced in an effect rather than during render, because a ref written during
+   * render is a value the current render never sees -- and this one is read by the
+   * polling interval. Declared above the load effects so it has already landed
+   * by the time they ask. */
+  useEffect(() => {
+    isBarBusyRef.current = isBarBusy
+  }, [isBarBusy])
+
+  useEffect(() => {
+    const bar = barRef.current
+    if (!bar) return undefined
+
+    const enter = () => setIsBarBusy(true)
+    /* focusout only fires when focus moves to something focusable, so a click
+       into the bar's dead space would otherwise leave it "busy" forever. */
+    const leave = (event) => {
+      if (!bar.contains(event.relatedTarget)) setIsBarBusy(false)
+    }
+    /* Selecting an option in a native dropdown finishes with a pointerup on the
+       popup, which is outside the page and outside the bar -- so the release has
+       to be watched on the window, or the bar stays busy and never polls again. */
+    const release = () => setIsBarBusy(false)
+
+    bar.addEventListener('focusin', enter)
+    bar.addEventListener('pointerdown', enter)
+    bar.addEventListener('focusout', leave)
+    window.addEventListener('pointerup', release)
+
+    return () => {
+      bar.removeEventListener('focusin', enter)
+      bar.removeEventListener('pointerdown', enter)
+      bar.removeEventListener('focusout', leave)
+      window.removeEventListener('pointerup', release)
+    }
+  }, [])
+
+  /* Choosing a different list clears the part filter. Left in place it would
+   * filter AREDL rows by a Pointercrate column, which no row has, and the board
+   * would come back empty with nothing on screen to say why. */
+  const handleSourceChange = (value) => {
+    setSource(value)
+    setParts('')
+  }
 
   // Every setter here is called from a promise callback or an interval tick,
   // never from the effect body, so the effects below are a subscription to the
-  // server rather than a render-time update.
+  // server rather than a render-time update. The promise is returned so a caller
+  // can catch it -- failures are handled inside as well, so it only ever
+  // rejects if the fetch itself is malformed.
   const load = useCallback(
     (signal) => {
-      fetchLeaderboard({ board, source, signal })
+      /* A refresh asked for while a control is being used is dropped rather than
+       * queued. Holding it would only close the popup on the very next tick,
+       * which is the bug this guard exists to stop. */
+      if (isBarBusyRef.current) return Promise.resolve()
+      return fetchLeaderboard({ board, source, parts, signal })
         .then((result) => {
           setData(result)
-          setLoaded({ board, source })
+          setLoaded({ board, source, parts })
           setError('')
         })
         .catch((caught) => {
@@ -74,7 +153,7 @@ export default function GlobalLeaderboard({ user }) {
           setError(caught?.message ?? 'Could not load the leaderboard.')
         })
     },
-    [board, source],
+    [board, source, parts],
   )
 
   useEffect(() => {
@@ -82,6 +161,22 @@ export default function GlobalLeaderboard({ user }) {
     load(controller.signal)
     return () => controller.abort()
   }, [load])
+
+  /* Catches up the refreshes that were skipped while a dropdown was open.
+   *
+   * Without this the player would be left looking at whatever the board said
+   * before they started clicking, with no signal that it was stale. The first
+   * run is skipped: the effect above has already loaded for these inputs, and a
+   * duplicate request on every mount is a cost with no reader. */
+  const hasLoadedOnce = useRef(false)
+  useEffect(() => {
+    if (isBarBusy) return
+    if (!hasLoadedOnce.current) {
+      hasLoadedOnce.current = true
+      return
+    }
+    load(new AbortController().signal)
+  }, [isBarBusy, load])
 
   // The board is re-read on a timer rather than cached, because a player who
   // just submitted a run wants to see themselves on it. Half a minute is long
@@ -96,7 +191,7 @@ export default function GlobalLeaderboard({ user }) {
 
   return (
     <div className="global-board">
-      <div className="global-board-bar">
+      <div className="global-board-bar" ref={barRef}>
         <div className="global-board-boards" role="tablist" aria-label="Leaderboard board">
           {LEADERBOARD_BOARDS.map((entry) => (
             <button
@@ -114,7 +209,7 @@ export default function GlobalLeaderboard({ user }) {
 
         <label className="global-board-source">
           <span className="visually-hidden">Filter by list</span>
-          <select value={source} onChange={(event) => setSource(event.target.value)}>
+          <select value={source} onChange={(event) => handleSourceChange(event.target.value)}>
             {SOURCES.map((entry) => (
               <option key={entry.id} value={entry.id}>
                 {entry.label}
@@ -122,7 +217,47 @@ export default function GlobalLeaderboard({ user }) {
             ))}
           </select>
         </label>
+
+        {/* The three Pointercrate parts, as chips rather than a second dropdown.
+
+            This was a <select>, and that was the whole problem: a native popup is
+            not part of the document, so any re-render that changes the <option>
+            list drops it, and the board re-reads itself on a timer. A player
+            clicking "Pointercrate Demon List" -> "Legacy list only" watched the
+            menu close itself, and the second click re-opened it, over and over.
+            Chips are ordinary buttons, so they cannot be closed by anything but
+            the player, and they are also the same control the personal board
+            already uses -- one thing to learn rather than two.
+
+            The chips go on their own row below the bar rather than joining the
+            board chips and the list dropdown on one line: four chips plus two
+            dropdowns do not fit a laptop, and wrapping puts them on top of each
+            other. */}
       </div>
+
+      {source === LIST_SOURCES.POINTERCRATE && (
+        <div className="lb-part-filters" role="group" aria-label="Filter by Pointercrate list">
+          <button
+            type="button"
+            className={parts === '' ? 'lb-filter lb-filter-active' : 'lb-filter'}
+            aria-pressed={parts === ''}
+            onClick={() => setParts('')}
+          >
+            All lists
+          </button>
+          {POINTERCRATE_PARTS.map((part) => (
+            <button
+              key={part.id}
+              type="button"
+              className={parts === part.id ? 'lb-filter lb-filter-active' : 'lb-filter'}
+              aria-pressed={parts === part.id}
+              onClick={() => setParts(parts === part.id ? '' : part.id)}
+            >
+              {part.label} only
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && <div className="validation-message">{error}</div>}
 
@@ -175,6 +310,7 @@ export default function GlobalLeaderboard({ user }) {
                       is the list's identity string and is compared exactly on the
                       server, so it is never rewritten -- only what is printed. */}
                   {censorText(entry.source)}
+                  <PointercratePartsBadge parts={entry.pointercrateParts} />
                   {entry.percentStep !== 1 ? ` · +${entry.percentStep}% steps` : ''} ·{' '}
                   {STATUS_LABELS[entry.status] ?? entry.status}
                 </span>

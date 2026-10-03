@@ -222,6 +222,24 @@
 /* The Pointercrate list tick boxes.
    Sits directly under the list source dropdown and above the rank range, so it
    reads as part of choosing the source rather than as a separate feature. */
+/* The Pointercrate parts badge, beside a run's list on either leaderboard.
+   Small and quiet on purpose: it qualifies the row beside it rather than
+   competing with the score, which is what the board is read for. */
+.pc-parts-badge {
+  display: inline-block;
+  margin-left: 0.5em;
+  padding: 0.1em 0.5em;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: 0.1em;
+}
 .pointercrate-parts {
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 10px;
@@ -375,13 +393,19 @@
    element keeps its natural size no matter which siblings are present. */
 .leaderboard {
   display: grid;
+  /* One row per filter strip, rather than both strips claiming the same
+     `filters` area. Two children in one named area are placed into it by the
+     same cell, so the Pointercrate strip was painted on top of the sort strip
+     and the two rows of chips overlapped -- which is exactly what it looked
+     like: two sets of buttons sitting on each other. */
   grid-template-areas:
     'tabs'
     'filters'
+    'partfilters'
     'list'
     'note'
     'actions';
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   gap: 16px;
   min-height: 0;
   padding: 22px;
@@ -401,6 +425,17 @@
    list, so they only show on tabs that define filters. */
 .lb-filters {
   grid-area: filters;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The Pointercrate part filter. Its own row rather than a second `.lb-filters`
+   in the `filters` area, for the overlap reason above. It only renders when the
+   account holds a Pointercrate run, and the row collapses to nothing when it
+   does not, because `auto` takes its content's height and there is no content. */
+.lb-part-filters {
+  grid-area: partfilters;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

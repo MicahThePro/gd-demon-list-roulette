@@ -234,13 +234,21 @@ export const updateDisplayName = async (displayName) => {
   }
 }
 
-export const fetchLeaderboard = async ({ board = 'farthest', source = 'all', limit = 50, signal } = {}) => {
+export const fetchLeaderboard = async ({ board = 'farthest', source = 'all', parts = '', limit = 50, signal } = {}) => {
   const params = new URLSearchParams({ board, source, limit: String(limit) })
+  /* Only sent when set. The Worker ignores it on anything but Pointercrate, but
+   * leaving it off when empty keeps the URL free of a parameter that means
+   * nothing, and keeps the cached response for the unfiltered board distinct from
+   * a filtered one. */
+  if (parts) {
+    params.set('parts', parts)
+  }
   const result = await request(`/api/leaderboard?${params.toString()}`, { signal })
   return {
     board: result.board ?? board,
     label: result.label ?? '',
     source: result.source ?? 'all',
+    parts: result.parts ?? null,
     entries: result.entries ?? [],
     you: result.you ?? null,
     personal: result.personal ?? null,

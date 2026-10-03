@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getElapsedLevelTimeMs, normalizeSkipReason } from '../utils/roulette'
+import { normalizePointercrateParts } from '../services/pointercrateParts.js'
 import { clearBoard, deleteEntryFromBoard } from './boardDeletion'
 
 /* Nothing here is written to a cookie or to localStorage, deliberately.
@@ -153,6 +154,15 @@ const summarizeRun = (runState, endedAt) => {
     at: endedAt,
     source: runState?.source ?? 'Unknown list',
     step: Number.isFinite(runState?.percentStep) ? runState.percentStep : 1,
+    /* Which Pointercrate lists this run was drawn from, or null.
+     *
+     * One of the few optional fields on an entry, so `isValidEntry` does not
+     * require it -- a run saved before the lists existed, or one imported from an
+     * older save code, has no such field and simply shows no badge. Adding it to
+     * the required list would have thrown all of those away. */
+    pointercrateParts: Array.isArray(runState?.pointercrateParts) && runState.pointercrateParts.length
+      ? normalizePointercrateParts(runState.pointercrateParts)
+      : null,
     status: completed ? 'completed' : gaveUp ? 'gaveup' : 'failed',
     // The score a run is ranked on: how far it got before ending.
     score: completed ? 100 : (runState?.endingPercent ?? runState?.startingPercent ?? 0),

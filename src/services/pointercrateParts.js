@@ -142,3 +142,27 @@ export const isEveryPosition = (ranges, highestPosition) => {
   const last = ranges[ranges.length - 1]
   return first.from <= 1 && last.to >= Number(highestPosition)
 }
+
+/** The part labels as a map, for anything that needs to name a part. */
+const PART_LABELS = Object.fromEntries(POINTERCRATE_PARTS.map((part) => [part.id, part.label]))
+
+/**
+ * The short names for a selection, e.g. "Main + Extended", or '' when there is
+ * nothing to say.
+ *
+ * Lives here rather than in the badge component so that file only exports a
+ * component: a module exporting both is one where React Fast Refresh cannot
+ * work, which shows up as the whole page reloading on every edit in
+ * development. The " list" suffix is dropped because a badge reading "Main list +
+ * Extended list" is twice the width of one reading "Main + Extended".
+ */
+export const pointercratePartsLabel = (parts) => {
+  if (!Array.isArray(parts) || !parts.length) return ''
+
+  const names = parts
+    .map((id) => PART_LABELS[id])
+    .filter(Boolean)
+    .map((label) => label.replace(/ list$/i, ''))
+
+  return names.length ? names.join(' + ') : ''
+}
