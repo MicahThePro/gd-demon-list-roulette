@@ -9,34 +9,240 @@
   </head>
   <body>
     <main class="kindle-page">
-      <header>
-        <p class="eyebrow">GD List Roulette</p>
-        <h1>Kindle mode</h1>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">GD List Roulette</p>
+          <h1>Kindle mode</h1>
+        </div>
+        <a class="basic-link" href="../">Full site</a>
       </header>
 
-      <p>
-        This is the simplified e-ink version of the site for Kindle and other low-power reading devices.
-      </p>
+      <div class="panel">
+        <label class="field">
+          <span>List source</span>
+          <select id="source-select">
+            <option value="challenge">Challenge List</option>
+            <option value="impossible">Impossible Levels</option>
+          </select>
+        </label>
 
-      <p>
-        The full app is still available on the normal site, but this page is intentionally stripped down so it
-        loads reliably on a Kindle Paperwhite instead of trying to render the full desktop-style layout.
-      </p>
+        <label class="field">
+          <span>Step</span>
+          <select id="step-select">
+            <option value="1">+1%</option>
+            <option value="5">+5%</option>
+            <option value="10">+10%</option>
+            <option value="20">+20%</option>
+          </select>
+        </label>
 
-      <div class="links">
-        <a href="../">Open the full site</a>
-        <a href="../leaderboard">Open the leaderboard</a>
-        <a href="../redeem/">Use a login code</a>
+        <button id="start-button" type="button">Start run</button>
       </div>
 
-      <section>
-        <h2>Quick use</h2>
-        <ol>
-          <li>Open the full site.</li>
-          <li>Sign in or continue your saved run.</li>
-          <li>Use the main app for the actual roulette flow.</li>
-        </ol>
+      <section id="game" class="panel hidden">
+        <p class="status">Target</p>
+        <h2 id="target-label">1%</h2>
+
+        <div class="level-card">
+          <p class="muted" id="source-label">Challenge List</p>
+          <h3 id="level-name">Loading…</h3>
+          <p id="creator-line">—</p>
+          <p id="meta-line">—</p>
+          <a id="gd-link" class="basic-link" href="#" target="_blank" rel="noreferrer">Open in GD Browser</a>
+        </div>
+
+        <div class="actions">
+          <button id="clear-button" type="button">Cleared</button>
+          <button id="fail-button" type="button" class="secondary">Missed</button>
+        </div>
+      </section>
+
+      <section id="result" class="panel hidden">
+        <h2>Run ended</h2>
+        <p id="result-text"></p>
+        <button id="restart-button" type="button">Start again</button>
       </section>
     </main>
+
+    <script>
+      const STORAGE_KEY = 'gd-list-roulette-kindle-run'
+
+      const sourceSelect = document.getElementById('source-select')
+      const stepSelect = document.getElementById('step-select')
+      const startButton = document.getElementById('start-button')
+      const clearButton = document.getElementById('clear-button')
+      const failButton = document.getElementById('fail-button')
+      const restartButton = document.getElementById('restart-button')
+      const gameEl = document.getElementById('game')
+      const resultEl = document.getElementById('result')
+      const targetLabel = document.getElementById('target-label')
+      const levelNameEl = document.getElementById('level-name')
+      const creatorLineEl = document.getElementById('creator-line')
+      const metaLineEl = document.getElementById('meta-line')
+      const gdLinkEl = document.getElementById('gd-link')
+      const sourceLabelEl = document.getElementById('source-label')
+      const resultTextEl = document.getElementById('result-text')
+
+      let allLevels = { challenge: [], impossible: [] }
+      let currentState = null
+
+      const sourceName = {
+        challenge: 'Challenge List',
+        impossible: 'Impossible Levels',
+      }
+
+      const loadList = async (key, fileName) => {
+        const response = await fetch(fileName)
+        if (!response.ok) {
+          throw new Error(`Could not load ${fileName}`)
+        }
+        const json = await response.json()
+        const levels = Array.isArray(json.levels) ? json.levels : []
+        allLevels[key] = levels.filter((level) => level && (level.name || level.levelId))
+      }
+
+      const randomLevel = (list) => {
+        if (!list.length) return null
+        return list[Math.floor(Math.random() * list.length)]
+      }
+
+      const saveState = () => {
+        if (!currentState) return
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(currentState))
+        } catch {
+          // ignore storage failures on Kindle
+        }
+      }
+
+      const restoreState = () => {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY)
+          if (!raw) return null
+          const parsed = JSON.parse(raw)
+          if (!parsed || !parsed.target || !parsed.level) return null
+          return parsed
+        } catch {
+          return null
+        }
+      }
+
+      const renderLevel = () => {
+        if (!currentState || !currentState.level) return
+
+        const { level, target } = currentState
+        const levelId = level.levelId ?? level.id ?? null
+        const safeName = level.name || 'Unknown level'
+        const creator = level.creator || level.creatorName || 'Unknown creator'
+        const source = sourceName[currentState.source] || 'List'
+
+        targetLabel.textContent = `${target}%`
+        sourceLabelEl.textContent = source
+        levelNameEl.textContent = safeName
+        creatorLineEl.textContent = `Creator: ${creator}`
+        metaLineEl.textContent = `Level ID: ${levelId ?? 'unknown'} • ${source}`
+
+        if (levelId) {
+          gdLinkEl.href = `https://gdbrowser.com/l/${levelId}`
+          gdLinkEl.classList.remove('hidden')
+        } else {
+          gdLinkEl.href = '#'
+          gdLinkEl.classList.add('hidden')
+        }
+      }
+
+      const showGame = () => {
+        gameEl.classList.remove('hidden')
+        resultEl.classList.add('hidden')
+      }
+
+      const showResult = (message) => {
+        gameEl.classList.add('hidden')
+        resultEl.classList.remove('hidden')
+        resultTextEl.textContent = message
+      }
+
+      const startRun = () => {
+        const source = sourceSelect.value
+        const step = Number(stepSelect.value) || 1
+        const startingLevel = randomLevel(allLevels[source])
+
+        if (!startingLevel) {
+          showResult('This list is empty right now. Try another list source.')
+          return
+        }
+
+        currentState = {
+          source,
+          step,
+          target: 1,
+          level: startingLevel,
+        }
+
+        saveState()
+        showGame()
+        renderLevel()
+      }
+
+      const clearCurrent = () => {
+        if (!currentState) return
+
+        const nextTarget = currentState.target + currentState.step
+        if (nextTarget > 100) {
+          currentState = null
+          showResult('You cleared the run. You reached 100% and finished the roulette.')
+          localStorage.removeItem(STORAGE_KEY)
+          return
+        }
+
+        const nextLevel = randomLevel(allLevels[currentState.source])
+        if (!nextLevel) {
+          showResult('You cleared it. The list ran out of levels for this source.')
+          localStorage.removeItem(STORAGE_KEY)
+          currentState = null
+          return
+        }
+
+        currentState = {
+          ...currentState,
+          target: nextTarget,
+          level: nextLevel,
+        }
+
+        saveState()
+        renderLevel()
+      }
+
+      const failCurrent = () => {
+        if (!currentState) return
+        const source = sourceName[currentState.source] || 'the list'
+        const best = Math.max(1, currentState.target)
+        currentState = null
+        localStorage.removeItem(STORAGE_KEY)
+        showResult(`Run over. You reached ${best}% on ${source}. Press start again to try another run.`)
+      }
+
+      startButton.addEventListener('click', startRun)
+      clearButton.addEventListener('click', clearCurrent)
+      failButton.addEventListener('click', failCurrent)
+      restartButton.addEventListener('click', () => {
+        resultEl.classList.add('hidden')
+        startRun()
+      })
+
+      const restored = restoreState()
+      if (restored) {
+        currentState = restored
+        showGame()
+        renderLevel()
+      }
+
+      loadList('challenge', './challenge-list.json').catch(() => {
+        document.getElementById('result-text').textContent = 'Could not load list data.'
+      })
+      loadList('impossible', './impossible-levels.json').catch(() => {
+        document.getElementById('result-text').textContent = 'Could not load list data.'
+      })
+    </script>
   </body>
 </html>
