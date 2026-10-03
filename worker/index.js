@@ -47,13 +47,12 @@ const CHALLENGE_LIST_URL = 'https://challengelist.gd/challenges/'
 const CHALLENGE_LIST_DETAIL = (id) => `https://challengelist.gd/challenges/${id}/`
 const IMPOSSIBLE_LEVEL_PAGE = (id) => `https://impossiblelevels.com/level/${id}`
 
-// challengelist.gd only publishes a 100 level main list. The legacy list is
+// challengelist.gd publishes a 100 level main list. The legacy list is
 // deliberately ignored: most of those levels were deleted from the site, so
-// their detail pages expose no level id or video any more.
+// their detail pages expose no level id or video any more. It is also what
+// CHALLENGE_LIST_SIZE means here -- a floor on how much came back, not a
+// guarantee, because a silently short index is worse than a smaller one.
 const CHALLENGE_LIST_SIZE = 100
-
-// The detail pages are fetched a few at a time to stay polite.
-const DETAIL_CONCURRENCY = 4
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -283,45 +282,62 @@ const parseChallengeDetail = (html) => {
   }
 }
 
-const fetchChallengeDetail = async (item) => {
-  try {
-    const response = await fetch(CHALLENGE_LIST_DETAIL(item.id))
-    if (!response.ok) return item
-    return { ...item, ...parseChallengeDetail(await response.text()) }
-  } catch {
-    return item
+const CHALLENGE_LIST_DETAIL_CACHE_CONTROL =
+  'public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000'
+
+const getChallengeLevelDetails = async (id) => {
+  const response = await fetch(CHALLENGE_LIST_DETAIL(id))
+  if (!response.ok) {
+    throw new Error(`Challenge List detail page returned ${response.status}`)
   }
+
+  const { levelId, video } = parseChallengeDetail(await response.text())
+  return { levelId, video }
 }
 
-const buildChallengeList = async () => {
+/* The index only, no detail pages.
+ *
+ * It used to visit all 100 detail pages inside this one request, and that is
+ * what made the Challenge List slower than every other source -- measurably so:
+ * a cold build took around 16 seconds, against one request for the others.
+ *
+ * It was also quietly broken past the first 49. Cloudflare's free plan allows
+ * 50 subrequests per invocation, and this one spent one on the index, so every
+ * fetch from the 50th detail page onward threw. fetchChallengeDetail swallowed
+ * that with `return item`, so the route answered 200 with the names and
+ * creators it had scraped and with levelId and video simply missing on half the
+ * list -- which is exactly the reported symptom: no thumbnail, no level id, and
+ * "View on Challenge List" in place of the id. The site was showing a silent
+ * partial failure as though it were the data.
+ *
+ * So the index is served on its own now, in one subrequest, and the details
+ * come from /challenge-list-detail for the level actually on screen -- the same
+ * shape as /impossible-level-rate, and the same reason: a Worker cannot scrape
+ * a hundred pages to decorate a card nobody is looking at yet.
+ *
+ * listId is the upstream id, carried through so the client can ask for one
+ * level's details. The list is sorted by it, which is the position on the list. */
+const buildChallengeListIndexOnly = async () => {
   const response = await fetch(CHALLENGE_LIST_URL)
   if (!response.ok) {
     throw new Error(`Challenge List returned ${response.status}`)
   }
 
   const items = parseChallengeListIndex(await response.text())
-  if (items.length !== CHALLENGE_LIST_SIZE) {
-    throw new Error(
-      `Expected ${CHALLENGE_LIST_SIZE} challenges but parsed ${items.length}. The site markup may have changed.`,
-    )
+  if (!items.length) {
+    throw new Error('The Challenge List index parsed to nothing. The site markup may have changed.')
   }
 
-  // The index page carries no level id or video, so each detail page is
-  // visited to pick them up.
-  const levels = new Array(items.length)
-  let cursor = 0
-
-  const worker = async () => {
-    while (cursor < items.length) {
-      const index = cursor
-      cursor += 1
-      levels[index] = await fetchChallengeDetail(items[index])
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(DETAIL_CONCURRENCY, items.length) }, () => worker()),
-  )
+  const levels = items.map((item) => ({
+    id: item.id,
+    listId: item.id,
+    levelId: null,
+    rank: item.id,
+    name: item.name,
+    creator: item.creator,
+    video: null,
+    permalink: CHALLENGE_LIST_DETAIL(item.id),
+  }))
 
   return {
     source: 'challengelist',
@@ -333,7 +349,7 @@ const buildChallengeList = async () => {
 
 const ROUTES = {
   'impossible-levels': buildImpossibleLevels,
-  'challenge-list': buildChallengeList,
+  'challenge-list': buildChallengeListIndexOnly,
 }
 
 // Served for a long time: a level's required rate changes only when the list
@@ -376,6 +392,23 @@ export default {
         return json(
           { error: protocol.error },
           { status: protocol.status, headers: { 'cache-control': 'no-store' } },
+        )
+      }
+
+      /* The reachability ping, ahead of the database.
+       *
+       * The site's little signal symbol measures the link to this Worker and
+       * nothing else, so this route has to be the cheapest thing here: no D1, no
+       * lockout row, no auth. It answers instantly or not at all, which is what
+       * makes a slow symbol mean a slow link rather than a slow query.
+       *
+       * The version gate still runs first -- it is a refusal that costs nothing
+       * and an archived build should not be able to use this as a free
+       * third-party request either. */
+      if (key === 'api/ping') {
+        return json(
+          { ok: true, at: new Date().toISOString() },
+          { status: 200, headers: { 'cache-control': 'no-store', ...CORS_WITH_PROTOCOL } },
         )
       }
 
@@ -515,6 +548,23 @@ export default {
 
     if (request.method !== 'GET') {
       return json({ error: 'Method not allowed' }, { status: 405 })
+    }
+
+    if (key === 'challenge-list-detail') {
+      const id = url.searchParams.get('id')
+      if (!/^\d+$/.test(id ?? '')) {
+        return json({ error: 'A numeric challenge id is required' }, { status: 400 })
+      }
+
+      try {
+        const data = await getChallengeLevelDetails(Number(id))
+        return json(data, { headers: { 'cache-control': CHALLENGE_LIST_DETAIL_CACHE_CONTROL } })
+      } catch (error) {
+        return json(
+          { error: error?.message ?? 'Failed to read that challenge' },
+          { status: 502 },
+        )
+      }
     }
 
     if (key === 'impossible-level-rate') {

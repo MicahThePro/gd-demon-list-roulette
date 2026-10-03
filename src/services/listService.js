@@ -486,6 +486,13 @@ const fetchGslList = async ({ start, end } = {}, fetcher = fetch) => {
 // Dash level id, and the video comes from the level's detail page.
 const toChallengeListLevel = (item, position) => ({
   id: `challengelist-${item.id}`,
+  // The upstream challenge number. The Worker serves the index without any level
+  // ids or videos -- fetching those means visiting 100 detail pages, which is one
+  // too many subrequests for a single Worker invocation and used to fail past the
+  // first 49 -- so they are fetched per level, and this is what that request asks
+  // for. Kept because a run's levels are stored in localStorage and replayed long
+  // after the list response that carried it.
+  listId: item.id ?? null,
   levelId: item.levelId ?? null,
   position,
   name: item.name || `Challenge #${item.id}`,
@@ -534,6 +541,39 @@ const fetchChallengeListSnapshot = async (fetcher = fetch) => {
   }
 
   throw new Error('Failed to load the Challenge List. Run "npm run update:challenge-list".')
+}
+
+/**
+ * The level id and video for one Challenge List entry, from the Worker.
+ *
+ * Neither is derivable from the list: challengelist.gd shows them only on each
+ * challenge's own page. That is one request for the level on screen, and the
+ * Worker caches the answer at the edge for a week, so it costs nothing after the
+ * first player to reach that level.
+ *
+ * Returns nulls when it cannot be reached or the page has no id, so the caller
+ * simply renders as it did before rather than handling an error -- a level with
+ * no id is still playable, it just falls back to its permalink.
+ */
+export const fetchChallengeLevelDetails = async (listId, fetcher = fetch) => {
+  if (listId == null) return { levelId: null, video: null }
+
+  try {
+    const response = await fetcher(
+      `${LIST_WORKER_URL}/challenge-list-detail?id=${encodeURIComponent(listId)}`,
+    )
+    if (!response?.ok) return { levelId: null, video: null }
+
+    const data = await response.json()
+    return {
+      levelId: Number.isFinite(Number(data?.levelId)) && Number(data.levelId) > 0
+        ? Number(data.levelId)
+        : null,
+      video: typeof data?.video === 'string' && data.video ? data.video : null,
+    }
+  } catch {
+    return { levelId: null, video: null }
+  }
 }
 
 export const fetchChallengeListBounds = async (fetcher = fetch) => {

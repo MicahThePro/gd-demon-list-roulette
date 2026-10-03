@@ -216,6 +216,57 @@
   color: #64748b;
   vertical-align: 0.9em;
 }
+/* The Worker signal symbol, sitting beside the version beside the title.
+   Sized and spaced like the version so the three read as one quiet line of
+   metadata rather than the title gaining an ornament. */
+.worker-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  margin-left: 0.6em;
+  font-size: 0.26em;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: 0.9em;
+  color: #64748b;
+  cursor: help;
+  user-select: none;
+}
+.worker-signal-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+}
+.worker-signal-bars span {
+  display: block;
+  width: 3px;
+  border-radius: 1px;
+  background: rgba(100, 116, 139, 0.35);
+}
+.worker-signal-text {
+  white-space: nowrap;
+}
+.worker-signal-good .worker-signal-bars span.lit {
+  background: #22c55e;
+}
+.worker-signal-good .worker-signal-text {
+  color: #4ade80;
+}
+/* Amber, not yellow: the dark panel makes pure #eab308 hard to read at this
+   size, and the symbol has to stay legible while it is warning about latency. */
+.worker-signal-slow .worker-signal-bars span.lit {
+  background: #f59e0b;
+}
+.worker-signal-slow .worker-signal-text {
+  color: #fbbf24;
+}
+.worker-signal-none .worker-signal-bars span.lit {
+  background: #ef4444;
+}
+.worker-signal-none .worker-signal-text {
+  color: #f87171;
+}
 
 .eyebrow {
   margin: 0;

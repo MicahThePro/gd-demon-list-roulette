@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Leaderboard from '../components/Leaderboard'
 import GlobalLeaderboard from '../components/GlobalLeaderboard'
 import AccountDialog from '../components/AccountDialog'
+import WorkerSignal from '../components/WorkerSignal'
 import ChangelogDialog from '../components/ChangelogDialog'
 import SettingsDialog from '../components/SettingsDialog'
 import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds, LIST_SOURCES } from '../services/listService'
@@ -364,6 +365,7 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
           <h1>
             {SITE_NAME}
             <span className="hero-version">{LATEST_VERSION}</span>
+            <WorkerSignal />
           </h1>
           <p className="lead">
             GD List Roulette is a Geometry Dash challenge. You get a random level from a chosen list and

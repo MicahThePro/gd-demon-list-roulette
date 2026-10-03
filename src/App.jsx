@@ -11,7 +11,7 @@ import PreviewBanner from './components/PreviewBanner'
 import RedeemCodePage from './pages/RedeemCodePage'
 import { getPreviewUser, syncPlayerData } from './services/adminService'
 import { fetchMyEntries } from './services/apiService'
-import { fetchAredlLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
+import { fetchAredlLevelDetails, fetchChallengeLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
 import './App.css'
@@ -65,6 +65,9 @@ const HYDRATABLE_SOURCES = new Set(['AREDL'])
 // in which case there is nothing to fetch.
 const RATE_SOURCE = 'Impossible Levels List'
 
+// run.source holds the list's display title, same as RATE_SOURCE above.
+const CHALLENGE_SOURCE = 'Challenge List'
+
 const attachLevelDetails = async (runState, level) => {
   if (!level || runState?.source !== RATE_SOURCE) {
     return level
@@ -80,7 +83,42 @@ const attachLevelDetails = async (runState, level) => {
 
 const hydrateLevelForRun = async (runState, level) => {
   const withDetails = await attachLevelDetails(runState, level)
-  return hydrateAredlLevel(runState, withDetails)
+  const withAredl = await hydrateAredlLevel(runState, withDetails)
+  return hydrateChallengeLevel(runState, withAredl)
+}
+
+/* The Challenge List index carries no level id and no video: challengelist.gd
+ * publishes both only on a challenge's own page, and a Worker cannot visit 100
+ * of those in one invocation -- it tried, and every fetch past the 49th threw, so
+ * half the list rendered with no thumbnail and no id at all while the site
+ * reported a successful load.
+ *
+ * So they are fetched here, for the one level on screen, the same as the
+ * Impossible Levels rate. The Worker caches the answer at the edge for a week, so
+ * this is one request the first time a level is reached and none after that.
+ *
+ * The fields already present win. The build-time snapshot carries both for every
+ * level, and that path needs no request at all -- which is what keeps the list
+ * usable when the Worker is down. */
+const hydrateChallengeLevel = async (runState, level) => {
+  if (!level || runState?.source !== CHALLENGE_SOURCE) {
+    return level
+  }
+
+  if (level.levelId != null && level.video) {
+    return level
+  }
+
+  const { levelId, video } = await fetchChallengeLevelDetails(level.listId)
+
+  return {
+    ...level,
+    levelId: level.levelId ?? levelId,
+    video: level.video ?? video,
+    thumbnail:
+      level.thumbnail ??
+      (video ? `https://i.ytimg.com/vi/${video}/mqdefault.jpg` : null),
+  }
 }
 
 const hydrateAredlLevel = async (runState, level) => {

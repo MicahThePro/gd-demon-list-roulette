@@ -61,6 +61,11 @@ export const parseChallengeListHtml = (html) => {
       seen.add(id)
       items.push({
         id,
+        // Carried into the snapshot so the client can ask the Worker for one
+        // level's details. The Worker serves its own index without any ids or
+        // videos, and this snapshot is the fallback when that Worker cannot be
+        // reached -- so both paths have to name a level the same way.
+        listId: id,
         name: stripHtmlEntities(match[2]).trim(),
         creator: stripHtmlEntities(match[5]).trim(),
       })

@@ -15,9 +15,29 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v2-4',
+    version: 'v2.4',
+    title: 'A connection meter, and a Challenge List that tells you about itself',
+    summary: 'See whether the site can reach its server, and stop half the Challenge List arriving with no picture and no level id.',
+    changes: [
+      'There is now a small signal symbol next to the site title that shows whether the site can reach its server. It is three bars that fill up and change colour: three green bars means it answered quickly, two amber bars means it answered but slowly, and one red bar labelled offline means it did not answer at all. Hover over it for the exact number of milliseconds. It checks about once a second while a tab is open, and again straight away when you come back to it, so the reading is never stale.',
+      'The symbol measures the site’s own server and nothing else. The pages you are reading are served by GitHub Pages, which is a completely separate service, so a page that loads perfectly with a red symbol is working exactly as intended -- it just means leaderboards, accounts and level lists will not load. That is stated in the tooltip rather than left for you to work out.',
+      'Half the Challenge List was arriving with no thumbnail and no level id. Levels 50 to 100 lost their picture and their id every single time, so you got a blank card and a View on Challenge List button where the id should have been. It is fixed: every level on the list now shows its picture and its id.',
+      'The Challenge List also used to take about sixteen seconds to load, much longer than any of the other four lists. It now loads in well under a second, the same as the others.',
+      'Level ids and videos for the Challenge List are now fetched one level at a time, for the level you are actually on, rather than all hundred at once when the list loads. That is why the list loads instantly, and it also means the data is asked for once per level and then remembered by the server for a week rather than being rebuilt from scratch on every visit.',
+      'Archived versions of the site can no longer sign in, submit runs or reach the leaderboard. They still play perfectly, but they are archives rather than a second working copy of the site, so an out-of-date build cannot put a score on the board using rules that no longer exist. The server refuses an old build outright rather than relying on the browser to cooperate.',
+      'Getting the admin passcode wrong repeatedly now locks you out for longer each time, and a long enough streak bans the address permanently. A permanent ban loses the whole API -- signing in, submitting, reading runs -- not just the admin panel. If you lock yourself out there is now a script that lifts a ban by address, so it is not a dead end.',
+      'Usernames are now always lowercase. Whatever case you type one in, it is stored as one spelling, so a handle cannot be two accounts that are hard to tell apart. Signing in still works whichever way you type it, and nobody else can claim your name in any case. Display names are the opposite and unchanged: they keep the capitalisation you chose.',
+      'Runs are now only saved to an account. A run finished while signed out is not saved anywhere at all -- not on this device, not on the leaderboard. If you finish a run signed out, sign in or create an account and you are asked whether to keep it; say yes and it goes on your account, say no and it simply goes when you leave the page. The Your runs board is gone while signed out, because there would be nothing on it.',
+      'You can turn the level name filter off. A few level names contain a swear word, and until now the site starred them out on every screen with no way to see the real name. Settings now has a Show uncensored level names switch, off by default, remembered in this browser like your other settings. Only what is drawn on screen changes -- the names were always stored in full, so nothing about your runs or anybody else’s changes.',
+      'The list names in the source dropdown are now spelled out in full rather than abbreviated to ARL and AROL. They were being shown to you under names that did not match the ones the leaderboard and the server actually use.',
+      'Opening Settings no longer steals focus from the percentage field on the run screen, so typing your achieved percentage is not interrupted by a dialog opening over it.',
+    ],
+  },
+  {
     id: 'v2-3',
     version: 'v2.3',
-    title: 'Runs belong to an account now',
+    title: 'Runs that follow your account, and a name you can change',
     summary: 'Finished runs save to your account on their own, every run can be deleted, your display name is editable once a day, and old versions of the site are playable again.',
     changes: [
       'A run you finish is now saved to your account straight away, without being asked. If you finish a run while signed in, it is on your account by the time you see the results screen -- there is no box to tick and nothing to remember to do. You do not have to submit it to the global leaderboard for this to happen; saving it to your account and putting it on the public board are still two separate things.',
@@ -28,14 +48,9 @@ export const CHANGELOG = [
       'Leaderboard rows now show the handle next to the display name. Before, only the display name was shown, which meant two players who picked the same name were indistinguishable on the board.',
       'Signing in no longer merges two accounts on a shared browser. Previously, signing out of one account and into another left the first account’s runs on screen under the second account’s name. Runs now belong to one account at a time, and signing out clears them.',
       'Ending a moderator preview no longer signs the moderator out. Previously, closing a preview threw away the session the moderator was actually using, and they had to sign in again afterwards.',
-      'Usernames are now always lowercase. Whatever case you type one in, it is stored as one spelling, so a handle cannot be two accounts that are hard to tell apart. Signing in still works whichever way you type it, and nobody else can claim your name in any case.',
-      'Display names are the opposite, and unchanged: they keep the capitalisation you chose, and two players are allowed to have the same one. Your display name is the label, your username is the identity, and the handle beside your name on the leaderboard is what tells two “Alex”es apart. You can change your display name once a day; your username is yours for good.',
+      'Usernames keep the capitalisation you typed. “DemonRoulette” used to be stored as “demonroulette”, so you could never have the name you wanted. Signing in still works whichever way you type it, and nobody else can claim your name in any case.',
       'Every past version of the site is playable again from the What’s new dialog. Each release has a Play this version link that opens a frozen copy of that version in a new tab. Nothing you do there touches the current site.',
       'Disabled buttons are now actually greyed out. They had no styling for the disabled state at all, so a button that could not be pressed looked exactly like one that could, and the only way to find out was to click it and see nothing happen.',
-      'Runs are now only saved to an account. A run finished while signed out is not saved anywhere at all — not on this device, not on the leaderboard. If you finish a run signed out, sign in or create an account and you are asked whether to keep it; say yes and it goes on your account, say no and it simply goes when you leave the page. Nobody is asked twice and nothing is saved without being agreed to.',
-      'The Your runs board is gone while signed out. There would be nothing on it — no runs are stored for a signed out player — so instead of an empty board there is a line saying so and a link to sign in. Signed out, the only board you can open is Global.',
-      'Anything already saved from before this change is kept, not deleted. It is simply not shown until you sign in, and signing in replaces it with the runs on your account.',
-      'You can turn the level name filter off. A few level names contain a swear word, and until now the site starred them out on every screen with no way to see the real name. Settings now has a Show uncensored level names switch. It is off by default, so the site looks exactly as it did before, and turning it on shows the names as their creators typed them everywhere they appear -- in the game, in your runs, and on the leaderboard. You are warned while it is on, and it is remembered in this browser like your other settings. The names themselves were always stored in full, so nothing about your runs or anyone else\u2019s changes: only what is drawn on screen.',
     ],
   },
   {
