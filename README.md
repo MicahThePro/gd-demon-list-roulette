@@ -82,7 +82,7 @@ Examples of supported list sources include:
 
 - Pointercrate
 - AREDL
-- Global Shitty List
+- Global S****y List
 - Challenge List
 - Impossible Levels List
 - additional runtime list filtering and source selection
@@ -747,7 +747,7 @@ The project pulls from and supports a number of community list sources, includin
 
 - Pointercrate
 - AREDL
-- Global Shitty List
+- Global S****y List
 - Challenge List
 - Impossible Levels List
 
