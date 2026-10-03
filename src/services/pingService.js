@@ -62,11 +62,15 @@ export const pingWorker = async ({ signal } = {}) => {
 
   const ms = Math.round(performance.now() - startedAt)
 
-  /* A refusal is still a live Worker -- something answered. The version gate or
-   * a ban turns the response into an error status, and the symbol should show a
-   * working link rather than claim the Worker is gone. */
   if (!response.ok) {
-    return { status: ms > SLOW_MS ? 'slow' : 'good', ms, detail: `Worker answered ${response.status}` }
+    let detail = `Server refused the request (${response.status})`
+    try {
+      const body = await response.json()
+      if (typeof body?.error === 'string' && body.error.trim()) detail = body.error
+    } catch {
+      // The HTTP status remains an explicit failure if the response is not JSON.
+    }
+    return { status: 'none', ms, detail }
   }
 
   return { status: ms > SLOW_MS ? 'slow' : 'good', ms, detail: `${ms} ms` }

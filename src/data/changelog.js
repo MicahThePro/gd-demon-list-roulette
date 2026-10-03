@@ -15,6 +15,21 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v2-6',
+    version: 'v2.6',
+    title: 'Build and share custom ordered runs',
+    summary: 'Signed-in creators can assemble unlisted challenges from supported lists, choose challenge-specific rules, and share a link anyone can play.',
+    changes: [
+      'Create a custom run while signed in by choosing a list source and adding levels by rank. Each level can be previewed before it is added, and the order can be rearranged or edited before publishing.',
+      'Set a custom percentage increment, whether skips are allowed, a per-level time limit, and a whole-run time limit. These rules are independent of each player’s home settings.',
+      'The maximum number of levels is capped by the chosen increment: for example, up to 100 levels at 1% or 20 levels at 5%. Clearing the final level completes the challenge even when its target is below 100%.',
+      'Each custom run gets an unlisted share link. Players do not need an account; the link shows the creator and rules without revealing the level order, then reveals each level in sequence as the run progresses.',
+      'Custom run results are intentionally excluded from personal run history and both leaderboards, and the results page explains that they are not saved or submitted.',
+      'The current Worker protocol now rejects earlier clients with an explicit archived-version error, and the connection indicator reports protocol refusals as offline instead of showing a false successful connection.',
+      'v2.5 is preserved as a frozen build under versions/v2.5. Like earlier archives, it remains playable but cannot use online accounts, leaderboards, or other server-backed features.',
+    ],
+  },
+  {
     id: 'v2-5',
     version: 'v2.5',
     title: 'A whole new look, plus the latest fixes and polish',

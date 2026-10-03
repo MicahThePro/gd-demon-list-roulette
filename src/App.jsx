@@ -11,8 +11,10 @@ import PreviewBanner from './components/PreviewBanner'
 import RedeemCodePage from './pages/RedeemCodePage'
 import ProfilePage from './pages/ProfilePage'
 import NotificationsPage from './pages/NotificationsPage'
+import CustomRunPage from './pages/CustomRunPage'
 import { getPreviewUser, syncPlayerData } from './services/adminService'
 import { fetchMyEntries, fetchNotificationsCount } from './services/apiService'
+import { getCustomRunLevel } from './services/customRunService'
 import { fetchAredlLevelDetails, fetchChallengeLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
@@ -25,6 +27,7 @@ const SCREEN = {
   REDEEM: 'redeem',
   PROFILE: 'profile',
   NOTIFICATIONS: 'notifications',
+  CUSTOM_RUN: 'custom-run',
 }
 
 /* The player's own settings, read straight out of the cookies the rules hook
@@ -157,6 +160,9 @@ const hydrateAredlLevel = async (runState, level) => {
 }
 
 function App() {
+  const [customRunId, setCustomRunId] = useState(() =>
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('custom') : null,
+  )
   // The redeem page is reached as /redeem, a real path rather than a state, so a
   // moderator can bookmark it or have the admin panel link straight to it. GitHub
   // Pages cannot rewrite an unknown path into this app, so it is only honoured
@@ -164,8 +170,12 @@ function App() {
   // directory like the admin panel is. Read once at startup rather than in an
   // effect, so the right screen is on the first paint instead of a frame later.
   const [screen, setScreen] = useState(() =>
-    typeof window !== 'undefined' && /\/redeem\/?$/.test(window.location.pathname)
-      ? SCREEN.REDEEM
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).has('custom')
+        ? SCREEN.CUSTOM_RUN
+        : /\/redeem\/?$/.test(window.location.pathname)
+          ? SCREEN.REDEEM
+          : SCREEN.HOME
       : SCREEN.HOME,
   )
   const [run, setRun] = usePersistentRun()
@@ -195,6 +205,7 @@ function App() {
   // recognise a run that was already sent. State rather than the ref above,
   // because changing it has to re-render the results page.
   const [resultRunKey, setResultRunKey] = useState('')
+  const [customRunError, setCustomRunError] = useState('')
 
   const currentStatus = useMemo(() => summarizeResult(run), [run])
 
@@ -265,6 +276,48 @@ function App() {
     setScreen(SCREEN.ROULETTE)
   }
 
+  const startCustomRun = (definition, firstLevel) => {
+    const createdRun = createRun({
+      startingPercent: definition.percentStep,
+      levels: [firstLevel],
+      source: definition.source,
+      allowDuplicates: true,
+      percentStep: definition.percentStep,
+      allowSkip: definition.allowSkip,
+      levelTimeLimitMs: definition.levelTimeLimitMs,
+      totalTimeLimitMs: definition.totalTimeLimitMs,
+    })
+    const customRun = {
+      ...createdRun,
+      currentLevel: firstLevel,
+      usedLevelIds: [firstLevel.id],
+      customRunId: definition.id,
+      customRunCreator: definition.creator,
+      customRunLevelCount: definition.levelCount,
+      customRunIndex: 0,
+    }
+    trackedRunId.current = null
+    setCustomRunError('')
+    setRun(customRun)
+    setScreen(SCREEN.ROULETTE)
+  }
+
+  const setCustomRunLocation = (id) => {
+    const url = new URL(window.location.href)
+    url.searchParams.set('custom', id)
+    window.history.pushState({}, '', url)
+    setCustomRunId(id)
+    setScreen(SCREEN.CUSTOM_RUN)
+  }
+
+  const openCustomRunUrl = (url) => {
+    const id = new URL(url, window.location.origin).searchParams.get('custom')
+    if (!id) {
+      throw new Error('The custom run link is missing its run id.')
+    }
+    setCustomRunLocation(id)
+  }
+
   const finishRound = async (achievedPercent) => {
     if (!run || !run.currentLevel) return
 
@@ -307,6 +360,19 @@ function App() {
       return
     }
 
+    if (run.customRunId && run.customRunIndex >= run.customRunLevelCount - 1) {
+      const completedCustomRun = {
+        ...run,
+        status: 'completed',
+        rounds: updatedRounds,
+        usedLevelIds,
+        endingPercent: normalizedAchieved,
+        currentLevel: null,
+      }
+      endRun(completedCustomRun, endedAt)
+      return
+    }
+
     // The run finishes when the level just cleared reached 100%, not when the
     // next target would be 100. With a step of 20 the targets are 20, 40, 60,
     // 80, 100, so clearing 80 must still hand out the 100% level.
@@ -324,7 +390,19 @@ function App() {
       return
     }
 
-    const hydratedNextLevel = await hydrateLevelForRun(run, nextLevel)
+    let hydratedNextLevel
+    if (run.customRunId) {
+      try {
+        const { level } = await getCustomRunLevel(run.customRunId, run.customRunIndex + 2)
+        hydratedNextLevel = level
+        setCustomRunError('')
+      } catch (error) {
+        setCustomRunError(`${error?.message ?? 'Could not load the next challenge level.'} Submit this level again to retry.`)
+        return
+      }
+    } else {
+      hydratedNextLevel = await hydrateLevelForRun(run, nextLevel)
+    }
     const activeRun = {
       ...run,
       currentTarget: nextTarget,
@@ -334,6 +412,7 @@ function App() {
       currentLevelStartedAt: Date.now(),
       endingPercent: nextTarget,
       status: 'active',
+      ...(run.customRunId ? { customRunIndex: run.customRunIndex + 1 } : {}),
     }
 
     setRun(activeRun)
@@ -350,6 +429,7 @@ function App() {
       // The same key the submission guard uses, so the results screen and the
       // leaderboard row agree on which run this is.
       setResultRunKey(key)
+      if (endedRun.customRunId) return
       if (trackedRunId.current === key) return
       trackedRunId.current = key
       history.recordRun(endedRun, endedAt)
@@ -374,8 +454,36 @@ function App() {
     })
 
     const usedLevelIds = [...(run.usedLevelIds || []), run.currentLevel.id]
-    const nextLevel = pickNextLevel(run.levels, usedLevelIds, run.allowDuplicates)
-    const hydratedNextLevel = await hydrateLevelForRun(run, nextLevel)
+    if (run.customRunId && run.customRunIndex >= run.customRunLevelCount - 1) {
+      endRun({
+        ...run,
+        skippedCount: (run.skippedCount || 0) + 1,
+        skipReasons: countSkipReason(run.skipReasons, currentResult.skipReason),
+        rounds: [...run.rounds, { ...currentResult, roundNumber: run.rounds.length + 1 }],
+        usedLevelIds,
+        currentLevel: null,
+        status: 'failed',
+        endingPercent: run.currentTarget,
+        customRunIncomplete: true,
+      }, endedAt)
+      return
+    }
+
+    let nextLevel
+    let hydratedNextLevel
+    if (run.customRunId) {
+      try {
+        const response = await getCustomRunLevel(run.customRunId, run.customRunIndex + 2)
+        hydratedNextLevel = response.level
+        setCustomRunError('')
+      } catch (error) {
+        setCustomRunError(`${error?.message ?? 'Could not load the next challenge level.'} Choose Skip again to retry.`)
+        return
+      }
+    } else {
+      nextLevel = pickNextLevel(run.levels, usedLevelIds, run.allowDuplicates)
+      hydratedNextLevel = await hydrateLevelForRun(run, nextLevel)
+    }
     const updatedRun = {
       ...run,
       skippedCount: (run.skippedCount || 0) + 1,
@@ -391,6 +499,7 @@ function App() {
       currentLevel: hydratedNextLevel,
       currentLevelStartedAt: Date.now(),
       status: 'active',
+      ...(run.customRunId ? { customRunIndex: run.customRunIndex + 1 } : {}),
     }
 
     setRun(updatedRun)
@@ -482,6 +591,14 @@ function App() {
   const handleRestart = () => {
     setRun(null)
     trackedRunId.current = null
+    if (run?.customRunId && customRunId) {
+      setScreen(SCREEN.CUSTOM_RUN)
+      return
+    }
+    const url = new URL(window.location.href)
+    url.searchParams.delete('custom')
+    window.history.replaceState({}, '', url)
+    setCustomRunId(null)
     setScreen(SCREEN.HOME)
   }
 
@@ -489,10 +606,18 @@ function App() {
   // Giving up ends the run, records it on the leaderboard and shows results;
   // quitting just discards it and returns to the menu, leaving no trace. That
   // distinction matters, so this deliberately does not route through endRun.
-  const handleQuitRun = (nextScreen = SCREEN.HOME) => {
+  const handleQuitRun = (nextScreen = run?.customRunId && customRunId ? SCREEN.CUSTOM_RUN : SCREEN.HOME) => {
     setRun(null)
     trackedRunId.current = null
     setScreen(nextScreen)
+  }
+
+  const leaveCustomRun = () => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('custom')
+    window.history.replaceState({}, '', url)
+    setCustomRunId(null)
+    setScreen(SCREEN.HOME)
   }
 
   const openProfiles = () => {
@@ -917,6 +1042,7 @@ function App() {
       {screen === SCREEN.HOME && (
         <HomePage
           onStart={startRun}
+          onOpenCustomRun={openCustomRunUrl}
           history={history}
           run={run}
           gameRules={gameRules}
@@ -954,6 +1080,13 @@ function App() {
           onBack={() => setScreen(SCREEN.HOME)}
         />
       )}
+      {screen === SCREEN.CUSTOM_RUN && customRunId !== null && (
+        <CustomRunPage
+          id={customRunId}
+          onStart={startCustomRun}
+          onBack={leaveCustomRun}
+        />
+      )}
       {screen === SCREEN.ROULETTE && run && (
         <RoulettePage
           run={run}
@@ -961,6 +1094,7 @@ function App() {
           onSkip={handleSkip}
           onGiveUp={handleGiveUp}
           onQuit={handleQuitRun}
+          customRunError={customRunError}
         />
       )}
       {screen === SCREEN.RESULTS && run && (
@@ -968,6 +1102,7 @@ function App() {
           run={run}
           runKey={resultRunKey}
           onRestart={handleRestart}
+          isCustomRun={Boolean(run.customRunId)}
           auth={auth}
           onAccountChanged={() => setAccountNonce((value) => value + 1)}
           onSignedOut={history.restoreLocal}

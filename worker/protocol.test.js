@@ -140,7 +140,16 @@ console.log('\n  refuses on every route, not just one')
   }
 }
 
-console.log('\n  an unknown protocol is a different failure')
+console.log('\n  refuses the previous protocol as archived')
+{
+  const response = await call('/api/leaderboard', { protocol: '1' })
+  const payload = await response.json()
+
+  check('the previous protocol is refused', response.status === 409, `got ${response.status}`)
+  check('the previous protocol explains the archive refusal', /archived/i.test(payload.error ?? ''), JSON.stringify(payload))
+}
+
+console.log('\n  an unknown newer protocol is a different failure')
 {
   // A build newer than the Worker: the deploy went out in the wrong order. That
   // deserves its own answer, so it does not look like every client going offline.

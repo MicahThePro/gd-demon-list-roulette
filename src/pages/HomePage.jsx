@@ -5,6 +5,7 @@ import AccountDialog from '../components/AccountDialog'
 import WorkerSignal from '../components/WorkerSignal'
 import ChangelogDialog from '../components/ChangelogDialog'
 import SettingsDialog from '../components/SettingsDialog'
+import CustomRunBuilder from '../components/CustomRunBuilder'
 import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fetchImpossibleLevelsBounds, LIST_SOURCES } from '../services/listService'
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
@@ -48,7 +49,7 @@ const getBoundsForSource = (sourceName) => {
   return fetchAredlListBounds()
 }
 
-export default function HomePage({ onStart, history, gameRules, isMasked, onIsMaskedChange, auth }) {
+export default function HomePage({ onStart, onOpenCustomRun, history, gameRules, isMasked, onIsMaskedChange, auth }) {
   const [isLoading, setIsLoading] = useState(false)
   const [isBoardOpen, setIsBoardOpen] = useState(false)
   // The board view has two halves: what this browser has played, and what
@@ -57,6 +58,7 @@ export default function HomePage({ onStart, history, gameRules, isMasked, onIsMa
   const [boardTab, setBoardTab] = useState('mine')
   const [isAccountOpen, setIsAccountOpen] = useState(false)
   const [isChangelogOpen, setIsChangelogOpen] = useState(false)
+  const [isCustomBuilderOpen, setIsCustomBuilderOpen] = useState(false)
   const [source, setSource] = usePersistentListSource()
   /* Only meaningful for Pointercrate; the tick boxes are hidden on every other
    * source rather than shown disabled, because there is no second list to pick
@@ -399,6 +401,16 @@ export default function HomePage({ onStart, history, gameRules, isMasked, onIsMa
             <button
               type="button"
               className="secondary-button small-button"
+              onClick={() => {
+                if (auth.user) setIsCustomBuilderOpen(true)
+                else setIsAccountOpen(true)
+              }}
+            >
+              Create a run for others
+            </button>
+            <button
+              type="button"
+              className="secondary-button small-button"
               onClick={() => setIsAccountOpen(true)}
             >
               {auth.user ? auth.user.displayName : 'Sign in'}
@@ -531,6 +543,16 @@ export default function HomePage({ onStart, history, gameRules, isMasked, onIsMa
         isOpen={isChangelogOpen}
         onClose={() => setIsChangelogOpen(false)}
       />
+      {isCustomBuilderOpen && auth.user && (
+        <CustomRunBuilder
+          user={auth.user}
+          onClose={() => setIsCustomBuilderOpen(false)}
+          onOpenRun={(url) => {
+            setIsCustomBuilderOpen(false)
+            onOpenCustomRun(url)
+          }}
+        />
+      )}
     </main>
   )
 }

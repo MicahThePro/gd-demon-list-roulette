@@ -42,7 +42,7 @@ export const PROTOCOL_HEADER = 'x-dlr-protocol'
  * which is the intent -- those runs would otherwise be scored and ranked by rules
  * that no longer exist.
  */
-export const PROTOCOL_VERSION = '1'
+export const PROTOCOL_VERSION = '2'
 
 /** The value the current build sends. */
 export const PROTOCOL_VALUE = PROTOCOL_VERSION
@@ -70,10 +70,16 @@ export const checkProtocol = (request) => {
   }
 
   if (value !== PROTOCOL_VALUE) {
+    const clientVersion = Number(value)
+    const serverVersion = Number(PROTOCOL_VALUE)
+    const message =
+      Number.isInteger(clientVersion) && clientVersion < serverVersion
+        ? 'Could not connect to the server. This version of the site is archived and can no longer use the online features.'
+        : `This server speaks protocol ${PROTOCOL_VERSION}, but your version speaks ${value}. Try reloading the site.`
     return {
       ok: false,
       status: 409,
-      error: `This server speaks protocol ${PROTOCOL_VERSION}, but your version speaks ${value}. Try reloading the site.`,
+      error: message,
     }
   }
 

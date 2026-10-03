@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDurationMs, getRunElapsedMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 import { censorText } from '../utils/censor'
 
-export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit }) {
+export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit, customRunError = '' }) {
   const [achievedPercent, setAchievedPercent] = useState('')
   const [validationMessage, setValidationMessage] = useState('')
   const [levelCopyMessage, setLevelCopyMessage] = useState('')
@@ -159,14 +159,17 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit 
     <main className="page-shell roulette-page">
       <div className="roulette-layout">
         <section className="panel status-panel">
-          <aside className="recording-reminder" aria-label="Leaderboard recording advice">
-            <strong>Want to submit this run to the leaderboard?</strong>
-            <span>
-              Start recording before your first attempt. Keep one continuous video that clearly
-              shows the Geometry Dash level, your attempts and their results, and the progress you
-              enter here. Avoid cuts, and keep the video available for review.
-            </span>
-          </aside>
+          {customRunError && <p className="validation-message" role="alert">{customRunError}</p>}
+          {!run.customRunId && (
+            <aside className="recording-reminder" aria-label="Leaderboard recording advice">
+              <strong>Want to submit this run to the leaderboard?</strong>
+              <span>
+                Start recording before your first attempt. Keep one continuous video that clearly
+                shows the Geometry Dash level, your attempts and their results, and the progress you
+                enter here. Avoid cuts, and keep the video available for review.
+              </span>
+            </aside>
+          )}
           <div className="status-header">
             <div>
               <p className="eyebrow">Round {run.rounds.length + 1}</p>

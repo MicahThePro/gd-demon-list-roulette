@@ -17,6 +17,8 @@
  *   /api/admin/submissions (GET) /api/admin/submissions/:id (GET)
  *   /api/admin/submissions/:id/approve | /reject | /delete (POST)
  *   /api/admin/accounts/:id/runs/:runId/trash | /untrash (POST)
+ *   /api/custom-runs (POST) /api/custom-runs/:id (GET)
+ *   /api/custom-runs/:id/levels/:index (GET)
  *
  *   env.ADMIN_PASSCODE  PBKDF2 hash of the moderation passcode
  *
@@ -33,6 +35,7 @@
  */
 
 import { handleAccountRoutes } from './api.js'
+import { handleCustomRunRoutes } from './customRuns.js'
 import { handleSubmissionRoutes } from './submissions.js'
 import {
   handleAdminAccountRoutes,
@@ -381,8 +384,9 @@ export default {
        * able to sign in and submit from here, scoring runs with rules that no
        * longer exist. Those builds are blocked in the browser too, but that guard
        * is only a speed bump -- devtools undoes it. This is the real rule: a
-       * request without the current protocol header is refused before a route
-       * runs, and refusing costs nothing because no row is written either way.
+       * request without the current protocol header, or carrying an old one, is
+       * refused before a route runs, and refusing costs nothing because no row is
+       * written either way.
        *
        * Only /api/* is gated. The list endpoints above stay open to every build,
        * because reading the level lists is what an archived version needs in
@@ -505,6 +509,14 @@ export default {
           return json(selfService.error ? { error: selfService.error } : (selfService.body ?? {}), {
             status: selfService.status ?? 200,
             headers,
+          })
+        }
+
+        const customRun = await handleCustomRunRoutes({ db: env.DB, request, key })
+        if (customRun) {
+          return json(customRun.error ? { error: customRun.error } : (customRun.body ?? {}), {
+            status: customRun.status ?? 200,
+            headers: { 'cache-control': 'no-store' },
           })
         }
 

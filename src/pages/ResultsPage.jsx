@@ -18,7 +18,7 @@ import SubmitRunForm from '../components/SubmitRunForm'
  * keeping it is the only reason they are here, and a question about it is a
  * question about something they have already decided.
  */
-export default function ResultsPage({ run, runKey, onRestart, auth, onAccountChanged, onSignedOut }) {
+export default function ResultsPage({ run, runKey, onRestart, auth, onAccountChanged, onSignedOut, isCustomRun = false }) {
   // The key the server groups a run under. Passed down rather than derived
   // here, because it has to be the same string the run was recorded under in the
   // local leaderboard: anything recomputed on this render (a fresh Date.now(),
@@ -49,6 +49,7 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
 
   const finalPercent = run.endingPercent ?? run.startingPercent
   const completed = run.status === 'completed'
+  const isUnrankedCustomRun = isCustomRun || Boolean(run.customRunId)
 
   const timedRounds = run.rounds.filter((round) => Number.isFinite(round.elapsedMs))
   const averageTimeMs =
@@ -78,7 +79,7 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
   // Only lists the Worker will accept a run for. A run on any other source is
   // still fully playable, it just cannot be ranked, so the panel says so rather
   // than showing a button that would fail.
-  const isSubmittable = SUBMITTABLE_SOURCES.includes(run.source)
+  const isSubmittable = !isUnrankedCustomRun && SUBMITTABLE_SOURCES.includes(run.source)
 
   // The run is stored first and the video second, and both are handled by the
   // shared form, which the local leaderboard's run detail also uses. It asks for
@@ -135,13 +136,29 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
         <p className="eyebrow">Run summary</p>
         <h2>
           {completed
-            ? 'Roulette complete'
+            ? isUnrankedCustomRun
+              ? 'Custom run cleared'
+              : 'Roulette complete'
             : timeUp
               ? 'Out of time'
               : gaveUp
                 ? 'You gave up'
-                : 'Run ended'}
+                : run.customRunIncomplete
+                  ? 'Custom run ended'
+                  : 'Run ended'}
         </h2>
+
+        {isUnrankedCustomRun && (
+          <p className="settings-note">
+            This was a custom run. It is not saved to your run history or submitted to a leaderboard.
+          </p>
+        )}
+
+        {run.customRunIncomplete && (
+          <p className="validation-message">
+            You reached the end of the creator’s level order without clearing every level.
+          </p>
+        )}
 
         {timeUp && (
           <p className="validation-message">
@@ -249,12 +266,8 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
 
         {/* The only case that still gets a box of its own: a run that ended while
             signed out and has since been signed in to, so the player has an
-            account but has not yet said whether this run belongs on it. That
-            is a question with two answers, and it is asked rather than decided
-            for them -- putting a run on an account they did not choose is not
-            ours to do, and dropping one they just finished without asking is
-            the same mistake pointed the other way. */}
-        {auth.user && keepDecision !== 'idle' && (
+            account but has not yet said whether this run belongs on it. */}
+        {!isUnrankedCustomRun && auth.user && keepDecision !== 'idle' && (
           <div className="submit-panel">
             {/* The prompt. Rendered instead of rather than above the answer,
                 because showing the save button while the question is open
@@ -321,7 +334,7 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
           </div>
         )}
 
-        {auth.user ? null : (
+        {!isUnrankedCustomRun && !auth.user ? (
           <>
             <p>
               <strong>Sign in to save this run.</strong> Runs are saved to an account, so signing
@@ -334,19 +347,23 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
               and it is not on the global leaderboard either.
             </p>
           </>
-        )}
+        ) : null}
 
-        <p className="results-section-label">Global leaderboard</p>
-        <div className="submit-panel">
-          <SubmitRunForm
-            auth={auth}
-            isSubmittable={isSubmittable}
-            alreadySubmitted={isSubmitted}
-            getPayload={getPayload}
-            runKey={runKey}
-            onSubmitted={() => setIsSubmitted(true)}
-          />
-        </div>
+        {!isUnrankedCustomRun && (
+          <>
+            <p className="results-section-label">Global leaderboard</p>
+            <div className="submit-panel">
+              <SubmitRunForm
+                auth={auth}
+                isSubmittable={isSubmittable}
+                alreadySubmitted={isSubmitted}
+                getPayload={getPayload}
+                runKey={runKey}
+                onSubmitted={() => setIsSubmitted(true)}
+              />
+            </div>
+          </>
+        )}
 
         {/* Both ways out of the page sit together at the bottom, and both say what
             they do. "Discard and go home" names the thing "New run" never
@@ -362,9 +379,9 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
             control rather than becoming the save button. */}
         <div className="action-row">
           <button className="secondary-button" type="button" onClick={onRestart}>
-            Discard and go home
+            {isUnrankedCustomRun ? 'Back to custom run' : 'Discard and go home'}
           </button>
-          {auth.user ? (
+          {!isUnrankedCustomRun && auth.user ? (
             keepDecision !== 'pending' &&
             keepDecision !== 'discarded' &&
             !isSavedToAccount && (
@@ -377,11 +394,11 @@ export default function ResultsPage({ run, runKey, onRestart, auth, onAccountCha
                 {isSaving ? 'Saving...' : `Save run to @${auth.user.username}`}
               </button>
             )
-          ) : (
+          ) : !isUnrankedCustomRun ? (
             <button className="primary-button" type="button" onClick={() => setIsAccountOpen(true)}>
               Sign in or create an account
             </button>
-          )}
+          ) : null}
         </div>
 
         {/* The save's own result, below the buttons rather than inside the row,

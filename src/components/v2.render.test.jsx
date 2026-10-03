@@ -305,17 +305,18 @@ console.log('Changelog, and playing an old version')
    * and that the one before it is playable, not merely that "the first entry" is
    * first. A changelog that grows is the normal case, and a test that only holds
    * while the list is the length it is today stops being a test. */
-  check('v2.5 is the live version', CHANGELOG[0].version === 'v2.5', CHANGELOG[0].version)
+  check('v2.6 is the live version', CHANGELOG[0].version === 'v2.6', CHANGELOG[0].version)
   // Matched on the heading and the version alone rather than on the whole phrase,
   // because the apostrophe in "What's new" is a curly one in the component. Testing
   // the exact string would make this check fail over typography, and fixing it
   // would mean editing the check every time the apostrophe changed.
   check(
     'the heading names the live version',
-    dialog.includes('What') && dialog.includes('new in v2.5'),
+    dialog.includes('What') && dialog.includes('new in v2.6'),
     LATEST_VERSION,
   )
-  check('v2.5 is not playable, since it is the page you are on', !isPlayable('v2.5'))
+  check('v2.5 is playable as the previous release', isPlayable('v2.5'))
+  check('v2.5 has a play link', dialog.includes(versionUrl('v2.5')), versionUrl('v2.5'))
 
   check('v2.4 is in the changelog', CHANGELOG.some((release) => release.version === 'v2.4'))
   check('v2.4 is playable', isPlayable('v2.4'))
@@ -604,6 +605,14 @@ console.log('Results, for a run played signed out')
   check('the way out of the page says the run is discarded', signedIn.includes('Discard and go home'))
   check('and it is no longer the ambiguous bare "New run"', !signedIn.includes('New run'))
 
+  const customRun = renderResults({
+    run: { ...aRun, customRunId: 'custom-run-id' },
+    auth: { ...auth, user: { id: 1, username: 'player_one', displayName: 'Player One' } },
+  })
+  check('custom results explain that they are not saved', customRun.includes('not saved to your run history'))
+  check('custom results do not offer account saving', !customRun.includes('Save run to @'))
+  check('custom results do not offer leaderboard submission', !customRun.includes('Global leaderboard'))
+
   /* Guard against the keep-or-discard ternary chain losing its expression braces.
    *
    * That panel is only reachable after a sign in mid-run, so no render above can
@@ -687,6 +696,16 @@ console.log('\nThe profanity mask')
   check('an active run tells players to start recording before the first attempt', maskedHtml.includes('Start recording before your first attempt'))
   check('recording advice asks for continuous video showing attempts and results', maskedHtml.includes('one continuous video') && maskedHtml.includes('attempts and their results'))
   check('the active run has no copy-save-code control', !maskedHtml.includes('Copy save code'))
+  const customHtml = renderToStaticMarkup(
+    <RoulettePage
+      run={{ ...run, customRunId: 'custom-run-id' }}
+      gameRules={{ allowSkip: true }}
+      onSkip={() => {}}
+      onGiveUp={() => {}}
+      onStartOver={() => {}}
+    />,
+  )
+  check('custom runs do not show leaderboard recording advice', !customHtml.includes('Start recording before your first attempt'))
 
   setCensoring(false)
   check('switching it off reaches the mask itself', !isCensoring())

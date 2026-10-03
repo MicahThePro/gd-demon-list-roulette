@@ -18,7 +18,7 @@
  * names, which is why it is a single import now.
  */
 export const PROTOCOL_HEADER = 'x-dlr-protocol'
-export const PROTOCOL_VALUE = '1'
+export const PROTOCOL_VALUE = '2'
 
 /** The headers every API request carries, for spreading into a fetch call. */
 export const protocolHeaders = () => ({ [PROTOCOL_HEADER]: PROTOCOL_VALUE })
