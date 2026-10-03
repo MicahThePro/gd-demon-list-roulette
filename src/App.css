@@ -1391,9 +1391,10 @@
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
   padding: 20px;
+  overflow-y: auto;
   /* Solid, not translucent. A backdrop-filter here has to re-sample and blur
      the whole viewport on every frame the overlay is up, which is what made
      opening a dialog feel sluggish. The dimmed fill gives the same visual
@@ -1406,6 +1407,10 @@
   display: grid;
   gap: 14px;
   width: min(420px, 100%);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 26px 24px;
   border-radius: 20px;
   background: rgba(15, 23, 42, 0.97);
@@ -3088,7 +3093,9 @@
      magnified page. The dialog inputs are outside the .setup-form rules that
      already set this, so they need it here. */
   .settings-field input,
-  .modal-field textarea {
+  .modal-field textarea,
+  .account-form input,
+  .account-name-form input {
     font-size: 16px;
   }
 
