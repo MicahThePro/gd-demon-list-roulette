@@ -145,92 +145,94 @@ export default function SettingsDialog({
         </div>
 
         <div className="settings-dialog-body">
-          <label className="settings-field">
-            Percentage increment
-            <input
-              type="text"
-              inputMode="numeric"
-              value={percentStepDraft}
-              onChange={(event) => onDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
-              onBlur={() => {
-                setHasSeenHint(true)
-                onCommit()
-              }}
-              placeholder="1"
-              aria-describedby="settings-step-hint"
-            />
-          </label>
+          <section className="settings-section">
+            <label className="settings-field">
+              Percentage increment
+              <input
+                type="text"
+                inputMode="numeric"
+                value={percentStepDraft}
+                onChange={(event) => onDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
+                onBlur={() => {
+                  setHasSeenHint(true)
+                  onCommit()
+                }}
+                placeholder="1"
+                aria-describedby="settings-step-hint"
+              />
+            </label>
 
-          <p className="settings-hint" id="settings-step-hint">
-            Currently stepping up by +{percentStep}%, which means {estimatedRounds}{' '}
-            {estimatedRounds === 1 ? 'level' : 'levels'} to finish a run.
-          </p>
-
-          {!hasSeenHint && (
-            <p className="settings-note">
-              Saved as soon as you click away, so pressing Close keeps whatever you
-              typed.
+            <p className="settings-hint" id="settings-step-hint">
+              Currently stepping up by +{percentStep}%, which means {estimatedRounds}{' '}
+              {estimatedRounds === 1 ? 'level' : 'levels'} to finish a run.
             </p>
-          )}
 
-          <hr className="settings-divider" />
+            {!hasSeenHint && (
+              <p className="settings-note">
+                Saved as soon as you click away, so pressing Close keeps whatever you
+                typed.
+              </p>
+            )}
+          </section>
 
-          <label className="settings-toggle-row">
-            <input
-              type="checkbox"
-              checked={allowSkip}
-              onChange={(event) => onAllowSkipChange(event.target.checked)}
-            />
-            <span>
-              <strong>Allow skipping</strong>
-              <small>
-                When this is off, the Skip button is gone and a level you cannot
-                beat ends the run.
-              </small>
-            </span>
-          </label>
+          <section className="settings-section">
+            <label className="settings-toggle-row">
+              <input
+                type="checkbox"
+                checked={allowSkip}
+                onChange={(event) => onAllowSkipChange(event.target.checked)}
+              />
+              <span>
+                <strong>Allow skipping</strong>
+                <small>
+                  When this is off, the Skip button is gone and a level you cannot
+                  beat ends the run.
+                </small>
+              </span>
+            </label>
+          </section>
 
-          <hr className="settings-divider" />
+          <section className="settings-section">
+            <label className="settings-field">
+              Time limit per level (minutes)
+              <input
+                type="text"
+                inputMode="numeric"
+                value={levelTimeLimitDraft}
+                onChange={(event) => onLevelTimeLimitDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
+                onBlur={onCommitLevelTimeLimit}
+                placeholder="0"
+                aria-describedby="settings-level-limit-hint"
+              />
+            </label>
 
-          <label className="settings-field">
-            Time limit per level (minutes)
-            <input
-              type="text"
-              inputMode="numeric"
-              value={levelTimeLimitDraft}
-              onChange={(event) => onLevelTimeLimitDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
-              onBlur={onCommitLevelTimeLimit}
-              placeholder="0"
-              aria-describedby="settings-level-limit-hint"
-            />
-          </label>
+            <p className="settings-hint" id="settings-level-limit-hint">
+              {levelTimeLimitDraft === '' || Number(levelTimeLimitDraft) === 0
+                ? 'Off. You can spend as long as you like on each level.'
+                : 'Running out of time on a level ends the run right there.'}
+            </p>
+          </section>
 
-          <p className="settings-hint" id="settings-level-limit-hint">
-            {levelTimeLimitDraft === '' || Number(levelTimeLimitDraft) === 0
-              ? 'Off. You can spend as long as you like on each level.'
-              : 'Running out of time on a level ends the run right there.'}
-          </p>
+          <section className="settings-section">
+            <label className="settings-field">
+              Time limit for the whole run (minutes)
+              <input
+                type="text"
+                inputMode="numeric"
+                value={totalTimeLimitDraft}
+                onChange={(event) => onTotalTimeLimitDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
+                onBlur={onCommitTotalTimeLimit}
+                placeholder="0"
+                aria-describedby="settings-total-limit-hint"
+              />
+            </label>
 
-          <label className="settings-field">
-            Time limit for the whole run (minutes)
-            <input
-              type="text"
-              inputMode="numeric"
-              value={totalTimeLimitDraft}
-              onChange={(event) => onTotalTimeLimitDraftChange(event.target.value.replace(/[^0-9]/g, ''))}
-              onBlur={onCommitTotalTimeLimit}
-              placeholder="0"
-              aria-describedby="settings-total-limit-hint"
-            />
-          </label>
-
-          <p className="settings-hint" id="settings-total-limit-hint">
-            {totalTimeLimitDraft === '' || Number(totalTimeLimitDraft) === 0
-              ? 'Off. The run only ends when you finish, fail or give up.'
-              : 'A speedrun: see how many levels you can clear before the clock runs out.'}
-          </p>
-
-          <hr className="settings-divider" />
+            <p className="settings-hint" id="settings-total-limit-hint">
+              {totalTimeLimitDraft === '' || Number(totalTimeLimitDraft) === 0
+                ? 'Off. The run only ends when you finish, fail or give up.'
+                : 'A speedrun: see how many levels you can clear before the clock runs out.'}
+            </p>
+          </section>
 
           {/* The mask, and the only setting here that changes what a player reads rather
               than how a run behaves.
@@ -240,26 +242,28 @@ export default function SettingsDialog({
               point here is only ever "these names can contain swearing" -- which
               fits in a sentence, and which stays visible rather than needing a
               confirm the player can dismiss and forget. */}
-          <label className="settings-toggle-row">
-            <input
-              type="checkbox"
-              checked={!isMasked}
-              onChange={(event) => onIsMaskedChange(!event.target.checked)}
-            />
-            <span>
-              <strong>Show uncensored level names</strong>
-              <small>Some level names contain a swear word. Off is the default.</small>
-            </span>
-          </label>
+          <section className="settings-section">
+            <label className="settings-toggle-row">
+              <input
+                type="checkbox"
+                checked={!isMasked}
+                onChange={(event) => onIsMaskedChange(!event.target.checked)}
+              />
+              <span>
+                <strong>Show uncensored level names</strong>
+                <small>Some level names contain a swear word. Off is the default.</small>
+              </span>
+            </label>
 
-          {!isMasked && (
-            <p className="settings-censor-warning">
-              Uncensored names are on, so level names may contain profanity — including
-              in runs you send in.
-            </p>
-          )}
+            {!isMasked && (
+              <p className="settings-censor-warning">
+                Uncensored names are on, so level names may contain profanity — including
+                in runs you send in.
+              </p>
+            )}
+          </section>
 
-          <p className="settings-note">
+          <p className="settings-note settings-note-footer">
             The run rules above are saved to this browser and are locked in when a run
             starts, so changing them mid-run will not affect the run you are playing.
             The mask is not a run rule, so it applies straight away.

@@ -27,6 +27,11 @@ const PAGE_SIZE = 50
 // Enough characters that guessing one is hopeless, few enough to read aloud
 // over a call and type by hand. Grouped in threes so it can be said in chunks.
 const LOGIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const hasBadgeControlCharacters = (value) =>
+  [...value].some((character) => {
+    const codePoint = character.codePointAt(0)
+    return codePoint < 0x20 || codePoint === 0x7f
+  })
 
 /* A username reduced to exactly the form the accounts table stores, which is what
    a comparison has to be against.
@@ -210,8 +215,8 @@ const asInteger = (value) => {
 
 const whenLabel = (timestamp) => (Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null)
 
-/* Recorded for anything that can destroy data or impersonate somebody, and
-   nothing else. Reading the queue is ordinary use; deleting an account is not. */
+/* Recorded for account-affecting admin actions, so badge changes and destructive
+   actions leave a trail. Reading the queue is ordinary use and is not logged. */
 const recordAudit = async (db, { action, target, now, detail }) => {
   await db
     .prepare(
@@ -684,6 +689,149 @@ export const handleAdminAccountRoutes = async ({ db, request, url, key, adminPas
           .all()
 
     return { status: 200, body: { accounts: (result.results ?? []).map(accountSummary) } }
+  }
+
+  // Badge routes are matched before the one-segment account route below.
+  const badgeRoute = path.match(/^(\d+)\/badges(?:\/(\d+)(?:\/(update|delete))?)?$/)
+  if (badgeRoute) {
+    const accountId = Number(badgeRoute[1])
+    const badgeId = badgeRoute[2] ? Number(badgeRoute[2]) : null
+    const badgeAction = badgeRoute[3] ?? null
+    const target = await db
+      .prepare('SELECT id, username, display_name, created_at FROM users WHERE id = ?')
+      .bind(accountId)
+      .first()
+
+    if (!target) {
+      return { error: 'No such account', status: 404 }
+    }
+
+    if (!badgeId && !badgeAction && request.method === 'GET') {
+      const rows = await db
+        .prepare('SELECT id, text, color, created_at FROM profile_badges WHERE user_id = ? ORDER BY id')
+        .bind(accountId)
+        .all()
+      const badges = (rows.results ?? []).map((row) => ({
+        id: row.id,
+        text: row.text,
+        color: row.color,
+        createdAt: row.created_at,
+        isProtected: false,
+      }))
+
+      if (target.username === 'geometricalmike') {
+        badges.unshift({
+          id: null,
+          text: 'Owner',
+          color: '#3b82f6',
+          createdAt: null,
+          isProtected: true,
+        })
+      }
+
+      return { status: 200, body: { badges } }
+    }
+
+    if (!badgeId && !badgeAction && request.method === 'POST') {
+      const body = (await readBody(request)) ?? {}
+      const text = typeof body.text === 'string' ? body.text.trim() : ''
+      const color = typeof body.color === 'string' ? body.color.toLowerCase() : ''
+
+      if (!text || text.length > 32 || hasBadgeControlCharacters(text)) {
+        return { error: 'Badge text must be between 1 and 32 characters', status: 400 }
+      }
+      if (!/^#[0-9a-f]{6}$/.test(color)) {
+        return { error: 'Badge color must be a six-digit hex color', status: 400 }
+      }
+      if (text.toLowerCase() === 'owner') {
+        return { error: 'Owner is reserved for @geometricalmike', status: 400 }
+      }
+
+      const inserted = await db
+        .prepare('INSERT INTO profile_badges (user_id, text, color, created_at) VALUES (?, ?, ?, ?) RETURNING id')
+        .bind(accountId, text, color, now)
+        .first()
+
+      await recordAudit(db, {
+        action: 'badge.create',
+        target,
+        now,
+        detail: `${text} (${color})`,
+      })
+
+      return {
+        status: 201,
+        body: { badge: { id: inserted.id, text, color, createdAt: now, isProtected: false } },
+      }
+    }
+
+    if (badgeAction === 'update' && request.method === 'POST') {
+      const body = (await readBody(request)) ?? {}
+      const text = typeof body.text === 'string' ? body.text.trim() : ''
+      const color = typeof body.color === 'string' ? body.color.toLowerCase() : ''
+
+      if (!text || text.length > 32 || hasBadgeControlCharacters(text)) {
+        return { error: 'Badge text must be between 1 and 32 characters', status: 400 }
+      }
+      if (!/^#[0-9a-f]{6}$/.test(color)) {
+        return { error: 'Badge color must be a six-digit hex color', status: 400 }
+      }
+      if (text.toLowerCase() === 'owner') {
+        return { error: 'Owner is reserved for @geometricalmike', status: 400 }
+      }
+
+      const badge = await db
+        .prepare('SELECT id, text FROM profile_badges WHERE id = ? AND user_id = ?')
+        .bind(badgeId, accountId)
+        .first()
+      if (!badge) {
+        return { error: 'That badge does not exist', status: 404 }
+      }
+      if (badge.text.toLowerCase() === 'owner') {
+        return { error: 'The Owner badge cannot be changed', status: 403 }
+      }
+
+      await db
+        .prepare('UPDATE profile_badges SET text = ?, color = ? WHERE id = ? AND user_id = ?')
+        .bind(text, color, badgeId, accountId)
+        .run()
+      await recordAudit(db, {
+        action: 'badge.update',
+        target,
+        now,
+        detail: `${badge.text} -> ${text} (${color})`,
+      })
+
+      return { status: 200, body: { badge: { id: badgeId, text, color, isProtected: false } } }
+    }
+
+    if (badgeAction === 'delete' && request.method === 'POST') {
+      const badge = await db
+        .prepare('SELECT id, text, color FROM profile_badges WHERE id = ? AND user_id = ?')
+        .bind(badgeId, accountId)
+        .first()
+      if (!badge) {
+        return { error: 'That badge does not exist', status: 404 }
+      }
+      if (badge.text.toLowerCase() === 'owner') {
+        return { error: 'The Owner badge cannot be removed', status: 403 }
+      }
+
+      await db
+        .prepare('DELETE FROM profile_badges WHERE id = ? AND user_id = ?')
+        .bind(badgeId, accountId)
+        .run()
+      await recordAudit(db, {
+        action: 'badge.delete',
+        target,
+        now,
+        detail: `${badge.text} (${badge.color})`,
+      })
+
+      return { status: 200, body: { ok: true } }
+    }
+
+    return { error: 'Unknown badge endpoint', status: 404 }
   }
 
   // GET /api/admin/audit -- what has been done, newest first. Matched before the

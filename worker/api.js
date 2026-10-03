@@ -816,6 +816,31 @@ const getUserCounts = async (db, userId) => {
   }
 }
 
+const getProfileBadges = async (db, userId, username) => {
+  const rows = await db
+    .prepare('SELECT id, text, color FROM profile_badges WHERE user_id = ? ORDER BY id')
+    .bind(userId)
+    .all()
+
+  const badges = (rows.results ?? []).map((row) => ({
+    id: row.id,
+    text: row.text,
+    color: row.color,
+    isProtected: false,
+  }))
+
+  if (username === 'geometricalmike') {
+    badges.unshift({
+      id: null,
+      text: 'Owner',
+      color: '#3b82f6',
+      isProtected: true,
+    })
+  }
+
+  return badges
+}
+
 const getPublicRunsForUser = async (db, userId, limit = 50) => {
   const rows = await db
     .prepare(
@@ -873,6 +898,7 @@ const getUserProfile = async (db, username, viewerId = null) => {
       followingCount: Number(row.following_count ?? 0),
       isFollowing: Boolean(following),
       createdAt: row.created_at,
+      badges: await getProfileBadges(db, row.id, row.username),
     },
     runs: await getPublicRunsForUser(db, row.id, 50),
   }

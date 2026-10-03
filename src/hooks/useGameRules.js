@@ -62,9 +62,8 @@ const readAllowSkip = () => {
  * optional time limits.
  *
  * These are player preferences rather than run state, so they live here. The
- * values in use are copied onto a run when it starts (see createRun), because a
- * save code has to carry the rules it was started under, otherwise loading one
- * on another device would apply that device's settings instead.
+ * values in use are copied onto a run when it starts (see createRun), so
+ * changing a preference mid-run cannot change the run already in progress.
  */
 export const useGameRules = () => {
   const [allowSkip, setAllowSkipState] = useState(readAllowSkip)

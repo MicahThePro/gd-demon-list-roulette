@@ -48,7 +48,7 @@ const getBoundsForSource = (sourceName) => {
   return fetchAredlListBounds()
 }
 
-export default function HomePage({ onStart, onLoadRun, savedRunCode, history, gameRules, isMasked, onIsMaskedChange, auth }) {
+export default function HomePage({ onStart, history, gameRules, isMasked, onIsMaskedChange, auth }) {
   const [isLoading, setIsLoading] = useState(false)
   const [isBoardOpen, setIsBoardOpen] = useState(false)
   // The board view has two halves: what this browser has played, and what
@@ -66,8 +66,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
   const [startRange, setStartRange] = useState('')
   const [endRange, setEndRange] = useState('')
   const [rangeMax, setRangeMax] = useState(DEFAULT_MAX)
-  const [loadCode, setLoadCode] = useState(savedRunCode || '')
-  const [loadError, setLoadError] = useState('')
   /* Said out loud rather than swallowed. A run on an account is deleted on the
      server, and a delete that does not reach the server leaves the run exactly
      where it was -- so a failure here has to be visible, or the button reads as
@@ -135,10 +133,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
     }
     return cleaned
   }
-
-  useEffect(() => {
-    setLoadCode(savedRunCode || '')
-  }, [savedRunCode])
 
   useEffect(() => {
     if (!RANKABLE_SOURCES.includes(source)) {
@@ -250,22 +244,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const handleLoad = () => {
-    const trimmedCode = loadCode.trim()
-    const success = onLoadRun?.(trimmedCode)
-    if (!trimmedCode) {
-      setLoadError('Paste a save code before loading your run.')
-      return
-    }
-
-    if (!success) {
-      setLoadError('That save code is invalid or expired.')
-      return
-    }
-
-    setLoadError('')
   }
 
   /* One message for both. The two failures have the same shape -- the run is
@@ -520,44 +498,6 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
             </form>
           </div>
 
-          <div className="hero-column hero-column-side">
-            <div className="load-panel">
-          <div className="load-panel-head">
-            <span className="eyebrow">Continue a run</span>
-            <h3>Saved run code</h3>
-          </div>
-          <label className="load-field">
-            <span className="visually-hidden">Saved run code</span>
-            <textarea
-              rows="3"
-              value={loadCode}
-              onChange={(event) => {
-                setLoadCode(event.target.value)
-                setLoadError('')
-              }}
-              placeholder="Paste your GDLRS1: save code here"
-            />
-          </label>
-          <div className="action-row">
-            <button type="button" className="secondary-button" onClick={handleLoad}>
-              Load run
-            </button>
-            {savedRunCode && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  setLoadCode(savedRunCode)
-                  setLoadError('')
-                }}
-              >
-                Use current save
-              </button>
-            )}
-          </div>
-          {loadError && <div className="validation-message">{loadError}</div>}
-            </div>
-          </div>
         </div>
 
       </section>

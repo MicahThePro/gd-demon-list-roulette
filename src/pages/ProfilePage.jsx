@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchUserProfile, followUser, searchUsers, unfollowUser } from '../services/apiService'
+import { censorText } from '../utils/censor'
+import { getBadgeTextColor } from '../utils/profileBadges'
 
 const PAGE_SIZE = 12
 
@@ -208,6 +210,19 @@ export default function ProfilePage({ username, viewer, relationshipVersion, onR
                 <p className="eyebrow">Player</p>
                 <h3>{profile.user.displayName || profile.user.username}</h3>
                 <p className="account-handle">@{profile.user.username}</p>
+                {profile.user.badges?.length > 0 && (
+                  <div className="profile-badges" aria-label="Profile badges">
+                    {profile.user.badges.map((badge) => (
+                      <span
+                        className="profile-badge"
+                        key={badge.id ?? `${badge.text}-${badge.color}`}
+                        style={{ backgroundColor: badge.color, color: getBadgeTextColor(badge.color) }}
+                      >
+                        {badge.text}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               {viewer && viewer.username !== profile.user.username && (
                 <button type="button" className="primary-button" onClick={onFollowToggle} disabled={busy}>
@@ -260,7 +275,7 @@ export default function ProfilePage({ username, viewer, relationshipVersion, onR
                       return (
                         <div key={entry.id} className="profile-run-card">
                           <div className="profile-run-score">{entry.score}%</div>
-                          <div className="profile-run-source">{entry.source}</div>
+                          <div className="profile-run-source">{censorText(entry.source)}</div>
                           <div className="profile-run-meta">
                             {entry.passed} cleared · {entry.roundsPlayed} played
                           </div>

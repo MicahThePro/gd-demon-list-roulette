@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { normalizeListRequest, filterLevelsByRange, mapAredlDetailToLevel, fetchAredlLevelDetails, fetchList } from './listService.js'
-import { encodeRunState, decodeRunState, createLevelResult, countSkipReason, normalizeSkipReason, pickNextLevel, getElapsedLevelTimeMs, formatDurationMs } from '../utils/roulette.js'
+import { createLevelResult, countSkipReason, normalizeSkipReason, pickNextLevel, getElapsedLevelTimeMs, formatDurationMs } from '../utils/roulette.js'
 
 test('normalizeListRequest defaults to Pointercrate and validates AREDL ranges', () => {
   assert.deepEqual(normalizeListRequest({}), {
@@ -162,61 +162,6 @@ test('getElapsedLevelTimeMs and formatDurationMs provide a running timer for eac
   assert.equal(getElapsedLevelTimeMs({ currentLevelStartedAt: startedAt }), 65000)
   assert.equal(formatDurationMs(65000), '01:05')
   assert.equal(formatDurationMs(3600000 + 75000), '1:01:15')
-})
-
-test('encodeRunState round-trips a run state and preserves skip metadata', () => {
-  const run = {
-    currentTarget: 8,
-    skippedCount: 1,
-    rounds: [{
-      roundNumber: 1,
-      targetPercent: 7,
-      achievedPercent: null,
-      result: 'skipped',
-      level: {
-        id: 42,
-        name: 'Skip test',
-        creator: 'Tester',
-      },
-    }],
-  }
-
-  const encoded = encodeRunState(run)
-  assert.equal(typeof encoded, 'string')
-  assert.deepEqual(decodeRunState(encoded), run)
-})
-
-test('run save codes use the GDLRS1: prefix', () => {
-  const encoded = encodeRunState({ currentTarget: 5, rounds: [] })
-  assert.ok(encoded.startsWith('GDLRS1:'), `expected a GDLRS1: prefix, got ${encoded.slice(0, 12)}`)
-})
-
-test('run save codes saved with the old DLRS1: prefix still load', () => {
-  const run = { currentTarget: 3, rounds: [] }
-
-  // Rewriting the current prefix to the retired one stands in for a code that
-  // was copied out of the app before the rename; the payload is untouched.
-  const old = encodeRunState(run).replace(/^GDLRS1:/, 'DLRS1:')
-
-  assert.ok(old.startsWith('DLRS1:'))
-  assert.deepEqual(decodeRunState(old), run)
-})
-
-test('a skip reason survives a save code round trip', () => {
-  const run = {
-    currentTarget: 9,
-    rounds: [
-      {
-        roundNumber: 1,
-        targetPercent: 9,
-        achievedPercent: null,
-        result: 'skipped',
-        skipReason: 'unfair',
-      },
-    ],
-  }
-
-  assert.deepEqual(decodeRunState(encodeRunState(run)), run)
 })
 
 test('an unknown skip reason is dropped rather than stored', () => {

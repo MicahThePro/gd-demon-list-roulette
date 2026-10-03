@@ -14,7 +14,7 @@ import NotificationsPage from './pages/NotificationsPage'
 import { getPreviewUser, syncPlayerData } from './services/adminService'
 import { fetchMyEntries, fetchNotificationsCount } from './services/apiService'
 import { fetchAredlLevelDetails, fetchChallengeLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
-import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
+import { clampPercent, createRun, createLevelResult, countSkipReason, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
 import './App.css'
 
@@ -193,7 +193,6 @@ function App() {
   // recognise a run that was already sent. State rather than the ref above,
   // because changing it has to re-render the results page.
   const [resultRunKey, setResultRunKey] = useState('')
-  const [saveCode, setSaveCode] = useState('')
 
   const currentStatus = useMemo(() => summarizeResult(run), [run])
 
@@ -236,49 +235,6 @@ function App() {
     purgeLegacyHistoryKeys()
   }, [])
 
-  const saveCurrentRun = () => {
-    if (!run) {
-      return ''
-    }
-
-    // The timer is derived from currentLevelStartedAt, so a bare save leaves that
-    // timestamp pointing at the moment of saving and every second spent away
-    // would be counted as play time on the next load. The elapsed time at the
-    // point of saving is stored instead, and loadRunFromCode rebases the start
-    // time to "now minus that much", which pauses the clock across the gap.
-    const elapsedMs = getElapsedLevelTimeMs({
-      startedAt: run.currentLevelStartedAt,
-      currentLevelStartedAt: run.currentLevelStartedAt,
-    })
-
-    const encoded = encodeRunState({ ...run, elapsedMs })
-    setSaveCode(encoded)
-    return encoded
-  }
-
-  const loadRunFromCode = (encodedCode) => {
-    const decoded = decodeRunState(encodedCode)
-    if (!decoded) {
-      return false
-    }
-
-    const loaded = {
-      ...decoded,
-      // Resume where the save left off rather than counting the time away. A
-      // code saved before this field existed has no elapsed time, so those runs
-      // restart their level clock at zero.
-      currentLevelStartedAt: Number.isFinite(decoded.elapsedMs)
-        ? Date.now() - Math.max(0, decoded.elapsedMs)
-        : Date.now(),
-    }
-    delete loaded.elapsedMs
-
-    setRun(loaded)
-    setSaveCode(encodedCode)
-    setScreen(decoded.status === 'active' ? SCREEN.ROULETTE : SCREEN.RESULTS)
-    return true
-  }
-
   const startRun = async (request = {}) => {
     const importedList = await fetchList(request)
     const percentStep = normalizePercentStep(request.percentStep ?? 1)
@@ -290,8 +246,7 @@ function App() {
       percentStep,
       // The player's current rules are frozen onto the run here. Reading them
       // again while it is played would mean changing a setting mid-run silently
-      // changed the rules, and a save code loaded on another device would pick
-      // up that device's settings instead of the ones the run started under.
+      // changed the rules.
       allowSkip: gameRules.allowSkip,
       levelTimeLimitMs: timeLimitMinutesToMs(gameRules.levelTimeLimitMinutes),
       totalTimeLimitMs: timeLimitMinutesToMs(gameRules.totalTimeLimitMinutes),
@@ -524,7 +479,6 @@ function App() {
 
   const handleRestart = () => {
     setRun(null)
-    setSaveCode('')
     trackedRunId.current = null
     setScreen(SCREEN.HOME)
   }
@@ -535,7 +489,6 @@ function App() {
   // distinction matters, so this deliberately does not route through endRun.
   const handleQuitRun = () => {
     setRun(null)
-    setSaveCode('')
     trackedRunId.current = null
     setScreen(SCREEN.HOME)
   }
@@ -841,10 +794,7 @@ function App() {
         <HomePage
           onStart={startRun}
           history={history}
-          onLoadRun={loadRunFromCode}
-          onSaveRun={saveCurrentRun}
           run={run}
-          savedRunCode={saveCode}
           gameRules={gameRules}
           isMasked={isMasked}
           onIsMaskedChange={setIsMasked}
@@ -887,9 +837,6 @@ function App() {
           onSkip={handleSkip}
           onGiveUp={handleGiveUp}
           onQuit={handleQuitRun}
-          onSaveRun={saveCurrentRun}
-          onLoadRun={loadRunFromCode}
-          savedRunCode={saveCode}
         />
       )}
       {screen === SCREEN.RESULTS && run && (
@@ -897,9 +844,6 @@ function App() {
           run={run}
           runKey={resultRunKey}
           onRestart={handleRestart}
-          onSaveRun={saveCurrentRun}
-          onLoadRun={loadRunFromCode}
-          savedRunCode={saveCode}
           auth={auth}
           onAccountChanged={() => setAccountNonce((value) => value + 1)}
           onSignedOut={history.restoreLocal}

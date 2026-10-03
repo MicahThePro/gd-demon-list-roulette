@@ -2,11 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDurationMs, getRunElapsedMs, getSkipReasonLabel, SKIP_REASONS } from '../utils/roulette'
 import { censorText } from '../utils/censor'
 
-export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit, onSaveRun }) {
+export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit }) {
   const [achievedPercent, setAchievedPercent] = useState('')
   const [validationMessage, setValidationMessage] = useState('')
   const [levelCopyMessage, setLevelCopyMessage] = useState('')
-  const [saveCopyMessage, setSaveCopyMessage] = useState('')
   const [isConfirmingQuit, setIsConfirmingQuit] = useState(false)
   const [isSkipPickerOpen, setIsSkipPickerOpen] = useState(false)
 
@@ -71,18 +70,8 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
     return () => window.clearTimeout(timeoutId)
   }, [levelCopyMessage])
 
-  useEffect(() => {
-    if (!saveCopyMessage) return undefined
-
-    const timeoutId = window.setTimeout(() => {
-      setSaveCopyMessage('')
-    }, 1200)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [saveCopyMessage])
-
-  // Defaults to allowed: a run started before the setting existed, or a save
-  // code from another device, simply skips as it always did.
+  // Defaults to allowed: a run started before the setting existed simply skips
+  // as it always did.
   const canSkip = run?.allowSkip !== false
   const levelLimitMs = Number.isFinite(run?.levelTimeLimitMs) ? run.levelTimeLimitMs : 0
   const totalLimitMs = Number.isFinite(run?.totalTimeLimitMs) ? run.totalTimeLimitMs : 0
@@ -170,6 +159,14 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
     <main className="page-shell roulette-page">
       <div className="roulette-layout">
         <section className="panel status-panel">
+          <aside className="recording-reminder" aria-label="Leaderboard recording advice">
+            <strong>Want to submit this run to the leaderboard?</strong>
+            <span>
+              Start recording before your first attempt. Keep one continuous video that clearly
+              shows the Geometry Dash level, your attempts and their results, and the progress you
+              enter here. Avoid cuts, and keep the video available for review.
+            </span>
+          </aside>
           <div className="status-header">
             <div>
               <p className="eyebrow">Round {run.rounds.length + 1}</p>
@@ -177,23 +174,6 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
             </div>
             <div className="status-actions">
               <span className="badge">{censorText(run.source)}</span>
-              <div className="save-copy-inline">
-                <button
-                  className="secondary-button small-button"
-                  type="button"
-                  onClick={() => {
-                    const encoded = onSaveRun()
-                    if (encoded) {
-                      navigator.clipboard?.writeText(encoded)
-                      setSaveCopyMessage('Copied successfully')
-                      setLevelCopyMessage('')
-                    }
-                  }}
-                >
-                  Copy save code
-                </button>
-                {saveCopyMessage && <div className="copy-toast save-toast-inline">{saveCopyMessage}</div>}
-              </div>
             </div>
           </div>
 
@@ -263,7 +243,6 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
                 onClick={() => {
                   navigator.clipboard?.writeText(String(run.currentLevel.levelId))
                   setLevelCopyMessage('Copied!')
-                  setSaveCopyMessage('')
                 }}
               >
                 Level ID: {run.currentLevel.levelId}

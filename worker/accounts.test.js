@@ -146,7 +146,7 @@ console.log('searching accounts')
 
 console.log('community stats')
 {
-  const { env, alice, bob } = await setup()
+  const { env, alice } = await setup()
 
   const follow = await jsonCall(env, '/api/users/bob/follow', { method: 'POST', token: alice.token })
   check('a follow relationship is recorded', follow.response.status === 200 && follow.data.following === true, JSON.stringify(follow.data))
@@ -587,6 +587,65 @@ console.log('follow, profile and notification routes')
 
   const bobSearch = await jsonCall(env, '/api/users/search?q=', { token: bob.token })
   check('empty search defaults to geometricalmike', bobSearch.response.status === 200 && bobSearch.data.users.some((user) => user.username === 'geometricalmike'), JSON.stringify(bobSearch.data))
+}
+
+console.log('admin profile badges')
+{
+  const { env, alice } = await setup()
+  const owner = (await jsonCall(env, '/api/register', {
+    method: 'POST',
+    body: { username: 'geometricalmike', password: 'an owner password', displayName: 'Site Owner' },
+  })).data
+
+  const ownerProfile = await jsonCall(env, '/api/users/geometricalmike')
+  const ownerBadge = ownerProfile.data.user.badges?.find((badge) => badge.text === 'Owner')
+  check('the owner profile has the permanent blue Owner badge', ownerBadge?.color === '#3b82f6' && ownerBadge.isProtected, JSON.stringify(ownerProfile.data.user.badges))
+
+  const created = await jsonCall(env, `/api/admin/accounts/${alice.user.id}/badges`, {
+    method: 'POST',
+    passcode: CORRECT,
+    body: { text: 'Champion', color: '#ff5500' },
+  })
+  check('an admin can assign a badge', created.response.status === 201, JSON.stringify(created.data))
+  const badgeId = created.data.badge?.id
+
+  const publicProfile = await jsonCall(env, '/api/users/alice')
+  check('assigned badges are shown on the public profile', publicProfile.data.user.badges?.some((badge) => badge.text === 'Champion' && badge.color === '#ff5500'), JSON.stringify(publicProfile.data.user.badges))
+
+  const listed = await jsonCall(env, `/api/admin/accounts/${alice.user.id}/badges`, { passcode: CORRECT })
+  check('admin badge search detail includes assigned badges', listed.response.status === 200 && listed.data.badges.some((badge) => badge.id === badgeId), JSON.stringify(listed.data))
+
+  const updated = await jsonCall(env, `/api/admin/accounts/${alice.user.id}/badges/${badgeId}/update`, {
+    method: 'POST',
+    passcode: CORRECT,
+    body: { text: 'Verified', color: '#00aa99' },
+  })
+  check('an admin can change badge text and color', updated.response.status === 200 && updated.data.badge.text === 'Verified' && updated.data.badge.color === '#00aa99', JSON.stringify(updated.data))
+
+  const reserved = await jsonCall(env, `/api/admin/accounts/${alice.user.id}/badges`, {
+    method: 'POST',
+    passcode: CORRECT,
+    body: { text: 'Owner', color: '#3b82f6' },
+  })
+  check('the reserved Owner badge cannot be assigned to another profile', reserved.response.status === 400, JSON.stringify(reserved.data))
+
+  const invalidColor = await jsonCall(env, `/api/admin/accounts/${alice.user.id}/badges`, {
+    method: 'POST',
+    passcode: CORRECT,
+    body: { text: 'Invalid color', color: 'red' },
+  })
+  check('invalid badge colors are rejected', invalidColor.response.status === 400, JSON.stringify(invalidColor.data))
+
+  const ownerBadges = await jsonCall(env, `/api/admin/accounts/${owner.user.id}/badges`, { passcode: CORRECT })
+  check('the Owner badge is protected in the admin badge list', ownerBadges.data.badges[0]?.isProtected && ownerBadges.data.badges[0]?.text === 'Owner', JSON.stringify(ownerBadges.data))
+
+  const deleted = await jsonCall(env, `/api/admin/accounts/${alice.user.id}/badges/${badgeId}/delete`, {
+    method: 'POST',
+    passcode: CORRECT,
+  })
+  check('an admin can remove an assigned badge', deleted.response.status === 200, JSON.stringify(deleted.data))
+  const afterDelete = await jsonCall(env, '/api/users/alice')
+  check('removed badges no longer appear on the public profile', !afterDelete.data.user.badges?.some((badge) => badge.id === badgeId), JSON.stringify(afterDelete.data.user.badges))
 }
 
 if (failures > 0) {

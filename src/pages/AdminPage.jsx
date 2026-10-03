@@ -5,6 +5,7 @@ import { adminDecide, fetchAdminSubmissions } from '../services/submissionServic
 import { fetchSiteStats } from '../services/adminService'
 import { PLAYABLE, getHostLabel } from '../utils/videoFile'
 import AccountsTab from '../components/AccountsTab'
+import BadgeManagementTab from '../components/BadgeManagementTab'
 import { formatWait, useCountdown } from '../hooks/useCountdown'
 
 const FILTERS = [
@@ -21,6 +22,7 @@ const FILTERS = [
 const SECTIONS = [
   { id: 'queue', label: 'Queue' },
   { id: 'accounts', label: 'Accounts' },
+  { id: 'badges', label: 'Badges' },
   { id: 'stats', label: 'Stats' },
 ]
 
@@ -338,7 +340,7 @@ export default function AdminPage({ onExit }) {
         <header className="board-page-bar">
           <div>
             <p className="eyebrow">Moderation</p>
-            <h2>Submissions</h2>
+            <h2>{section === 'queue' ? 'Submissions' : SECTIONS.find((entry) => entry.id === section)?.label}</h2>
           </div>
           <button type="button" className="secondary-button" onClick={handleSignOut}>
             Lock
@@ -367,6 +369,8 @@ export default function AdminPage({ onExit }) {
           <div className="admin-detail">
             <AccountsTab passcode={passcode} redeemUrl={redeemUrl} />
           </div>
+        ) : section === 'badges' ? (
+          <BadgeManagementTab passcode={passcode} />
         ) : section === 'stats' ? (
           <StatsTab passcode={passcode} />
         ) : (

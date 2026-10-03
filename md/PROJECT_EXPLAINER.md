@@ -38,7 +38,10 @@ A standard run works like this:
 
 This creates a challenge format that is both structured and unpredictable. The list provides the content, and the roulette system provides the surprise. That makes every run feel different from the last even when the player is using the same list and settings.
 
-Because the project is built for repeated play, it also supports persistent run state, history, save codes, and social comparisons between players.
+Because the project is built for repeated play, signed-in players can keep runs on their accounts, review run history, and compare progress with other players.
+
+Completed runs are kept on the signed-in player's account rather than exported
+as portable in-progress run codes.
 
 ---
 

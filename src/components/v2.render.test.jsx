@@ -684,6 +684,9 @@ console.log('\nThe profanity mask')
 
   const maskedHtml = renderRoulette()
   check('a level name is masked on the page', maskedHtml.includes('S****y') && !maskedHtml.includes(NAME))
+  check('an active run tells players to start recording before the first attempt', maskedHtml.includes('Start recording before your first attempt'))
+  check('recording advice asks for continuous video showing attempts and results', maskedHtml.includes('one continuous video') && maskedHtml.includes('attempts and their results'))
+  check('the active run has no copy-save-code control', !maskedHtml.includes('Copy save code'))
 
   setCensoring(false)
   check('switching it off reaches the mask itself', !isCensoring())
@@ -845,7 +848,6 @@ console.log('\nThe list dropdown')
     const html = renderToStaticMarkup(
       <HomePage
         onStart={() => {}}
-        onLoadRun={() => {}}
         history={{}}
         gameRules={{}}
         auth={{ user: null }}
@@ -853,6 +855,12 @@ console.log('\nThe list dropdown')
         onIsMaskedChange={() => {}}
       />,
     )
+    if (masked) {
+      check(
+        'the home screen no longer offers run save-code loading',
+        !html.includes('GDLRS1') && !html.includes('Saved run code') && !html.includes('Load run'),
+      )
+    }
     const select = html.split('<select')[1]?.split('</select>')[0] ?? ''
     setCensoring(true)
     return [...select.matchAll(/<option[^>]*value="([^"]*)"[^>]*>([\s\S]*?)<\/option>/g)].map(

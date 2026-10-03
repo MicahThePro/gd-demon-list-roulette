@@ -24,13 +24,7 @@ export const getNextTargetPercent = (achievedPercent, step = 1) => {
 }
 
 /* Total play time for a run in progress: the time already banked on finished
-   rounds plus the time on the level being played right now.
-
-   Deliberately NOT measured from the run's start timestamp. A save code that
-   sits in a clipboard overnight, or a tab closed for a few hours, must not
-   burn a time limit the player was never actually playing against, and the
-   level clock is already rebased on load to pause across such a gap. Summing
-   the recorded rounds gives the same answer without that special case. */
+   rounds plus the time on the level being played right now. */
 export const getRunElapsedMs = ({ rounds = [], currentLevelStartedAt, now = Date.now() } = {}) => {
   const banked = (Array.isArray(rounds) ? rounds : []).reduce(
     (total, round) => (Number.isFinite(round?.elapsedMs) ? total + round.elapsedMs : total),
@@ -68,77 +62,6 @@ export const getElapsedLevelTimeMs = ({ startedAt, currentLevelStartedAt, now = 
   return Math.max(0, now - effectiveStartedAt)
 }
 
-const toBase64Url = (value) => {
-  const encoded = btoa(unescape(encodeURIComponent(value)))
-  return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
-
-const fromBase64Url = (value) => {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4)
-  return decodeURIComponent(escape(atob(padded)))
-}
-
-/* Codes are long -- a full 100 level run is around 20 KB on one line -- so a
-   copy almost never arrives intact. A textarea, a phone keyboard, or any chat
-   app will have wrapped it, and a trailing newline comes with almost every
-   paste. atob then fails on a character it should never have been given, and
-   the code is reported as invalid even though the person copied it perfectly.
-   Every space is therefore removed before decoding, not just the ends: the
-   wrap can land anywhere along the line. */
-const stripWhitespace = (value) => value.replace(/\s+/g, '')
-
-// Prefixed and versioned like the leaderboard code, for the same reason: a bare
-// base64 blob can be re-encoded by hand into any run anyone likes, and a code
-// that carries no type marker cannot tell a run save from a history export. The
-// "1" is the format version, so a future change can be detected rather than
-// parsed as garbage.
-const RUN_PREFIX = 'GDLRS1:'
-// The prefix used before the site was renamed to GD List Roulette. Kept in the
-// known list so codes people already saved with it still load, but the app
-// only ever writes the current prefix.
-const LEGACY_RUN_PREFIX = 'DLRS1:'
-const KNOWN_RUN_PREFIXES = [RUN_PREFIX, LEGACY_RUN_PREFIX]
-
-/**
- * Encodes the in-progress run into a portable string.
- *
- * The "1" in the prefix is a format version, not an integrity guarantee. Codes
- * are share codes, not proof of play: anyone can hand-edit the payload before it
- * is re-encoded, so loading a code means trusting whoever shared it.
- */
-export const encodeRunState = (run) => {
-  if (!run) return ''
-  return RUN_PREFIX + toBase64Url(JSON.stringify({ v: 1, run }))
-}
-
-export const decodeRunState = (encoded) => {
-  if (!encoded || typeof encoded !== 'string') {
-    return null
-  }
-
-  // Whitespace is stripped first, so a wrapped or newline-terminated paste is
-  // read the same as an untouched one. See stripWhitespace.
-  const cleaned = stripWhitespace(encoded)
-
-  // Codes shared before the prefix existed are still accepted, since people have
-  // those in their clipboard history, but the app never produces one any more.
-  const prefix = KNOWN_RUN_PREFIXES.find((candidate) => cleaned.startsWith(candidate))
-  const payload = prefix ? cleaned.slice(prefix.length) : cleaned
-  const isLegacy = !prefix
-
-  try {
-    const parsed = JSON.parse(fromBase64Url(payload))
-    const run = isLegacy ? parsed : parsed?.run
-    if (!run || typeof run !== 'object' || !Number.isFinite(Number(run.currentTarget))) {
-      return null
-    }
-    return run
-  } catch {
-    return null
-  }
-}
-
 // allowSkip defaults to false, matching the settings default: a run has to
 // opt in to skipping rather than out of it. App always passes the player's own
 // setting, so this only covers a caller that does not.
@@ -164,10 +87,9 @@ export const createRun = ({ startingPercent, levels, source, allowDuplicates, pe
     endingPercent: seedStart,
     skippedCount: 0,
     skipReasons: {},
-    // Copied onto the run rather than read from settings while it is played, so
-    // a save code carries the rules it was started under. A run started before
-    // these settings existed has none of these fields, so each has to be treated
-    // as absent rather than assumed, which is why the reads below default them.
+    // Copied onto the run rather than read from settings while it is played.
+    // A run started before these settings existed has none of these fields, so
+    // each has to be treated as absent rather than assumed.
     allowSkip,
     levelTimeLimitMs,
     totalTimeLimitMs,
@@ -179,8 +101,8 @@ export const createRun = ({ startingPercent, levels, source, allowDuplicates, pe
      * setting read while the result is displayed would report whatever the boxes
      * say now rather than what they said when the run started.
      *
-     * Normalized on the way in, so a run loaded from an old save code -- which
-     * has no such field -- reports null and simply shows no badge. */
+     * Normalized on the way in, so an older run with no such field reports null
+     * and simply shows no badge. */
     pointercrateParts: source === 'Pointercrate Demon List' ? normalizePointercrateParts(pointercrateParts) : null,
     // The clock the total limit counts down from. Separate from startedAt, which
     // is the run's own start and is also written into every history entry.
@@ -210,7 +132,7 @@ export const pickNextLevel = (levels = [], usedLevelIds = [], allowDuplicates = 
 
 // Why a level was skipped. A skip used to be anonymous, so a run full of them
 // gave no clue whether the player was being careful or just rage-quitting. The
-// values are stored in save codes and exported leaderboard codes, so they are
+// values are stored in run history and exported leaderboard codes, so they are
 // treated as a fixed vocabulary: a new value can be added, but changing one
 // would orphan the reasons already in people's histories.
 export const SKIP_REASONS = [
@@ -223,17 +145,17 @@ export const SKIP_REASONS = [
 const SKIP_REASON_IDS = new Set(SKIP_REASONS.map((reason) => reason.id))
 export const DEFAULT_SKIP_REASON = 'too-hard'
 
-/* Turns anything into a known reason id, so a hand-edited save code carrying a
-   reason this version has never heard of cannot break the display. */
+/* Turns anything into a known reason id, so an unknown value cannot break the
+   display. */
 export const normalizeSkipReason = (reason) =>
   SKIP_REASON_IDS.has(reason) ? reason : null
 
 export const getSkipReasonLabel = (reason) =>
   SKIP_REASONS.find((entry) => entry.id === reason)?.label ?? 'Skipped'
 
-/* Rolls one recorded reason into a per-reason tally stored on the run. An
-   existing run loaded from an older save code has no tally at all, so the
-   missing object is treated as an empty one rather than spread from undefined. */
+/* Rolls one recorded reason into a per-reason tally stored on the run. A run
+   created before skip reasons were tracked has no tally at all, so the missing
+   object is treated as an empty one rather than spread from undefined. */
 export const countSkipReason = (tally, reason) => {
   const valid = normalizeSkipReason(reason)
   if (!valid) return tally && typeof tally === 'object' ? tally : {}
@@ -251,7 +173,7 @@ export const createLevelResult = ({ level, targetPercent, achievedPercent, resul
     achievedPercent,
     result,
     // Only meaningful on a skip, so every other result stores null rather than
-    // leaving the key absent. A save code round-trip then round-trips exactly.
+    // leaving the key absent.
     skipReason: result === 'skipped' ? normalizeSkipReason(skipReason) : null,
     level,
     startedAt,

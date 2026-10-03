@@ -157,9 +157,9 @@ const summarizeRun = (runState, endedAt) => {
     /* Which Pointercrate lists this run was drawn from, or null.
      *
      * One of the few optional fields on an entry, so `isValidEntry` does not
-     * require it -- a run saved before the lists existed, or one imported from an
-     * older save code, has no such field and simply shows no badge. Adding it to
-     * the required list would have thrown all of those away. */
+     * require it -- a run saved before the lists existed has no such field and
+     * simply shows no badge. Adding it to the required list would have thrown
+     * all of those away. */
     pointercrateParts: Array.isArray(runState?.pointercrateParts) && runState.pointercrateParts.length
       ? normalizePointercrateParts(runState.pointercrateParts)
       : null,

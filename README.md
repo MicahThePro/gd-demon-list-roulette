@@ -132,6 +132,15 @@ The project tracks lots of run data beyond a simple pass/fail result:
 
 These details are important because they make the run more reviewable and allow the app to support ranked challenge submissions rather than just a loose one-off run history.
 
+Completed run records are saved to the signed-in player's account. Portable
+in-progress run codes (including the old `GDLRS1:` format) are no longer
+supported; use the account leaderboard to access saved runs across devices.
+
+When an active run begins, the game reminds players who may submit it to start
+recording before their first attempt. For a useful review, keep one continuous
+video that clearly shows the Geometry Dash level, attempts and outcomes, and the
+progress entered in the app; avoid cuts and keep the video available for review.
+
 ---
 
 ## Rules and challenge settings
@@ -458,7 +467,7 @@ Stores feed items for user activity and updates.
 
 ### admin_audit
 
-Stores moderation actions and activity records.
+Stores moderation actions and activity records, including profile badge changes.
 
 ### player_data
 
@@ -468,7 +477,22 @@ Stores mirrored browser state, local preserved settings, and player history.
 
 Stores hidden or removed run markers without destroying the original run data.
 
+### profile_badges
+
+Stores the text and color of badges admins assign to player profiles. The `Owner`
+badge on `@geometricalmike` is built into the profile response and cannot be edited
+or removed.
+
 This model is what makes the social and moderation systems possible without relying on a single giant unsafely-structured JSON blob.
+
+The admin panel's **Badges** tab lets moderators search for a user, assign multiple
+badges, and edit or remove them. Apply database migrations before deploying worker
+changes that use new schema:
+
+```bash
+npm run db:migrate
+npm run worker:deploy
+```
 
 ---
 
@@ -514,6 +538,10 @@ npm run deploy
 ```
 
 This does the frontend build and publishes the static site to GitHub Pages.
+The custom-domain file is kept at `public/CNAME`, so Vite copies it into
+`dist/CNAME` on every build and `gh-pages` keeps the domain attached when it
+publishes that directory. Do not put the only copy of `CNAME` directly on the
+generated `gh-pages` branch: the next deployment replaces that branch's files.
 
 ### Database migration
 

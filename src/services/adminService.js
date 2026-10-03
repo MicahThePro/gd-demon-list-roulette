@@ -276,6 +276,24 @@ export const fetchAccount = async (passcode, id, signal) => {
   return result.account
 }
 
+export const fetchAccountBadges = async (passcode, id, signal) => {
+  const result = await request(`/api/admin/accounts/${id}/badges`, { passcode, signal })
+  return result.badges ?? []
+}
+
+export const createAccountBadge = async (passcode, id, badge) =>
+  request(`/api/admin/accounts/${id}/badges`, { method: 'POST', passcode, body: badge })
+
+export const updateAccountBadge = async (passcode, id, badgeId, badge) =>
+  request(`/api/admin/accounts/${id}/badges/${badgeId}/update`, {
+    method: 'POST',
+    passcode,
+    body: badge,
+  })
+
+export const deleteAccountBadge = async (passcode, id, badgeId) =>
+  request(`/api/admin/accounts/${id}/badges/${badgeId}/delete`, { method: 'POST', passcode })
+
 /**
  * Issues a fresh one-time login code for an account.
  *
