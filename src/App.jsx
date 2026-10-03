@@ -170,6 +170,8 @@ function App() {
   )
   const [run, setRun] = usePersistentRun()
   const [profileUsername, setProfileUsername] = useState('geometricalmike')
+  const [pendingRunNavigation, setPendingRunNavigation] = useState(null)
+  const runNavigationDialogRef = useRef(null)
   const [notificationCount, setNotificationCount] = useState(0)
   const [socialVersion, setSocialVersion] = useState(0)
   const gameRules = useGameRules()
@@ -340,9 +342,9 @@ function App() {
   // Every path that ends a run routes through here, so a run is recorded once
   // no matter whether it was cleared, failed, or given up.
   const endRun = useCallback(
-    (endedRun, endedAt = Date.now()) => {
+    (endedRun, endedAt = Date.now(), nextScreen = SCREEN.RESULTS) => {
       setRun(endedRun)
-      setScreen(SCREEN.RESULTS)
+      setScreen(nextScreen)
 
       const key = endedRun.runId ?? `${endedRun.source ?? ''}-${endedRun.startedAt ?? endedAt}`
       // The same key the submission guard uses, so the results screen and the
@@ -394,7 +396,7 @@ function App() {
     setRun(updatedRun)
   }
 
-  const handleGiveUp = () => {
+  const handleGiveUp = (nextScreen = SCREEN.RESULTS) => {
     if (!run) return
 
     const failedRun = {
@@ -404,7 +406,7 @@ function App() {
       gaveUp: true,
       gaveUpAt: Date.now(),
     }
-    endRun(failedRun)
+    endRun(failedRun, Date.now(), nextScreen)
   }
 
   /* Ends a run because a time limit ran out, rather than because the player
@@ -487,11 +489,43 @@ function App() {
   // Giving up ends the run, records it on the leaderboard and shows results;
   // quitting just discards it and returns to the menu, leaving no trace. That
   // distinction matters, so this deliberately does not route through endRun.
-  const handleQuitRun = () => {
+  const handleQuitRun = (nextScreen = SCREEN.HOME) => {
     setRun(null)
     trackedRunId.current = null
-    setScreen(SCREEN.HOME)
+    setScreen(nextScreen)
   }
+
+  const openProfiles = () => {
+    setProfileUsername('geometricalmike')
+    if (screen === SCREEN.ROULETTE && run?.status === 'active') {
+      setPendingRunNavigation(SCREEN.PROFILE)
+      return
+    }
+    setScreen(SCREEN.PROFILE)
+  }
+
+  const openNotifications = () => {
+    if (screen === SCREEN.ROULETTE && run?.status === 'active') {
+      setPendingRunNavigation(SCREEN.NOTIFICATIONS)
+      return
+    }
+    setScreen(SCREEN.NOTIFICATIONS)
+  }
+
+  useEffect(() => {
+    if (!pendingRunNavigation) return undefined
+
+    runNavigationDialogRef.current?.focus()
+
+    const handleNavigationDialogKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setPendingRunNavigation(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleNavigationDialogKeyDown)
+    return () => window.removeEventListener('keydown', handleNavigationDialogKeyDown)
+  }, [pendingRunNavigation])
 
   /* Previewing another account.
    *
@@ -766,17 +800,14 @@ function App() {
           <button
             type="button"
             className="secondary-button small-button"
-            onClick={() => {
-              setProfileUsername('geometricalmike')
-              setScreen(SCREEN.PROFILE)
-            }}
+            onClick={openProfiles}
           >
             Profiles
           </button>
           <button
             type="button"
             className="secondary-button small-button notification-button"
-            onClick={() => setScreen(SCREEN.NOTIFICATIONS)}
+            onClick={openNotifications}
             disabled={!auth.user}
           >
             <span>Notifications</span>
@@ -786,7 +817,7 @@ function App() {
               </span>
             )}
           </button>
-          {(screen === SCREEN.ROULETTE || screen === SCREEN.RESULTS) && run && (
+          {screen === SCREEN.RESULTS && run && (
             <div className="status-pill">
               <span>{run.status}</span>
               <strong>{currentStatus}</strong>
@@ -794,6 +825,85 @@ function App() {
           )}
         </div>
       </header>
+
+      {pendingRunNavigation && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setPendingRunNavigation(null)}
+        >
+          <div
+            className="modal run-navigation-dialog"
+            ref={runNavigationDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="run-navigation-title"
+            tabIndex={-1}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key !== 'Tab') return
+              const buttons = Array.from(
+                runNavigationDialogRef.current?.querySelectorAll('button:not([disabled])') ?? [],
+              )
+              if (!buttons.length) return
+
+              const first = buttons[0]
+              const last = buttons[buttons.length - 1]
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault()
+                last.focus()
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault()
+                first.focus()
+              }
+            }}
+          >
+            <h2 id="run-navigation-title">End your run to continue?</h2>
+            <p>
+              You need to end your current run before opening{' '}
+              {pendingRunNavigation === SCREEN.PROFILE ? 'Profiles' : 'Notifications'}.
+              You can discard it, or give up.{' '}
+              {auth.user
+                ? 'Your progress will be saved to your account before you continue.'
+                : 'You can sign in from the results screen to save the run.'}
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setPendingRunNavigation(null)}
+                autoFocus
+              >
+                Keep playing
+              </button>
+              <button
+                type="button"
+                className="danger-button"
+                onClick={() => {
+                  const destination = pendingRunNavigation
+                  setPendingRunNavigation(null)
+                  handleQuitRun(destination)
+                }}
+              >
+                {`Discard and open ${pendingRunNavigation === SCREEN.PROFILE ? 'Profiles' : 'Notifications'}`}
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  const destination = pendingRunNavigation
+                  setPendingRunNavigation(null)
+                  handleGiveUp(auth.user ? destination : SCREEN.RESULTS)
+                }}
+              >
+                {auth.user
+                  ? `Give up and open ${pendingRunNavigation === SCREEN.PROFILE ? 'Profiles' : 'Notifications'}`
+                  : 'Give up and review run'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {screen === SCREEN.REDEEM && (
         <RedeemCodePage
