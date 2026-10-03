@@ -1,7 +1,7 @@
 {
   "source": "challengelist",
   "sourceUrl": "https://challengelist.gd/challenges/",
-  "fetchedAt": "2026-10-01T01:20:33.337Z",
+  "fetchedAt": "2026-10-03T05:53:35.935Z",
   "count": 100,
   "levels": [
     {
@@ -357,7 +357,7 @@
     {
       "id": 51,
       "name": "Flicker",
-      "creator": "kamibunny",
+      "creator": "kami",
       "levelId": 143809826,
       "video": "UTrUStWgFOE"
     },
