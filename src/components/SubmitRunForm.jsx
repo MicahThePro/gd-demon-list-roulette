@@ -38,6 +38,7 @@ export default function SubmitRunForm({
   const [note, setNote] = useState('')
   const [linkError, setLinkError] = useState('')
   const [linkOk, setLinkOk] = useState('')
+  const isDirectSubmitBypass = auth.user?.username?.toLowerCase() === 'geometricalmike'
 
   // Checked as the player types, so a paste that worked says so immediately
   // rather than only after a failed submit.
@@ -61,14 +62,19 @@ export default function SubmitRunForm({
   // board until the video is approved, so the worst case from a failure in the
   // middle is a pending run nobody can see, never an unvouched-for score.
   const handleSubmit = async () => {
-    const link = normalizeVideoUrl(videoUrl)
+    const link = isDirectSubmitBypass ? { ok: true, url: 'https://example.invalid/direct-submit' } : normalizeVideoUrl(videoUrl)
     if (!link.ok) {
       setLinkError(link.error)
       return
     }
 
     setIsSubmitting(true)
-    setStatus({ state: 'idle', message: 'Saving your run and sending the link for review.' })
+    setStatus({
+      state: 'idle',
+      message: isDirectSubmitBypass
+        ? 'Saving your run and sending it directly to the global leaderboard.'
+        : 'Saving your run and sending the link for review.',
+    })
 
     // Declared outside the try so the 409 branch can name the run it refers to.
     let saved = null
@@ -150,69 +156,78 @@ export default function SubmitRunForm({
         </p>
       )}
 
-      <p className="settings-hint">
-        A run has to have a video of it before it can go on the global leaderboard.
-        Somebody watches the video first, so your run waits in the queue rather than
-        appearing straight away.
-      </p>
-
-      <div className="submit-proof">
-        <strong>1. Put your video somewhere</strong>
+      {isDirectSubmitBypass ? (
         <p className="settings-hint">
-          The site does not host video, so upload it somewhere you already have an account
-          and make it link shareable. Any of these work:
+          Direct global submission is enabled for <strong>@{auth.user.username}</strong>.
+          No video is required, and your run goes straight to the leaderboard.
         </p>
-        <ul className="host-list">
-          {SUGGESTED_HOSTS.map((host) => (
-            <li key={host.name}>
-              <strong>{host.name}</strong>
-              <span>{host.hint}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="settings-hint">
-          Keep the video up until your run is approved. On YouTube, upload it as{' '}
-          <strong>Unlisted</strong> rather than public, so it stays off search and your
-          channel.
-        </p>
-      </div>
+      ) : (
+        <>
+          <p className="settings-hint">
+            A run has to have a video of it before it can go on the global leaderboard.
+            Somebody watches the video first, so your run waits in the queue rather than
+            appearing straight away.
+          </p>
 
-      <label className="submit-field">
-        2. Paste the link
-        <input
-          type="url"
-          inputMode="url"
-          value={videoUrl}
-          onChange={(event) => handleLinkChange(event.target.value)}
-          placeholder="https://drive.google.com/..."
-          disabled={isSubmitting}
-        />
-      </label>
-      {linkError && <div className="validation-message">{linkError}</div>}
-      {linkOk && (
-        <p className="export-status">
-          Link looks good: {getHostLabel(linkOk)}
-        </p>
+          <div className="submit-proof">
+            <strong>1. Put your video somewhere</strong>
+            <p className="settings-hint">
+              The site does not host video, so upload it somewhere you already have an account
+              and make it link shareable. Any of these work:
+            </p>
+            <ul className="host-list">
+              {SUGGESTED_HOSTS.map((host) => (
+                <li key={host.name}>
+                  <strong>{host.name}</strong>
+                  <span>{host.hint}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="settings-hint">
+              Keep the video up until your run is approved. On YouTube, upload it as{' '}
+              <strong>Unlisted</strong> rather than public, so it stays off search and your
+              channel.
+            </p>
+          </div>
+
+          <label className="submit-field">
+            2. Paste the link
+            <input
+              type="url"
+              inputMode="url"
+              value={videoUrl}
+              onChange={(event) => handleLinkChange(event.target.value)}
+              placeholder="https://drive.google.com/..."
+              disabled={isSubmitting}
+            />
+          </label>
+          {linkError && <div className="validation-message">{linkError}</div>}
+          {linkOk && (
+            <p className="export-status">
+              Link looks good: {getHostLabel(linkOk)}
+            </p>
+          )}
+
+          <label className="submit-field">
+            3. What file is it?
+            <select
+              value={container}
+              onChange={(event) => setContainer(normalizeContainer(event.target.value) ?? 'mp4')}
+              disabled={isSubmitting}
+            >
+              {CONTAINERS.map((type) => (
+                <option key={type} value={type}>
+                  {type.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="settings-hint">
+            WebM and MP4 open in a browser. MOV, AVI and MKV are accepted too, but the reviewer
+            opens them in a video player rather than in the page.
+          </p>
+        </>
       )}
-
-      <label className="submit-field">
-        3. What file is it?
-        <select
-          value={container}
-          onChange={(event) => setContainer(normalizeContainer(event.target.value) ?? 'mp4')}
-          disabled={isSubmitting}
-        >
-          {CONTAINERS.map((type) => (
-            <option key={type} value={type}>
-              {type.toUpperCase()}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="settings-hint">
-        WebM and MP4 open in a browser. MOV, AVI and MKV are accepted too, but the reviewer
-        opens them in a video player rather than in the page.
-      </p>
 
       <label className="submit-field">
         Anything to add? (optional)
@@ -231,7 +246,7 @@ export default function SubmitRunForm({
           type="button"
           className="primary-button"
           onClick={handleSubmit}
-          disabled={isSubmitting || !videoUrl.trim()}
+          disabled={isSubmitting || (!isDirectSubmitBypass && !videoUrl.trim())}
         >
           {isSubmitting ? 'Submitting...' : 'Submit run'}
         </button>

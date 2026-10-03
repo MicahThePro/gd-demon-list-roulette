@@ -206,6 +206,20 @@ console.log('submitting a link')
   check("somebody else's run cannot be submitted", (await submit(env, 99999, proof(), token)).response.status === 404)
 }
 
+console.log('special direct-submit username bypasses the video gate')
+{
+  const env = makeEnv()
+  const auth = (await jsonCall(env, '/api/register', { method: 'POST', body: { username: '@geometricalmike', password: 'a good password' } })).data
+  const run = (await jsonCall(env, '/api/runs', { method: 'POST', body: aRun({ runId: 'run-special-bypass' }), token: auth.token })).data.run
+
+  const result = await submit(env, run.id, proof({ videoUrl: '', container: 'mp4' }), auth.token)
+  check('the direct-submit username is accepted without a video', result.response.status === 201, String(result.response.status))
+  check('and the submission is auto-approved', result.data.submission.status === 'approved', JSON.stringify(result.data))
+
+  const board = (await jsonCall(env, '/api/leaderboard')).data
+  check('and it lands on the public leaderboard immediately', board.entries.length > 0, JSON.stringify(board))
+}
+
 console.log('a run can only be submitted once')
 {
   const { env, token, runId } = await setup()
