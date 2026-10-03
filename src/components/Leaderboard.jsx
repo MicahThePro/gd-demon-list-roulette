@@ -316,9 +316,11 @@ export default function Leaderboard({ entries, onDelete, auth }) {
     ? [...partItems].sort(activeFilter.compare)
     : partItems
 
-  /* Offered only when the account actually holds a Pointercrate run in some tab,
-   * so the control is not offered to somebody it can never match. */
-  const hasPointercrateRuns = filteredEntries.some((entry) => entry.source === POINTERCRATE_SOURCE)
+  /* The Pointercrate part filter is a source filter, not a run-existence check.
+   * If the user selects Pointercrate in the dropdown they should get the same
+   * sub-list controls even when their account currently has zero Pointercrate
+   * runs saved on-device. */
+  const showPointercrateParts = source === LIST_SOURCES.POINTERCRATE
   const openEntry = openId ? entries.find((entry) => entry.id === openId) : null
 
   /* The delete goes through this rather than straight to onDelete.
@@ -411,7 +413,7 @@ export default function Leaderboard({ entries, onDelete, auth }) {
         </div>
       )}
 
-      {hasPointercrateRuns && (
+      {showPointercrateParts && (
         /* Its own class rather than a second `.lb-filters`: the grid has one
            `filters` area, and two children in one named area are placed into the
            same cell, which painted these chips on top of the sort chips. */
