@@ -606,7 +606,12 @@ function App() {
   // Giving up ends the run, records it on the leaderboard and shows results;
   // quitting just discards it and returns to the menu, leaving no trace. That
   // distinction matters, so this deliberately does not route through endRun.
-  const handleQuitRun = (nextScreen = run?.customRunId && customRunId ? SCREEN.CUSTOM_RUN : SCREEN.HOME) => {
+  const handleQuitRun = (destination) => {
+    // A button passes its click event to its handler. Treat only known screen
+    // names as explicit destinations; otherwise a normal quit would store the
+    // event object as `screen` and leave only the persistent header rendered.
+    const fallbackScreen = run?.customRunId && customRunId ? SCREEN.CUSTOM_RUN : SCREEN.HOME
+    const nextScreen = Object.values(SCREEN).includes(destination) ? destination : fallbackScreen
     setRun(null)
     trackedRunId.current = null
     setScreen(nextScreen)
