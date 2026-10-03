@@ -2,7 +2,7 @@
 
 # GD List Roulette
 
-**Extreme Demon Roulette, rebuilt and expanded.**
+**Geometry Dash challenge roulette, expanded into a community platform.**
 
 [**Play it live**](https://micahthepro.github.io/gd-list-roulette/) · [**Report an issue**](https://github.com/MicahThePro/gd-list-roulette/issues)
 
@@ -10,224 +10,471 @@
 
 ---
 
-GD List Roulette is a browser-based challenge game built around the idea of a random Geometry Dash run. Instead of picking a level yourself, you start a run, the app picks a level from a configured list, and you try to reach the target percentage. Clear enough levels in a row and you are effectively running a full roulette challenge across the list.
+GD List Roulette started as a challenge randomizer and evolved into a larger social challenge platform. At its core it is still a Geometry Dash list roulette: players start a run, the app picks levels from a list, and the player tries to clear the target percentage in sequence. But the project now also includes persistent accounts, public profiles, follows, notifications, leaderboard submissions, moderation tools, app version archives, and a Cloudflare-backed backend.
 
-It combines random challenge generation, account-based progression, leaderboard submissions, versioned builds, and a Cloudflare-powered backend. The result is a project that feels like both a game and a small application platform: players play, accounts track history, and admins or contributors can manage runs and data from the same ecosystem.
-
-This README is meant to be more approachable than the previous one. It explains what the project is, how the game works, how to run it locally, how the project is structured, and how the backend and deployment model fit together.
+This README is intentionally much longer than the original because the project has become more than a single browser game. It is a full game + community system + moderation tooling + deployment pipeline. The goal here is to explain not just how to play, but what the whole project does, how the data flows, how the app is structured, and how to actually work on it and deploy it.
 
 ---
 
 ## Table of contents
 
-- [What this project is](#what-this-project-is)
-- [Why the roulette mechanic works so well](#why-the-roulette-mechanic-works-so-well)
-- [Core features](#core-features)
-- [How a run works](#how-a-run-works)
-- [Rules and settings](#rules-and-settings)
-- [What the app does for players](#what-the-app-does-for-players)
-- [Playing old versions](#playing-old-versions)
-- [Local development](#local-development)
-- [Running the frontend and worker together](#running-the-frontend-and-worker-together)
+- [Project overview](#project-overview)
+- [What the project is](#what-the-project-is)
+- [Why roulette works so well](#why-roulette-works-so-well)
+- [Game loop and mechanics](#game-loop-and-mechanics)
+- [Rules and challenge settings](#rules-and-challenge-settings)
+- [Accounts and sessions](#accounts-and-sessions)
+- [Public profiles and social system](#public-profiles-and-social-system)
+- [Notifications and live state](#notifications-and-live-state)
+- [Leaderboard and submissions](#leaderboard-and-submissions)
+- [Admin moderation tools](#admin-moderation-tools)
+- [Versioned builds and archived releases](#versioned-builds-and-archived-releases)
+- [Architecture overview](#architecture-overview)
+- [Key database tables](#key-database-tables)
+- [Local development workflow](#local-development-workflow)
 - [Deployment workflow](#deployment-workflow)
 - [Project structure](#project-structure)
-- [Testing and linting](#testing-and-linting)
+- [Testing and validation](#testing-and-validation)
+- [Security and moderation protections](#security-and-moderation-protections)
 - [Privacy and data handling](#privacy-and-data-handling)
-- [Tech stack](#tech-stack)
 - [Troubleshooting](#troubleshooting)
+- [Tech stack](#tech-stack)
 - [Contributing](#contributing)
-- [Credits](#credits)
+- [Credit and sources](#credit-and-sources)
+- [Short version](#short-version)
 
 ---
 
-## What this project is
+## Project overview
 
-GD List Roulette is a fan-made challenge project for Geometry Dash players. The core idea is simple:
+GD List Roulette is a browser-based challenge app for Geometry Dash players. Instead of picking a route manually, the player starts a roulette challenge and the app picks levels from a configured list. The objective is to reach the target percentage, clear the level, and continue through the list while surviving the whole run.
+
+This project now goes much further than that. It includes:
+
+- account-based gameplay persistence
+- personal run history
+- leaderboard submissions and approval workflow
+- public profiles and social relationships
+- follow/unfollow logic
+- notification state and badge counts
+- admin moderation tools
+- archived version history
+- Cloudflare worker-backed APIs and D1 storage
+
+So the best way to think about the project is: it is a community challenge platform with a lot of game-loop logic sitting underneath it.
+
+---
+
+## What the project is
+
+The project is built around the challenge format of Geometry Dash level roulette. The idea is simple on paper:
 
 - choose a list
-- pick a target step size
-- get a random level from that list
-- reach that percentage
-- clear the level and continue to the next one
-- fail, skip, or time out and the run ends
-- if you clear 100%, you win the run
+- choose a target step
+- get a random level
+- clear or fail it
+- repeat until the run ends
+- maybe reach 100% and complete the whole challenge
 
-This is a very direct challenge format, but the project makes it richer by adding account history, list filtering, global leaderboard support, submission notes, run deletion, and older version archives.
+This is not just a random challenge generator. It is a full gameplay system with persistent state, social features, moderation, and leaderboard logic. The project can support a wide variety of challenge styles because the run is not fixed to a single set of rules.
 
-It is not just a randomizer. It is a full game loop with persistence and competition.
-
-The project sources its level data from well-known Geometry Dash list communities and supports several list types, including:
+Examples of supported list sources include:
 
 - Pointercrate
 - AREDL
 - Global Shitty List
 - Challenge List
 - Impossible Levels List
+- additional runtime list filtering and source selection
 
-The app is built to be flexible and replayable, while still feeling like a challenge run rather than a generic list viewer.
-
----
-
-## Why the roulette mechanic works so well
-
-The appeal is that it introduces unpredictability without losing the structure of a challenge. Instead of grinding a list in order, you are forced to react to whatever the app gives you. That makes each run feel different from the last.
-
-This creates a few benefits:
-
-- more variety than a fixed progression
-- a stronger sense of achievement when a run survives multiple difficult levels
-- an easier way to target a list without spending time picking levels manually
-- a better way to compare player performance with clear run records
-- a fun format for both casual and highly competitive players
-
-In other words, the roulette system makes a long list of difficult levels feel like a game instead of a spreadsheet.
+The project is designed to feel replayable and flexible while still behaving like a serious challenge app rather than a random web toy.
 
 ---
 
-## Core features
+## Why roulette works so well
 
-### Challenge generation
+The roulette mechanic is compelling because it keeps structure while creating uncertainty. Instead of choosing every battle manually, the player is forced to handle whatever the app throws at them.
 
-The app can generate levels from several community lists and supports configurable step sizes, such as:
+This creates several advantages:
 
-- 1% steps for longer, more classic runs
-- 5% or 10% steps for faster, more compressed runs
-- custom ranges to narrow a list down to a subset of levels
+- more variety than a simple fixed progression run
+- a stronger sense of accomplishment on a long run
+- a more interesting challenge format for players who want to test themselves against random lists
+- better comparison between players when runs are stored and ranked
+- replayability without needing a huge amount of extra content
 
-This makes the game flexible enough for quick runs, grind sessions, or stricter challenge play.
-
-### Persistent accounts
-
-Players can sign in with a username and password, and their completed runs are tied to their account. This is important because many of the app's features only make sense when runs are retained across sessions and devices.
-
-### Run history and deletion tools
-
-The app keeps run history tied to the player account and allows runs to be reviewed, deleted, or cleared. This is useful for both correction and control over what appears on the leaderboard or in a player's personal history.
-
-### Leaderboards
-
-There are multiple leaderboard modes and filterable board categories. Players can submit runs with video proof and compare themselves against other community members using rankings based on their completed challenge runs.
-
-### Old version compatibility
-
-The project keeps archived builds of older releases in the versions folder so players can still access historical versions of the app. This is especially useful for a project with many updates and a changing UI.
-
-### Censoring and presentation control
-
-The app can mask profanity in level names while still storing the original names on the backend. This is a nice example of preserving data integrity while still making the UI more comfortable to read in public contexts.
-
-### Admin tools and worker logic
-
-A lot of the app's "behind the scenes" functionality is handled by the Cloudflare Worker, including list proxying, authentication, tracking runs, and leaderboard behavior. This allows the project to do more than a purely client-side challenge page.
+The step system matters a great deal. A small step such as 1% creates a much longer run than a larger step like 5% or 10%. The same app can therefore support calm long-form runs or high-intensity short runs depending on the configuration.
 
 ---
 
-## How a run works
+## Game loop and mechanics
 
-A run follows a predictable loop, but the content is always generated dynamically.
+The core gameplay flow is intentionally clean and consistent.
 
-1. Pick a list.
-2. Pick a step size and any optional rank filters.
-3. Start the run.
-4. The app chooses a random level and sets a target percentage.
-5. You attempt the level at that target.
-6. If you clear it, the target moves up by one step and a new level is picked.
-7. If you miss it, the run ends.
-8. If skipping is allowed, you can skip the level and still continue, usually with some penalty or record attached.
-9. If you reach 100%, the run is complete and you win.
+1. The player picks a list or subset.
+2. They choose a run step size and other challenge settings.
+3. A random level is selected from the active source list.
+4. The run sets a target percentage for that level.
+5. The player tries to reach that target.
+6. If successful, the target advances and a new level is chosen.
+7. If failed, skipped, or timed out, the run ends.
+8. If the player reaches 100% and completes the route, the run is considered a successful roulette challenge.
 
-The exact step size matters a lot. A 1% step creates a long challenge with many levels, while larger steps shorten it dramatically. This is part of what makes the app so replayable: the same base system can produce very different experiences just by changing one setting.
+The project tracks lots of run data beyond a simple pass/fail result:
 
-One important design detail: the run keeps its own rules. If a player changes settings mid-run, the current run is not rewritten to match the new configuration. This avoids confusion and keeps the run consistent.
+- total score or evaluation result
+- rounds played
+- skipped levels
+- time spent
+- percent-step progress
+- source list and filtering context
+- leaderboards and accepted-submission state
 
----
-
-## Rules and settings
-
-The app has multiple in-browser settings that affect how runs behave. These settings are stored locally rather than hardcoded, which means a player's preferences are remembered between visits.
-
-### Allow skipping
-
-Skipping is off by default. That is intentional: the standard tournament-style run is the one where you push through every level without extra outs. When skipping is enabled, players can skip a level and explain why they did it. That is useful for fairness and for later review of a run.
-
-### Time limits
-
-There are two main time-related settings:
-
-- a time limit per level
-- a time limit for the whole run
-
-These can turn a run into a speed challenge, which makes the format more varied. A level timeout is recorded separately from a failed attempt, which helps players understand why a run ended.
-
-### Difficulty step
-
-The step decides how much the target percentage increases after each successful clear. This can be tuned from extremely gradual play to much shorter run lengths.
-
-### List selection
-
-Players can pick the list they want to play from. This does not just change the level pool; it changes the whole feel of the challenge. A difficult list full of precise, punishing levels is a very different experience from a lower-pressure list.
-
-### Rank filtering
-
-The app supports narrowing a list by rank range for more specific challenge formats. This is useful if someone wants to play a subset of the list rather than the whole thing.
-
-### Censor mode
-
-The app can hide swear words in level names by default, which is easier for broad public use. When disabled, the names are displayed in their original form. The data is still stored as-is; the setting only changes what is rendered on screen.
+These details are important because they make the run more reviewable and allow the app to support ranked challenge submissions rather than just a loose one-off run history.
 
 ---
 
-## What the app does for players
+## Rules and challenge settings
 
-This project is built around player retention and personal progression, not just one-off challenge attempts.
+The app supports several challenge rules and configuration values. These are not decorative; they define how the challenge feels.
 
-### Save codes and run carry-over
+### Step size
 
-A run can be encoded into a string that can be loaded on another device. This is useful when a player is mid-run and wants to continue later or share the run state with another device. Large codes are designed to survive copy and paste even if wrapped by chat apps or text boxes.
+Step size is one of the biggest gameplay knobs. It determines how quickly the target percentage rises after a successful round.
 
-### History and personal leaderboard
+Examples:
 
-Each account has a personal leaderboard and full run history. Players can inspect their own performance, see which levels they cleared, check how long each level took, and review skip reasons. The history is not just a cosmetic list; it is the core record of the player's progress.
+- 1% step: long, methodical, high-persistence runs
+- 5% step: a shorter but still demanding challenge
+- 10% step: compressed and brutal run style
 
-### Leaderboard submission
+### Skipping
 
-A run can be submitted with a video link after the fact. The global leaderboard is distinct from the player's personal run history, and a run is only accepted if it truly meets the challenge rules and includes reviewable proof.
+Skipping can be toggled in the app. When enabled, a player can skip a round and record a reason. This is useful for challenge fairness and for understanding why a run ended.
 
-### Run deletion and cleanup
+### Timing rules
 
-Runs can be deleted individually or cleared in bulk. Since runs are tied to an account, deleting one removes it from the relevant places and prevents stale records from lingering in the system.
+The app records and evaluates timing values such as:
 
-### Account display names
+- round duration
+- run duration
+- timeout behavior
+- time-based failure cases
 
-The app separates the username from the display name. Your username is your permanent identity for login and account matching; your display name is what gets shown in public spaces. This keeps the app readable without making the identity system confusing or clumsy.
+This matters because a run can fail for a real gameplay problem or simply because the timer expired. The app keeps those apart so the player can understand why the challenge ended.
+
+### Rank filters
+
+The project can narrow challenge sources by rank ranges, giving players a way to run a subset of a list rather than the entire thing. This makes the app more flexible and better suited to different player preferences.
+
+### List source selection
+
+The app can switch between multiple list ecosystems instead of forcing one fixed source. That makes the challenge feel more like a platform and less like a static single-list tool.
+
+### Censoring and presentation controls
+
+The app can hide or display profanity or offensive words in public name displays without deleting the underlying stored data. This is a nice balance between preserving data integrity and making the site feel safer and cleaner for public use.
 
 ---
 
-## Playing old versions
+## Accounts and sessions
 
-The project keeps old builds of previous releases under the versions folder so older versions can still be opened and played without breaking the current app. This is particularly helpful because projects like this evolve over time, and some players prefer to compare older builds or continue using a known version.
+This project is not only a local challenge app. It has a real account layer with sessions and persistent identity.
 
-The README and app both treat old versions as frozen builds. They are static builds of previous releases and are served separately from the current app. Nothing you do in an archived build affects the live site.
+### Username and display name separation
 
-This is a practical benefit for:
+The app separates these two concepts:
 
-- debugging regressions
-- comparing older UI behavior
-- preserving release history
-- giving players easier access to older builds
+- username: account identity used for login, storage, session checks, and account matching
+- display name: public-facing name shown in leaderboards and profile contexts
+
+This gives the app a clearer identity model and keeps account uniqueness separate from how the player wants to appear publicly.
+
+### Sessions and auth
+
+Authentication is handled by the Cloudflare worker. A session token is stored on the client and sent with authenticated requests. The worker verifies that token before allowing sensitive actions such as:
+
+- submitting runs
+- viewing personal data
+- following users
+- updating profile-related state
+- accessing admin endpoints
+
+### Player data sync
+
+The app supports a mirrored player data system that stores browser-side history and settings on the server. This is useful because a moderator can inspect what a player has synced without needing to access their actual browser directly.
+
+### One-time login codes
+
+The app includes support for temporary one-time login codes. These are useful for support/account workflows because they allow someone to access a user account in a safe, explicit, single-use way without exposing the real password.
 
 ---
 
-## Local development
+## Public profiles and social system
 
-### Prerequisites
+A major addition to the app is the profile/social layer. This transformed the project from a challenge game into a broader community app.
 
-You will need:
+### Public profiles
 
-- Node.js 20 or newer
-- npm
-- Git
-- a Cloudflare Wrangler setup if you want to test the worker and database locally
+Users have public profile pages showing:
+
+- username and display name
+- follower and following counts
+- accepted public runs
+- run history and leaderboard entries
+- profile counts and visible stats
+- profile search and browsing
+
+This makes the app more like a social platform than a single-player challenge script.
+
+### Follow and unfollow
+
+Users can follow and unfollow other users. The relationship is stored server-side and is used for counts, profile state, and notification generation.
+
+### Username search
+
+The profile search supports partial matching, not just exact matches. That makes discovery much smoother and makes the social layer feel more like a live community rather than a static profile list.
+
+### Profile pagination
+
+Run lists on profiles are paginated to keep long histories readable. This is essential when someone has many runs or lots of approved submissions.
+
+### Social-state synchronization
+
+The app refreshes social data from the backend instead of pretending it can trust purely local state. That matters because follow buttons, follower counts, and notification counts can otherwise become stale and confusing.
+
+### Social cleanup on account deletion
+
+When an account is deleted, the worker cleans up related relationships to prevent stale follow records or orphaned social data. This keeps the social graph consistent.
+
+---
+
+## Notifications and live state
+
+The app also includes a notifications system.
+
+### Notification feed
+
+Users can access notifications for social activities such as:
+
+- follows
+- unfollows
+- social account events
+- account-related system notifications
+
+### Unread badge tracking
+
+The app tracks unread notifications and displays a badge count when there are new entries. This makes notifications feel like a real part of the app rather than a hidden background feature.
+
+### Real-time refresh behavior
+
+Notification counts and social state are refreshed from the backend as the user interacts with the app. This avoids stale states where the screen appears one way but the server has already changed.
+
+### Follow toggles and immediate UI sync
+
+The follow button changes based on the actual backend state. If a user follows someone, the button updates immediately and the counts refresh. That is important because otherwise the app would feel broken or inaccurate.
+
+---
+
+## Leaderboard and submissions
+
+The leaderboard is one of the central competitive surfaces of the project.
+
+### Approved runs only
+
+Public leaderboard entries are only created from approved runs. Pending or rejected entries are not promoted to the board. This keeps the board cleaner and more honest.
+
+### Submission review workflow
+
+Players can submit a run by sending a video URL, container info, and note. Moderators then review the submission and decide whether to:
+
+- approve
+- reject
+- delete
+
+This creates a proper moderation cycle and keeps leaderboard entries reliable.
+
+### Video verification
+
+Video links are validated before submission is accepted. Unsafe schemes such as `javascript:`, `data:`, or `file:` are rejected. Most valid URLs are accepted, while suspicious or malformed ones are blocked.
+
+### List filtering on leaderboard
+
+The leaderboard supports filtered views such as:
+
+- all lists
+- main list only
+- legacy list only
+- source-specific filters
+
+This makes the board more useful for both broad challenge viewing and more focused competitive views.
+
+### Ranking and public stats
+
+The app calculates public rank and performance values using approved run data and challenge metadata. These stats help players measure progress and compare themselves against the wider community.
+
+---
+
+## Admin moderation tools
+
+The admin system is a serious part of the application and not just a hidden debug panel. Moderators can inspect and manage the data behind the game.
+
+### Admin passcode flow
+
+The worker protects admin routes behind a passcode. Wrong attempts are tracked, and repeated failures can trigger lockouts. This adds a basic but meaningful protection layer.
+
+### Submission queue
+
+The admin queue shows submissions grouped by status. Moderators can filter by pending, approved, rejected, or all entries and review each case in detail.
+
+### Per-submission review details
+
+Each moderated run includes detailed metadata such as:
+
+- username and display name
+- score and percent step
+- rounds played and skipped counts
+- time spent
+- file size and format
+- player note
+- video URL and host
+- review state
+
+This is enough information for a moderator to judge the run fairly.
+
+### Account inspection
+
+Admins can search users, inspect profiles, view run histories, read mirrored data, revoke or issue login codes, and delete accounts if necessary.
+
+### Run hiding and restoration
+
+A run can be hidden from public views without fully deleting the underlying data. This is useful when an entry needs to be removed temporarily but should remain recoverable.
+
+### Audit log
+
+Moderator actions are recorded in an audit log so there is a paper trail of what happened. This is very important in a system that handles social and account-level actions.
+
+### Stats dashboard
+
+The app also now includes an admin stats tab that reports values the app can actually calculate from existing database data, such as:
+
+- number of accounts
+- number of runs
+- approved runs
+- pending and rejected submissions
+- total follows
+- total notifications
+- profiles with approved runs
+- most-followed user and follower count
+
+This keeps the stats panel grounded in real data rather than invented metrics.
+
+---
+
+## Versioned builds and archived releases
+
+The project keeps historical builds under the versions directory. These are frozen snapshots rather than live app states.
+
+This is valuable because:
+
+- older versions can still be accessed
+- regression comparisons are easier
+- historical builds remain available for players and maintainers
+- the current build and the archived builds are kept separate
+
+This is an operational choice, not a cosmetic one. It gives the project a release history and makes it easier to compare current behavior against old versions.
+
+---
+
+## Architecture overview
+
+The app is built around a split architecture:
+
+- React frontend for UI and gameplay
+- Cloudflare worker for API logic and validation
+- D1 database for persistence
+- static hosting for the current web app
+- archived versions for historical frontends
+
+### Frontend layer
+
+The frontend handles:
+
+- gameplay flow
+- run state and UI
+- login and session state
+- profiles and leaderboards
+- admin UI
+- notification display
+- social state rendering
+
+### Worker layer
+
+The worker handles:
+
+- auth checks
+- run validation
+- leaderboard queries
+- social logic
+- moderation routes
+- database access and cleanup
+- passcode enforcement
+
+### Database layer
+
+The D1 database stores the main state of the platform such as users, sessions, runs, submissions, follows, notifications, admin audit log rows, and mirrored data.
+
+This split is important because it keeps the frontend lightweight while letting the backend enforce rules and maintain real authority over the platform state.
+
+---
+
+## Key database tables
+
+The app relies on a fairly rich schema for a project of this size. The main tables include:
+
+### users
+
+Stores account identity, username, display name, and creation metadata.
+
+### sessions
+
+Stores active user sessions and token-based auth state.
+
+### runs
+
+Stores the actual run history and challenge details.
+
+### submissions
+
+Stores the evidence, review state, and moderation data for leaderboard entries.
+
+### follows
+
+Stores social graph relationships between users.
+
+### notifications
+
+Stores feed items for user activity and updates.
+
+### admin_audit
+
+Stores moderation actions and activity records.
+
+### player_data
+
+Stores mirrored browser state, local preserved settings, and player history.
+
+### trashed_runs
+
+Stores hidden or removed run markers without destroying the original run data.
+
+This model is what makes the social and moderation systems possible without relying on a single giant unsafely-structured JSON blob.
+
+---
+
+## Local development workflow
+
+To work on the project locally, you generally need both the frontend and the worker running at the same time.
 
 ### Install dependencies
 
@@ -235,15 +482,11 @@ You will need:
 npm install
 ```
 
-This installs the dependencies required to run both the frontend and the worker tooling.
-
 ### Start the frontend
 
 ```bash
 npm run dev
 ```
-
-This runs the Vite development server. The site is usually available at a local URL such as http://localhost:5173.
 
 ### Start the worker
 
@@ -251,66 +494,52 @@ This runs the Vite development server. The site is usually available at a local 
 npm run worker:dev
 ```
 
-This runs the Cloudflare Worker in development mode, which is necessary if you want to test list fetching, account flows, leaderboard APIs, and backend logic.
-
----
-
-## Running the frontend and worker together
-
-The frontend and backend are separate but complementary systems. In practice, the app works best when both are running at the same time during development.
-
-Typical workflow:
-
-```bash
-npm run dev
-npm run worker:dev
-```
-
-Use one terminal for the front-end and another for the Cloudflare worker. This lets you test the browser UI and the APIs together without needing to redeploy every time.
-
-The frontend alone can still load, but many features depend on the worker being available for real data, authentication, and leaderboard behavior.
+Use separate terminals for the frontend and the worker so you can test the UI and the API together without needing to redeploy every time.
 
 ---
 
 ## Deployment workflow
 
-This project has a split deployment model:
+The app has a split deployment model:
 
-- the frontend is a static bundle hosted on GitHub Pages
-- the worker and database live on Cloudflare Workers and D1
+- frontend is deployed with GitHub Pages
+- worker and database are deployed on Cloudflare Workers and D1
 
-That means deployment is intentionally two-part instead of one monolithic process.
+This means deployment is intentionally two-part instead of one monolithic push.
 
-### Frontend deployment
+### Frontend deploy
 
 ```bash
 npm run deploy
 ```
 
-This command does the following:
+This does the frontend build and publishes the static site to GitHub Pages.
 
-- builds the app
-- copies frozen old version builds into place
-- publishes the generated dist folder to the GitHub Pages branch
+### Database migration
 
-GitHub Pages uses the gh-pages package to publish the built site. If the page does not update immediately, a hard refresh is often needed. Deployment logs in the repository settings can also help diagnose failures.
+```bash
+npm run db:migrate
+```
 
-Important notes:
+This applies D1 schema changes and should be run before any worker deployment when the schema changes.
 
-- `dist/` should not be committed
-- `gh-pages` needs repo push access
-- branch protection or deployment settings may block a successful update
+### Worker deploy
 
-### Worker and database deployment
+```bash
+npm run worker:deploy
+```
+
+This deploys the worker logic and API layer to Cloudflare.
+
+### Full order
 
 ```bash
 npm run db:migrate
 npm run worker:deploy
+npm run deploy
 ```
 
-The migration must happen before deploying the worker after a schema change. This is not optional. If the worker is deployed before the D1 schema has been updated, the new worker may query columns that do not exist yet and fail on requests.
-
-The worker configuration, CORS settings, and allowed list names live in the Wrangler configuration file.
+This sequence matters because the database schema and the worker logic need to match before the live system can be trusted.
 
 ---
 
@@ -318,62 +547,69 @@ The worker configuration, CORS settings, and allowed list names live in the Wran
 
 ```text
 .
-├── admin/                  # standalone admin entry page
-├── public/                 # public static files and generated data
-├── redeem/                 # redeem-related static entry point
-├── scripts/                # release scripts, data builders, and test helpers
-├── src/                    # frontend React app
-│   ├── components/         # UI pieces like forms, dialogs, leaderboards, banners
-│   ├── data/               # changelog and version metadata
-│   ├── hooks/              # custom React hooks for state, timers, auth, and settings
-│   ├── pages/              # app pages such as home, roulette, results, redeem, admin
-│   ├── services/           # list fetching, API communication, and app logic
-│   ├── utils/              # helper functions for codes, roulette, and submission logic
-│   ├── App.jsx             # top-level app component and routing layout
-│   ├── App.css             # styles for the app shell and pages
-│   ├── index.css           # base styling and theme setup
-│   └── main.jsx            # app bootstrap
-├── versions/               # archived builds of older releases
-├── worker/                 # Cloudflare Worker and server-side API logic
-│   ├── migrations/         # D1 schema migrations
-│   └── *.test.js           # worker test files
-├── challenge-list.json      # challenge list fallback snapshot
-├── impossible-levels.json  # impossible levels fallback snapshot
-├── index.html              # app entry page
-├── package.json            # scripts and dependencies
-├── vite.config.js          # Vite configuration
-├── wrangler.jsonc          # Cloudflare worker configuration
-├── README.md               # project documentation
-├── eslint.config.js        # linting configuration
-├── .gitignore              # ignored build and local artifacts
+├── admin/                   # standalone admin entry page
+├── public/                  # generated public data and static files
+├── redeem/                  # redeem page entry point
+├── scripts/                 # build, migration, and utility scripts
+├── src/                     # frontend React app
+│   ├── components/          # UI panels, dialogs, leaderboard components
+│   ├── data/                # changelog/version metadata
+│   ├── hooks/               # timers, auth, countdowns, settings, data hooks
+│   ├── pages/               # home, profile, results, leaderboard, admin pages
+│   ├── services/            # API and worker request helpers
+│   ├── utils/               # validation, challenge logic, utilities
+│   ├── App.jsx              # root app and routing
+│   ├── App.css              # main app styling
+│   ├── index.css            # theme and base CSS
+│   └── main.jsx             # render entry point
+├── versions/                # archived historical builds
+├── worker/                  # Cloudflare worker and server-side logic
+│   ├── migrations/          # D1 schema files
+│   └── *.test.js            # backend test files
+├── challenge-list.json       # challenge list snapshot
+├── impossible-levels.json    # impossible list snapshot
+├── index.html               # app entry file
+├── package.json             # scripts and dependency list
+├── vite.config.js           # Vite config
+├── wrangler.jsonc           # Cloudflare config and bindings
+├── README.md                # this project documentation
+├── PROJECT_EXPLAINER.md     # longer conceptual overview of the app
+├── eslint.config.js         # linting config
+├── .gitignore               # ignored local and generated files
 └── ...
 ```
 
-The project is organized around a front-end app and a worker API, which is why the repo contains both React code and Cloudflare-related tooling.
+This project is intentionally split between the browser app and the backend API, which is why the repository contains both frontend and worker logic.
 
 ---
 
-## Testing and linting
+## Testing and validation
 
-The project includes tests for worker logic, service logic, and render behavior.
+The project has a real test layer for the worker and supporting services, which is important because the backend owns a large amount of the platform logic.
 
-### Main test suite
+### Main worker tests
+
+```bash
+npm run worker:test
+```
+
+### Render tests
+
+```bash
+npm run test:render
+```
+
+### Service tests
+
+```bash
+npm run test:services
+```
+
+### Full suite
 
 ```bash
 npm test
 ```
-
-This runs the project test groups together.
-
-### Focused scripts
-
-```bash
-npm run worker:test
-npm run test:services
-npm run test:render
-```
-
-These are helpful when you want to validate a specific area without running the full suite.
 
 ### Linting
 
@@ -381,117 +617,146 @@ These are helpful when you want to validate a specific area without running the 
 npm run lint
 ```
 
-This runs ESLint to catch code issues and keep the codebase consistent.
+Because the project includes authentication, moderation, run validation, follows, and notifications, testing is not optional. These systems are easy to break in subtle ways if they are not validated.
+
+---
+
+## Security and moderation protections
+
+The project includes multiple protection layers because it is not just a static challenge site, but a community app with user data and moderation.
+
+### Passcode-protected admin routes
+
+Admin endpoints use a passcode model and enforce it server-side. This prevents casual access to moderation routes.
+
+### Lockout system
+
+Wrong passcode attempts can trigger lockouts so repeated guessing is less effective.
+
+### URL validation
+
+Submission links are checked before they are accepted. Dangerous or malformed URLs are rejected.
+
+### Social cleanup on account deletion
+
+Follow data and related social records are removed when an account is deleted to prevent stale relationships.
+
+### Audit logging
+
+Admin actions are recorded in an audit table so there is accountability for moderation decisions.
+
+These layers are important because once the app becomes a real community platform, safety and trust become operational concerns rather than optional extras.
 
 ---
 
 ## Privacy and data handling
 
-The project places a lot of value on respecting player privacy and keeping data usage minimal.
+The project is designed to keep personal data limited and understandable.
 
-- there are no analytics scripts
-- there is no email-based account identity system
-- passwords are not stored as plain text
-- account identities are based on usernames rather than personal details
-- video files are not hosted by the site itself
-- the app masks offensive words in display names without altering the stored underlying values
-- runs are meant to live on the account rather than be copied to multiple local devices
+- no email-based identity system is required
+- passwords are not stored directly in plain text
+- usernames are kept as account identity markers
+- sessions are validated server-side
+- public profile state remains distinct from private account state
+- video proof is stored as a link rather than a hosted local file
+- profanity can be hidden in display output without destroying the original stored data
+- moderation actions are logged instead of silently disappearing
 
-This is a good fit for a community challenge app because it keeps the system simple while still supporting persistent history and public leaderboard submissions.
-
----
-
-## Tech stack
-
-- [React 19](https://react.dev/) for the front-end interface
-- [Vite 8](https://vite.dev/) for local development and builds
-- [Cloudflare Workers](https://workers.cloudflare.com/) for the API and proxy layer
-- [Cloudflare D1](https://developers.cloudflare.com/d1/) for the data store
-- [GitHub Pages](https://pages.github.com/) for hosting the static front-end
-- [ESLint](https://eslint.org/) for linting and code quality checks
-
-Because the site is served from GitHub Pages while the worker is hosted on a Cloudflare origin, the app uses CORS-aware requests and authorization headers rather than assuming all requests come from the same origin.
+This is a sensible approach for a challenge community where public stats and personal run history are important, but people still need privacy and control over their account identity.
 
 ---
 
 ## Troubleshooting
 
-### API requests fail
+### The frontend loads but no data appears
 
-Check whether the worker is running and whether the CORS configuration matches the frontend origin.
+Check whether the worker is running and whether the frontend is hitting the correct API route.
 
-### Old site content is still showing
+### The worker fails after a schema change
 
-This is usually a cache issue. Hard refresh and check the deployment logs. GitHub Pages often takes time to propagate a new build.
-
-### Deploy fails after a schema change
-
-Run the migration before deploying the worker:
+Run the migration before redeploying:
 
 ```bash
 npm run db:migrate
 npm run worker:deploy
 ```
 
-### Local app seems incomplete
+### GitHub Pages still shows old content
 
-Make sure the frontend and worker are both running. Many app features depend on the worker being online for data and API responses.
+This is usually a cache issue. Hard-refresh and make sure the deployment completed successfully.
 
-### A run appears inconsistent between devices
+### Social counts look stale
 
-If your runs are tied to your account, make sure you are signed in on the correct account. The app intentionally keeps run history account-based instead of mixing local browser state with account state.
+The project explicitly refreshes social state from the backend. This usually means the page is not reloading social data or the data is not yet synced on the server.
+
+### Admin tools do not work
+
+Check the passcode, the worker secret, and whether the route is being called with the correct headers.
+
+### Archived versions do not match the live app
+
+That is expected. Archived builds are frozen historical snapshots, not active app builds.
+
+---
+
+## Tech stack
+
+- React 19
+- Vite 8
+- Cloudflare Workers
+- Cloudflare D1
+- GitHub Pages
+- Wrangler
+- ESLint
+- Git
+
+This stack is a good fit for a challenge game that needs both a modern frontend and a real backend that can handle users, moderation, and live community data.
 
 ---
 
 ## Contributing
 
-Contributions are welcome, especially for areas such as:
+Contributions are welcome in areas such as:
 
-- gameplay polish
-- UI improvements
-- accessibility fixes
-- leaderboard submission flow improvements
-- account and moderation tools
-- better documentation
-- deployment and build improvements
-- old-version compatibility work
+- gameplay balance and tuning
+- UI polish and accessibility work
+- moderation tool improvements
+- profile/social enhancements
+- performance fine-tuning
+- backend validation and edge-case fixes
+- documentation and release notes
+- deployment workflow improvements
 
-A sensible contribution workflow is:
+A healthy contribution flow is:
 
-1. fork the project
-2. create a feature branch
-3. make the smallest relevant change
-4. run the relevant test or validation commands
-5. open a clear pull request with context and notes
+1. fork the repo
+2. create a branch for the feature or fix
+3. make a focused change
+4. validate the relevant tests
+5. open a clear pull request with context
 
-This project is especially friendly to contributors who like working on full-stack web apps, user accounts, worker APIs, and community-driven challenge systems.
+This project is especially good for contributors who enjoy full-stack work across frontend, worker API, database logic, and deployment workflow.
 
 ---
 
-## Credits
+## Credit and sources
 
-Built by [GeometricalMike](https://gdbrowser.com/u/geometricalmike).
+Built around a community-first Geometry Dash challenge format.
 
-Dedicated to:
+The project pulls from and supports a number of community list sources, including:
 
-- [Vortrox](https://gdbrowser.com/u/vortrox)
-- [KingSammelot](https://gdbrowser.com/u/kingsammelot)
-- [Zoink](https://gdbrowser.com/u/zoink)
+- Pointercrate
+- AREDL
+- Global Shitty List
+- Challenge List
+- Impossible Levels List
 
-Level data and challenge source content comes from:
-
-- [Pointercrate](https://pointercrate.com/)
-- [AREDL](https://aredl.net/)
-- [Global Shitty List](https://globalshittylist.com/)
-- [Challenge List](https://challengelist.gd/)
-- [Impossible Levels List](https://impossiblelevels.com/)
-
-All level names and creators belong to their respective owners and sources.
+The project’s logic, social layer, leaderboard system, and moderation tooling are designed to support a live community challenge platform rather than simply hosting a one-off randomizer.
 
 ---
 
 ## Short version
 
-If you want the project explained in one sentence: GD List Roulette is a Geometry Dash challenge roulette built with React, Vite, Cloudflare Workers, and D1, where players generate random levels from curated community lists, track their runs in accounts, submit video-verified leaderboard attempts, and keep the experience replayable and extensible over time.
+GD List Roulette is a Geometry Dash challenge roulette app built with React, Vite, Cloudflare Workers, and D1. It turns curated community lists into random challenge runs, stores player progress in accounts, supports public profiles and follows, adds notification and moderation systems, tracks leaderboard submissions, preserves archived builds, and uses a split frontend/backend deployment model.
 
-That is the heart of it: a community-oriented challenge game built around random difficulty, persistence, and competition.
+In short: this is a full challenge-community platform built around randomized gameplay, public competition, user accounts, social interaction, and moderation.
