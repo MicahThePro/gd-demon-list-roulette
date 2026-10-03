@@ -505,6 +505,83 @@ export const handleAdminAccountRoutes = async ({ db, request, url, key, adminPas
     }
   }
 
+  if (rest === 'stats' && request.method === 'GET') {
+    const [users, runs, follows, notifications, submissions, mostFollowed] = await Promise.all([
+      db.prepare('SELECT COUNT(*) AS total FROM users').first(),
+      db.prepare('SELECT COUNT(*) AS total FROM runs').first(),
+      db.prepare('SELECT COUNT(*) AS total FROM follows').first(),
+      db.prepare('SELECT COUNT(*) AS total FROM notifications').first(),
+      db.prepare('SELECT COUNT(*) AS total FROM submissions').first(),
+      db
+        .prepare(
+          `SELECT u.username, COUNT(f.id) AS follower_count
+             FROM users u
+             LEFT JOIN follows f ON f.following_user_id = u.id
+            GROUP BY u.id, u.username
+            ORDER BY follower_count DESC, u.username ASC
+            LIMIT 1`,
+        )
+        .first(),
+    ])
+
+    const totalApprovedRuns = await db
+      .prepare(
+        `SELECT COUNT(*) AS total
+           FROM runs r
+           WHERE EXISTS (
+             SELECT 1 FROM submissions s
+              WHERE s.run_id = r.id AND s.status = 'approved'
+           )`,
+      )
+      .first()
+
+    const totalPendingSubmissions = await db
+      .prepare(
+        `SELECT COUNT(*) AS total FROM submissions WHERE status = 'pending'`,
+      )
+      .first()
+
+    const totalRejectedSubmissions = await db
+      .prepare(
+        `SELECT COUNT(*) AS total FROM submissions WHERE status = 'rejected'`,
+      )
+      .first()
+
+    const profilesWithApprovedRuns = await db
+      .prepare(
+        `SELECT COUNT(DISTINCT r.user_id) AS total
+           FROM runs r
+           WHERE EXISTS (
+             SELECT 1 FROM submissions s
+              WHERE s.run_id = r.id AND s.status = 'approved'
+           )`,
+      )
+      .first()
+
+    const stats = {
+      totalAccounts: Number(users?.total ?? 0),
+      totalRuns: Number(runs?.total ?? 0),
+      totalApprovedRuns: Number(totalApprovedRuns?.total ?? 0),
+      totalPendingSubmissions: Number(totalPendingSubmissions?.total ?? 0),
+      totalRejectedSubmissions: Number(totalRejectedSubmissions?.total ?? 0),
+      totalFollows: Number(follows?.total ?? 0),
+      totalNotifications: Number(notifications?.total ?? 0),
+      totalSubmissions: Number(submissions?.total ?? 0),
+      profilesWithApprovedRuns: Number(profilesWithApprovedRuns?.total ?? 0),
+      topFollowerCount: Number(mostFollowed?.follower_count ?? 0),
+      topFollowerUser: mostFollowed?.username ?? null,
+      mostFollowedUser: mostFollowed?.username ?? null,
+    }
+
+    return {
+      status: 200,
+      body: {
+        ...stats,
+        stats,
+      },
+    }
+  }
+
   if (rest !== 'accounts' && !rest.startsWith('accounts/')) {
     // Not ours. The submission queue owns /api/admin/submissions, and claiming
     // the whole prefix here would answer for routes that are not ours.
@@ -726,6 +803,13 @@ export const handleAdminAccountRoutes = async ({ db, request, url, key, adminPas
       return { error: 'Type the username to confirm the delete', status: 400 }
     }
 
+    // The social tables are user-scoped and may contain rows pointing at the
+    // account being removed. A direct `DELETE FROM users` is the actual account
+    // removal, but the follow and notification rows are also part of that
+    // account's social history and must be torn down first so the app never
+    // keeps stale follower data for a deleted account.
+    await db.prepare('DELETE FROM follows WHERE follower_user_id = ? OR following_user_id = ?').bind(id, id).run()
+    await db.prepare('DELETE FROM notifications WHERE user_id = ? OR actor_user_id = ?').bind(id, id).run()
     await db.prepare('DELETE FROM users WHERE id = ?').bind(id).run()
     await recordAudit(db, { action: 'account.delete', target, now })
     return { status: 200, body: { ok: true, deleted: target.username } }

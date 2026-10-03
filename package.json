@@ -12,6 +12,7 @@
     "test:services": "node scripts/service-test.mjs /src/services/adminService.test.js /src/hooks/boardDeletion.test.js",
     "test": "npm run worker:test && npm run test:services && npm run test:render",
     "db:migrate": "wrangler d1 migrations apply demon-roulette --remote",
+    "db:clear-follows": "wrangler d1 execute demon-roulette --remote --command \"DELETE FROM follows;\"",
     "admin:hash": "node scripts/make-admin-hash.mjs",
     "admin:unban": "node scripts/unban-client.mjs",
     "update:challenge-list": "node scripts/build-challenge-list.mjs",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { formatDurationMs } from '../utils/roulette'
 import { censorText } from '../utils/censor'
 import { adminDecide, fetchAdminSubmissions } from '../services/submissionService'
+import { fetchSiteStats } from '../services/adminService'
 import { PLAYABLE, getHostLabel } from '../utils/videoFile'
 import AccountsTab from '../components/AccountsTab'
 import { formatWait, useCountdown } from '../hooks/useCountdown'
@@ -20,6 +21,7 @@ const FILTERS = [
 const SECTIONS = [
   { id: 'queue', label: 'Queue' },
   { id: 'accounts', label: 'Accounts' },
+  { id: 'stats', label: 'Stats' },
 ]
 
 /* The passcode is kept in a cookie so the panel does not ask for it on every
@@ -56,6 +58,80 @@ const writeCookie = (name, value, days) => {
 
 const formatWhen = (timestamp) =>
   Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : 'unknown date'
+
+const StatsTab = ({ passcode }) => {
+  const [stats, setStats] = useState({})
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchSiteStats(passcode, controller.signal)
+      .then((next) => setStats(next))
+      .catch((caught) => {
+        if (caught?.name !== 'AbortError') setError(caught?.message ?? 'Could not load site stats.')
+      })
+
+    return () => controller.abort()
+  }, [passcode])
+
+  if (error) {
+    return <div className="validation-message">{error}</div>
+  }
+
+  const cards = [
+    { label: 'Accounts', value: stats.totalAccounts ?? 0 },
+    { label: 'Runs saved', value: stats.totalRuns ?? 0 },
+    { label: 'Approved runs', value: stats.totalApprovedRuns ?? 0 },
+    { label: 'Pending submissions', value: stats.totalPendingSubmissions ?? 0 },
+    { label: 'Rejected submissions', value: stats.totalRejectedSubmissions ?? 0 },
+    { label: 'Follow links', value: stats.totalFollows ?? 0 },
+    { label: 'Notifications', value: stats.totalNotifications ?? 0 },
+    { label: 'Profiles with runs', value: stats.profilesWithApprovedRuns ?? 0 },
+  ]
+
+  return (
+    <div className="admin-detail">
+      <div className="admin-facts">
+        {cards.map((card) => (
+          <span key={card.label}>
+            {card.label}
+            <strong>{card.value}</strong>
+          </span>
+        ))}
+      </div>
+
+      <div className="admin-account-section">
+        <h3>Highest recorded social numbers</h3>
+        <div className="admin-facts">
+          <span>
+            Most followed player
+            <strong>{stats.mostFollowedUser || 'n/a'}</strong>
+          </span>
+          <span>
+            Top follower count
+            <strong>{stats.topFollowerCount ?? 0}</strong>
+          </span>
+        </div>
+      </div>
+
+      <div className="admin-account-section">
+        <h3>Checklist-compatible milestones</h3>
+        <p className="settings-hint">
+          These are the numbers we can calculate from the site and worker data already present in the app.
+          They are limited to values that can be derived from accounts, follows, notifications, runs, and approved submissions.
+        </p>
+        <ul className="admin-audit-list">
+          <li><strong>Accounts:</strong> {stats.totalAccounts ?? 0}</li>
+          <li><strong>Follow links created:</strong> {stats.totalFollows ?? 0}</li>
+          <li><strong>Accepted public runs:</strong> {stats.totalApprovedRuns ?? 0}</li>
+          <li><strong>Profiles with at least one approved run:</strong> {stats.profilesWithApprovedRuns ?? 0}</li>
+          <li><strong>Notifications in the system:</strong> {stats.totalNotifications ?? 0}</li>
+          <li><strong>Most followed user:</strong> {stats.mostFollowedUser ? `${stats.mostFollowedUser} (${stats.topFollowerCount ?? 0})` : 'n/a'}</li>
+        </ul>
+      </div>
+    </div>
+  )
+}
 
 /**
  * The moderation panel.
@@ -291,6 +367,8 @@ export default function AdminPage({ onExit }) {
           <div className="admin-detail">
             <AccountsTab passcode={passcode} redeemUrl={redeemUrl} />
           </div>
+        ) : section === 'stats' ? (
+          <StatsTab passcode={passcode} />
         ) : (
           <>
             <div className="board-view-tabs" role="tablist" aria-label="Queue">

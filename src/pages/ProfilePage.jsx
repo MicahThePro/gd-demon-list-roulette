@@ -11,7 +11,7 @@ const formatWhen = (value) => {
 
 const sortRuns = (runs = []) => [...runs].sort((a, b) => new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0))
 
-export default function ProfilePage({ username, viewer, onOpenProfile, onBack }) {
+export default function ProfilePage({ username, viewer, relationshipVersion, onRelationshipChange, onOpenProfile, onBack }) {
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -20,6 +20,8 @@ export default function ProfilePage({ username, viewer, onOpenProfile, onBack })
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalUsers, setTotalUsers] = useState(0)
+  const [runPage, setRunPage] = useState(1)
+  const RUNS_PER_PAGE = 5
 
   useEffect(() => {
     setQuery(username || 'geometricalmike')
@@ -64,23 +66,45 @@ export default function ProfilePage({ username, viewer, onOpenProfile, onBack })
 
   useEffect(() => {
     loadProfile(username || 'geometricalmike')
-  }, [username])
+  }, [username, relationshipVersion])
 
   const sortedRuns = useMemo(() => sortRuns(profile?.runs ?? []), [profile])
+  const totalRunPages = Math.max(1, Math.ceil(sortedRuns.length / RUNS_PER_PAGE))
+  const visibleRuns = sortedRuns.slice((runPage - 1) * RUNS_PER_PAGE, runPage * RUNS_PER_PAGE)
+
+  useEffect(() => {
+    setRunPage(1)
+  }, [username])
 
   const onFollowToggle = async () => {
     if (!profile?.user?.username || busy) return
     setBusy(true)
     try {
       const result = await (profile.user.isFollowing ? unfollowUser(profile.user.username) : followUser(profile.user.username))
+      const nextUser = {
+        ...(profile.user ?? {}),
+        ...(result.user?.user ?? {}),
+        isFollowing: Boolean(result.following),
+      }
+
       setProfile((current) => ({
         ...current,
-        user: {
-          ...(current?.user ?? {}),
-          ...result.user?.user,
-          isFollowing: Boolean(result.following),
-        },
+        user: nextUser,
       }))
+
+      setSearchResults((current) =>
+        current.map((user) =>
+          user.username === nextUser.username
+            ? {
+                ...user,
+                followerCount: Number(nextUser.followerCount ?? user.followerCount ?? 0),
+                followingCount: Number(nextUser.followingCount ?? user.followingCount ?? 0),
+              }
+            : user,
+        ),
+      )
+
+      onRelationshipChange?.()
     } catch (caught) {
       setError(caught?.message ?? 'Could not update that relationship.')
     } finally {
@@ -206,21 +230,45 @@ export default function ProfilePage({ username, viewer, onOpenProfile, onBack })
               {sortedRuns.length === 0 ? (
                 <p className="lb-empty">This player has no accepted public runs yet.</p>
               ) : (
-                <div className="lb-list">
-                  {sortedRuns.map((entry) => (
-                    <div key={entry.id} className="lb-row">
-                      <span className="lb-rank">#{entry.rank ?? '-'}</span>
-                      <span className="lb-main">
-                        <span className="lb-top">
-                          <strong>{entry.score}%</strong>
-                          <span className="lb-handle">{entry.source}</span>
-                        </span>
-                        <span className="lb-sub">
-                          {entry.passed} cleared · {entry.roundsPlayed} played · {formatWhen(entry.createdAt)}
-                        </span>
-                      </span>
+                <div className="profile-run-panel">
+                  {totalRunPages > 1 && (
+                    <div className="profile-run-nav" aria-label="Run pages">
+                      <button
+                        type="button"
+                        className="page-button"
+                        onClick={() => setRunPage((current) => Math.max(1, current - 1))}
+                        disabled={runPage === 1}
+                      >
+                        ←
+                      </button>
+                      <span>{runPage} / {totalRunPages}</span>
+                      <button
+                        type="button"
+                        className="page-button"
+                        onClick={() => setRunPage((current) => Math.min(totalRunPages, current + 1))}
+                        disabled={runPage === totalRunPages}
+                      >
+                        →
+                      </button>
                     </div>
-                  ))}
+                  )}
+
+                  <div className="profile-run-slider">
+                    {visibleRuns.map((entry, index) => {
+                      const runNumber = (runPage - 1) * RUNS_PER_PAGE + index + 1
+
+                      return (
+                        <div key={entry.id} className="profile-run-card">
+                          <div className="profile-run-score">{entry.score}%</div>
+                          <div className="profile-run-source">{entry.source}</div>
+                          <div className="profile-run-meta">
+                            {entry.passed} cleared · {entry.roundsPlayed} played
+                          </div>
+                          <div className="profile-run-number">#{runNumber}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>

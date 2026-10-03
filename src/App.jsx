@@ -12,7 +12,7 @@ import RedeemCodePage from './pages/RedeemCodePage'
 import ProfilePage from './pages/ProfilePage'
 import NotificationsPage from './pages/NotificationsPage'
 import { getPreviewUser, syncPlayerData } from './services/adminService'
-import { fetchMyEntries } from './services/apiService'
+import { fetchMyEntries, fetchNotificationsCount } from './services/apiService'
 import { fetchAredlLevelDetails, fetchChallengeLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
 import { clampPercent, createRun, createLevelResult, countSkipReason, decodeRunState, encodeRunState, getElapsedLevelTimeMs, getRunElapsedMs, getNextTargetPercent, normalizePercentStep, pickNextLevel, summarizeResult } from './utils/roulette'
 import { SITE_NAME, LATEST_VERSION } from './data/changelog'
@@ -170,6 +170,8 @@ function App() {
   )
   const [run, setRun] = usePersistentRun()
   const [profileUsername, setProfileUsername] = useState('geometricalmike')
+  const [notificationCount, setNotificationCount] = useState(0)
+  const [socialVersion, setSocialVersion] = useState(0)
   const gameRules = useGameRules()
   /* Whether swear words are masked. Held up here rather than inside the settings
    * dialog because the mask is applied by a plain function that components call
@@ -194,6 +196,28 @@ function App() {
   const [saveCode, setSaveCode] = useState('')
 
   const currentStatus = useMemo(() => summarizeResult(run), [run])
+
+  const refreshNotificationCount = useCallback(async () => {
+    if (!auth.user) {
+      setNotificationCount(0)
+      return
+    }
+
+    try {
+      const count = await fetchNotificationsCount()
+      setNotificationCount(Number.isFinite(count) ? count : 0)
+    } catch {
+      setNotificationCount(0)
+    }
+  }, [auth.user])
+
+  useEffect(() => {
+    refreshNotificationCount()
+  }, [refreshNotificationCount, auth.user?.username, auth.user?.id, screen])
+
+  const bumpSocialState = useCallback(() => {
+    setSocialVersion((current) => current + 1)
+  }, [])
 
   // The browser tab title carries the version too, derived from the same
   // changelog entry as the on-page heading.
@@ -784,13 +808,18 @@ function App() {
           </button>
           <button
             type="button"
-            className="secondary-button small-button"
+            className="secondary-button small-button notification-button"
             onClick={() => setScreen(SCREEN.NOTIFICATIONS)}
             disabled={!auth.user}
           >
-            Notifications
+            <span>Notifications</span>
+            {notificationCount > 0 && (
+              <span className="notification-badge" aria-label={`${notificationCount} unread notifications`}>
+                {notificationCount > 99 ? '99+' : notificationCount}
+              </span>
+            )}
           </button>
-          {screen !== SCREEN.HOME && run && (
+          {(screen === SCREEN.ROULETTE || screen === SCREEN.RESULTS) && run && (
             <div className="status-pill">
               <span>{run.status}</span>
               <strong>{currentStatus}</strong>
@@ -831,6 +860,8 @@ function App() {
         <ProfilePage
           username={profileUsername}
           viewer={auth.user}
+          relationshipVersion={socialVersion}
+          onRelationshipChange={bumpSocialState}
           onOpenProfile={(username) => {
             setProfileUsername(username || 'geometricalmike')
             setScreen(SCREEN.PROFILE)
@@ -841,6 +872,7 @@ function App() {
       {screen === SCREEN.NOTIFICATIONS && (
         <NotificationsPage
           viewer={auth.user}
+          onNotificationChange={refreshNotificationCount}
           onOpenProfile={(username) => {
             setProfileUsername(username || 'geometricalmike')
             setScreen(SCREEN.PROFILE)

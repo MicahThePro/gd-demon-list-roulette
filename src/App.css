@@ -365,6 +365,34 @@
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.notification-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-right: 18px;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 800;
+  border: 2px solid rgba(15, 23, 42, 0.95);
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.28);
+}
+
 .danger-button {
   color: #fecaca;
   background: rgba(239, 68, 68, 0.12);
@@ -1077,6 +1105,67 @@
   gap: 18px;
 }
 
+.profile-run-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-run-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #cbd5e1;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-run-slider {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.profile-run-card {
+  display: grid;
+  gap: 8px;
+  min-height: 150px;
+  padding: 16px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.58);
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.profile-run-score {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.profile-run-source {
+  color: #93c5fd;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-run-meta {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}
+
+.profile-run-number {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .profile-header {
   display: flex;
   justify-content: space-between;
@@ -1200,24 +1289,35 @@
 .notification-item {
   width: 100%;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   text-align: left;
-  padding: 16px 18px;
-  border-radius: 16px;
+  padding: 18px 20px;
+  border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.55);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.48));
   color: #f8fafc;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
 }
 
 .notification-item.unread {
-  border-color: rgba(103, 232, 249, 0.45);
-  background: rgba(34, 211, 238, 0.08);
+  border-color: rgba(103, 232, 249, 0.6);
+  background: linear-gradient(180deg, rgba(12, 148, 136, 0.18), rgba(15, 23, 42, 0.58));
+}
+
+.notification-item strong {
+  font-size: 1rem;
+  line-height: 1.4;
+  color: #f8fafc;
 }
 
 .notification-item span,
 .notification-item small {
   color: #cbd5e1;
+}
+
+.notification-item small {
+  opacity: 0.82;
 }
 
 /* The old inline settings panel, replaced by the Settings dialog. */

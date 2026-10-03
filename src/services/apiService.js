@@ -230,7 +230,10 @@ export const searchUsers = async (query = '', page = 1, limit = 12) => {
 }
 
 export const fetchUserProfile = async (username, signal) => {
-  const result = await request(`/api/users/${encodeURIComponent(String(username ?? '').trim())}`, { signal })
+  const result = await request(
+    `/api/users/${encodeURIComponent(String(username ?? '').trim())}`,
+    { auth: true, signal },
+  )
   return result
 }
 
@@ -253,6 +256,11 @@ export const unfollowUser = async (username) => {
 export const fetchNotifications = async (signal) => {
   const result = await request('/api/notifications', { auth: true, signal })
   return result
+}
+
+export const fetchNotificationsCount = async (signal) => {
+  const result = await request('/api/notifications/count', { auth: true, signal })
+  return Number(result.count ?? 0)
 }
 
 export const markNotificationRead = async (id) => {

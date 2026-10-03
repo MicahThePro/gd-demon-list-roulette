@@ -144,6 +144,21 @@ console.log('searching accounts')
   check('alice is untouched by reading bob', (await jsonCall(env, `/api/admin/accounts/${alice.user.id}`, { passcode: CORRECT })).data.account.username === 'alice')
 }
 
+console.log('community stats')
+{
+  const { env, alice, bob } = await setup()
+
+  const follow = await jsonCall(env, '/api/users/bob/follow', { method: 'POST', token: alice.token })
+  check('a follow relationship is recorded', follow.response.status === 200 && follow.data.following === true, JSON.stringify(follow.data))
+
+  const stats = await jsonCall(env, '/api/admin/stats', { passcode: CORRECT })
+  check('the admin stats endpoint is available', stats.response.status === 200, String(stats.response.status))
+  check('the stats count total accounts', stats.data.totalAccounts === 2, JSON.stringify(stats.data))
+  check('and total follows', stats.data.totalFollows === 1, JSON.stringify(stats.data))
+  check('and the top follower count is known', stats.data.topFollowerCount >= 1, JSON.stringify(stats.data))
+  check('and the top follower user is named', typeof stats.data.topFollowerUser === 'string' && stats.data.topFollowerUser.length > 0, JSON.stringify(stats.data))
+}
+
 console.log('a players submitted runs')
 {
   const { env, alice } = await setup()

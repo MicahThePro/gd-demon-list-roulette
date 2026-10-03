@@ -330,3 +330,8 @@ export const fetchAuditLog = async (passcode, signal) => {
   const result = await request('/api/admin/audit', { passcode, signal })
   return result.entries ?? []
 }
+
+export const fetchSiteStats = async (passcode, signal) => {
+  const result = await request('/api/admin/stats', { passcode, signal })
+  return result.stats ?? result ?? {}
+}

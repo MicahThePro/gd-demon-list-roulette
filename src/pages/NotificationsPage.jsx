@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchNotifications, markNotificationRead } from '../services/apiService'
 
-export default function NotificationsPage({ viewer, onOpenProfile, onBack }) {
+export default function NotificationsPage({ viewer, onNotificationChange, onOpenProfile, onBack }) {
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
 
@@ -10,6 +10,7 @@ export default function NotificationsPage({ viewer, onOpenProfile, onBack }) {
     try {
       const result = await fetchNotifications()
       setItems(result.notifications ?? [])
+      onNotificationChange?.()
     } catch (caught) {
       setError(caught?.message ?? 'Could not load notifications.')
     }
@@ -24,6 +25,7 @@ export default function NotificationsPage({ viewer, onOpenProfile, onBack }) {
     if (!item.isRead) {
       try {
         await markNotificationRead(item.id)
+        onNotificationChange?.()
       } catch {
         // ignore failed read marks, keep navigation working
       }
