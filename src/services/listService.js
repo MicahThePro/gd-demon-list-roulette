@@ -1,7 +1,12 @@
 import { censorText } from '../utils/censor'
+import {
+  DEFAULT_POINTERCRATE_PARTS,
+  normalizePointercrateParts,
+  pointercratePartRanges,
+} from './pointercrateParts'
 
-const POINTERCRATE_URL = import.meta.env.PROD 
-  ? 'https://pointercrate.com' 
+const POINTERCRATE_URL = import.meta.env.PROD
+  ? 'https://pointercrate.com'
   : '/api/pointercrate'
 const AREDL_URL = 'https://api.aredl.net/v2/api/aredl'
 const GSL_URL = import.meta.env.PROD
@@ -141,7 +146,7 @@ const parsePositiveInteger = (value, fallback = null) => {
   return parsed
 }
 
-export const normalizeListRequest = ({ source = 'pointercrate', start, end } = {}) => {
+export const normalizeListRequest = ({ source = 'pointercrate', start, end, pointercrateParts } = {}) => {
   const resolvedSource =
     source === 'aredl'
       ? 'aredl'
@@ -177,6 +182,10 @@ export const normalizeListRequest = ({ source = 'pointercrate', start, end } = {
       source: resolvedSource,
       start: safeStart,
       end: safeEnd,
+      // Only Pointercrate has parts; normalized here so a value arriving from
+      // anywhere -- the form, a save code, a hand-typed request -- is reduced to
+      // known part ids in the same pass as everything else the request carries.
+      pointercrateParts: normalizePointercrateParts(pointercrateParts),
     }
   }
   return {
@@ -186,38 +195,92 @@ export const normalizeListRequest = ({ source = 'pointercrate', start, end } = {
   }
 }
 
-const fetchPointercrateList = async () => {
-  const firstPage = await fetch(`${POINTERCRATE_URL}/api/v2/demons/listed/?limit=100&after=0`)
-  if (!firstPage.ok) {
-    throw new Error('Failed to load the Pointercrate demon list.')
-  }
+/** The API caps `limit` at 100, so the 702 demons take eight requests. */
+const POINTERCRATE_PAGE_SIZE = 100
+/* A hard stop, so a malformed or never-ending sequence cannot page forever.
+ * Above the 702 the site actually publishes, with room to grow. */
+const POINTERCRATE_MAX_PAGES = 20
 
-  const firstPayload = await firstPage.json()
-  const firstBatch = Array.isArray(firstPayload) ? firstPayload.map(mapPointercrateDemonToLevel) : []
+/**
+ * The whole Pointercrate sequence, paged.
+ *
+ * The three lists the site offers are three slices of one ranked sequence, and
+ * this is that sequence. Only Main was ever read before, and only its first 150,
+ * so the extended and legacy demons were unreachable however the site was
+ * configured. Reading the whole thing once and slicing it locally is what makes
+ * the part selection possible at all.
+ *
+ * `after` is the position to resume from, so a page that comes back empty is the
+ * end of the list rather than a failure -- which is how the loop below knows to
+ * stop.
+ */
+const fetchPointercrateSequence = async () => {
+  const rows = []
+  let after = 0
 
-  const remainingNeeded = Math.max(0, 150 - firstBatch.length)
-  const finalLevels = [...firstBatch]
-
-  if (remainingNeeded > 0) {
-    const secondPage = await fetch(`${POINTERCRATE_URL}/api/v2/demons/listed/?limit=${remainingNeeded}&after=100`)
-    if (!secondPage.ok) {
-      throw new Error('Failed to load the remaining Pointercrate demon list.')
+  for (let page = 0; page < POINTERCRATE_MAX_PAGES; page += 1) {
+    const url = `${POINTERCRATE_URL}/api/v2/demons/listed/?limit=${POINTERCRATE_PAGE_SIZE}&after=${after}`
+    const response = await fetch(url)
+    if (!response.ok) {
+      /* A first page that fails is fatal: there is nothing to draw from and the
+       * error is worth showing. A later page that fails leaves a short list,
+       * which still plays, so it is better than refusing the whole run -- but it
+       * says so rather than quietly handing back a truncated list as if it were
+       * the real thing. */
+      if (!rows.length) {
+        throw new Error('Failed to load the Pointercrate demon list.')
+      }
+      break
     }
 
-    const secondPayload = await secondPage.json()
-    const secondBatch = Array.isArray(secondPayload) ? secondPayload.map(mapPointercrateDemonToLevel) : []
-    finalLevels.push(...secondBatch)
+    const payload = await response.json()
+    if (!Array.isArray(payload) || !payload.length) break
+
+    rows.push(...payload)
+    after = Number(payload[payload.length - 1]?.position ?? after)
+
+    if (payload.length < POINTERCRATE_PAGE_SIZE) break
   }
 
-  if (!finalLevels.length) {
+  return rows
+}
+
+const fetchPointercrateList = async (parts = DEFAULT_POINTERCRATE_PARTS) => {
+  const rows = await fetchPointercrateSequence()
+  if (!rows.length) {
     throw new Error('Pointercrate data could not be parsed.')
+  }
+
+  const allLevels = rows.map(mapPointercrateDemonToLevel)
+  const highestPosition = Math.max(...allLevels.map((level) => Number(level.position) || 0))
+
+  /* The ranges the ticked parts cover, clipped to what actually loaded and with
+   * any overlap removed, so a demon cannot be drawn twice because two of the
+   * ticked lists both contain it. */
+  const ranges = pointercratePartRanges(parts, highestPosition)
+
+  const finalLevels = allLevels.filter((level) => {
+    const position = Number(level.position)
+    return ranges.some((range) => position >= range.from && position <= range.to)
+  })
+
+  if (!finalLevels.length) {
+    throw new Error('No Pointercrate demons were found for the lists you picked.')
   }
 
   return {
     source: 'pointercrate',
     sourceTitle: LIST_SOURCES.POINTERCRATE,
     count: finalLevels.length,
-    levels: finalLevels.slice(0, 150),
+    totalCount: allLevels.length,
+    /* Every demon in the ticked parts, not a capped slice.
+     *
+     * There used to be a `slice(0, 150)` here, which was the whole of the main
+     * list and so looked harmless. It stopped being harmless the moment the list
+     * could hold more than that: someone ticking only Legacy would have been
+     * handed the first 150 of 552 for no stated reason, which reads as a bug
+     * rather than a rule. Ticking a list now means all of it. */
+    levels: finalLevels,
   }
 }
 
@@ -782,6 +845,8 @@ const censorLevels = (payload) => ({
   ),
 })
 
+export { DEFAULT_POINTERCRATE_PARTS, normalizePointercrateParts }
+
 export const fetchList = async (request = {}) => {
   const normalizedRequest = normalizeListRequest(request)
   if (normalizedRequest.source === 'aredl') {
@@ -806,5 +871,5 @@ export const fetchList = async (request = {}) => {
       }),
     )
   }
-  return censorLevels(await fetchPointercrateList())
+  return censorLevels(await fetchPointercrateList(normalizedRequest.pointercrateParts))
 }

@@ -9,6 +9,8 @@ import { fetchAredlListBounds, fetchChallengeListBounds, fetchGslListBounds, fet
 import { usePersistentPercentStep } from '../hooks/usePersistentPercentStep'
 import { usePersistentListSource } from '../hooks/usePersistentListSource'
 import { SITE_NAME, LATEST_VERSION } from '../data/changelog'
+import { usePointercrateParts } from '../hooks/usePointercrateParts'
+import { POINTERCRATE_PARTS } from '../services/pointercrateParts'
 import { censorText } from '../utils/censor'
 
 const CHALLENGE_LIST_SOURCE = 'challengelist'
@@ -56,6 +58,11 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
   const [isAccountOpen, setIsAccountOpen] = useState(false)
   const [isChangelogOpen, setIsChangelogOpen] = useState(false)
   const [source, setSource] = usePersistentListSource()
+  /* Only meaningful for Pointercrate; the tick boxes are hidden on every other
+   * source rather than shown disabled, because there is no second list to pick
+   * from there and a dead control invites the question. */
+  const { parts: pointercrateParts, togglePart } = usePointercrateParts()
+  const isPointercrate = source === 'pointercrate'
   const [startRange, setStartRange] = useState('')
   const [endRange, setEndRange] = useState('')
   const [rangeMax, setRangeMax] = useState(DEFAULT_MAX)
@@ -235,6 +242,10 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
         start: nextStart,
         end: nextEnd,
         percentStep,
+        /* Only Pointercrate has parts. Passed for every source anyway, because
+           normalizeListRequest drops it for the others and a conditional
+           argument is one more thing that can go out of step with the list. */
+        pointercrateParts,
       })
     } finally {
       setIsLoading(false)
@@ -441,6 +452,42 @@ export default function HomePage({ onStart, onLoadRun, savedRunCode, history, ga
               ))}
             </select>
           </label>
+
+          {/* Pointercrate publishes three lists. They are shown as tick boxes
+              rather than a dropdown because they are not alternatives -- they are
+              three disjoint slices of one ranked sequence, and ticking two is a
+              real choice a player makes to widen the draw. A dropdown would force
+              exactly one.
+
+              Hidden rather than disabled on the other four sources: there is no
+              second list there to choose, so a greyed-out control would only
+              raise the question. */}
+          {isPointercrate && (
+            <fieldset className="pointercrate-parts">
+              <legend>Pointercrate lists</legend>
+              {POINTERCRATE_PARTS.map((part) => (
+                <label className="settings-toggle-row" key={part.id}>
+                  <input
+                    type="checkbox"
+                    checked={pointercrateParts.includes(part.id)}
+                    onChange={() => togglePart(part.id)}
+                  />
+                  <span>
+                    <strong>{part.label}</strong>
+                    <small>{part.note}</small>
+                  </span>
+                </label>
+              ))}
+              {/* Said outright, because it is the one non-obvious thing about these three:
+                  that together the first two are the whole ranked top 150, which is
+                  what this source played before the boxes existed. */}
+              <small className="pointercrate-parts-hint">
+                Main and Extended are the ranked top 150, and are both ticked by
+                default. Legacy is the other 552, which accept no new records on
+                Pointercrate.
+              </small>
+            </fieldset>
+          )}
 
           {isRankable && (
             <div className="range-row">

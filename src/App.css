@@ -219,6 +219,34 @@
 /* The Worker signal symbol, sitting beside the version beside the title.
    Sized and spaced like the version so the three read as one quiet line of
    metadata rather than the title gaining an ornament. */
+/* The Pointercrate list tick boxes.
+   Sits directly under the list source dropdown and above the rank range, so it
+   reads as part of choosing the source rather than as a separate feature. */
+.pointercrate-parts {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 0.85rem 1rem 1rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.pointercrate-parts legend {
+  padding: 0 0.4rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.pointercrate-parts .settings-toggle-row {
+  align-items: flex-start;
+}
+.pointercrate-parts-hint {
+  display: block;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
 .worker-signal {
   display: inline-flex;
   align-items: center;
