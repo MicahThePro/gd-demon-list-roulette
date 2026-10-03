@@ -305,25 +305,25 @@ console.log('Changelog, and playing an old version')
    * and that the one before it is playable, not merely that "the first entry" is
    * first. A changelog that grows is the normal case, and a test that only holds
    * while the list is the length it is today stops being a test. */
-  check('v2.4 is the live version', CHANGELOG[0].version === 'v2.4', CHANGELOG[0].version)
+  check('v2.5 is the live version', CHANGELOG[0].version === 'v2.5', CHANGELOG[0].version)
   // Matched on the heading and the version alone rather than on the whole phrase,
   // because the apostrophe in "What's new" is a curly one in the component. Testing
   // the exact string would make this check fail over typography, and fixing it
   // would mean editing the check every time the apostrophe changed.
   check(
     'the heading names the live version',
-    dialog.includes('What') && dialog.includes('new in v2.4'),
+    dialog.includes('What') && dialog.includes('new in v2.5'),
     LATEST_VERSION,
   )
-  check('v2.4 is not playable, since it is the page you are on', !isPlayable('v2.4'))
+  check('v2.5 is not playable, since it is the page you are on', !isPlayable('v2.5'))
+
+  check('v2.4 is in the changelog', CHANGELOG.some((release) => release.version === 'v2.4'))
+  check('v2.4 is playable', isPlayable('v2.4'))
+  check('and v2.4 has a play link', dialog.includes(versionUrl('v2.4')), versionUrl('v2.4'))
 
   check('v2.3 is in the changelog', CHANGELOG.some((release) => release.version === 'v2.3'))
   check('v2.3 is playable', isPlayable('v2.3'))
   check('and v2.3 has a play link', dialog.includes(versionUrl('v2.3')), versionUrl('v2.3'))
-
-  check('v2.2 is in the changelog', CHANGELOG.some((release) => release.version === 'v2.2'))
-  check('v2.2 is playable', isPlayable('v2.2'))
-  check('and v2.2 has a play link', dialog.includes(versionUrl('v2.2')), versionUrl('v2.2'))
 
   /* The changelog is the only thing that says a build exists, so the claim and the
    * directory have to agree. This is the one check that needs the filesystem, and it

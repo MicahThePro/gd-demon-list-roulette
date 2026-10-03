@@ -4,8 +4,11 @@
   font-weight: 400;
   color: #e2e8f0;
   background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.15), transparent 30%),
-    linear-gradient(180deg, #020817 0%, #0f172a 100%);
+    radial-gradient(circle at 15% 0%, rgba(34, 211, 238, 0.18), transparent 26%),
+    radial-gradient(circle at 85% 10%, rgba(168, 85, 247, 0.2), transparent 24%),
+    radial-gradient(circle at 50% 100%, rgba(236, 72, 153, 0.16), transparent 32%),
+    #050b16;
+  color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -24,10 +27,28 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(5, 11, 22, 0.98), rgba(9, 14, 24, 1)),
+    #050b16;
+  color: #e2e8f0;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(circle at center, black 42%, transparent 100%);
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 

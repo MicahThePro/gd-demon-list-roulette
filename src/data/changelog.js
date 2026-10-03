@@ -15,6 +15,22 @@
 export const SITE_NAME = 'GD List Roulette'
 export const CHANGELOG = [
   {
+    id: 'v2-5',
+    version: 'v2.5',
+    title: 'A whole new look, plus the latest fixes and polish',
+    summary: 'The app gets a complete modern redesign, the updated site experience is now the live version, and the recent fixes from the last few releases are all included in the current build.',
+    changes: [
+      'The whole site has been rebuilt with a more modern dark dashboard aesthetic: a cleaner shell, a more premium top bar, brighter neon gradients, sharper panels, and a far more contemporary app feel rather than the older plain layout.',
+      'The home screen, forms, and leaderboard styling were refreshed together so the entire app feels like one coherent product instead of a collection of old panels with new accents.',
+      'The updated live version is now v2.5, and the previous public release has been moved into the archive as v2.4 so the live build and the frozen old build stay clearly separated.',
+      'The v2.4 archive is now fully frozen and blocked from the online Worker, just like the other old versions, so it remains a read-only archive rather than a second live copy of the site.',
+      'This release keeps the recent server and list fixes from the previous update, including the Pointercrate list filtering, the connection meter, the Challenge List repair, the archived-build protection, and the admin lockout changes.',
+      'The current build also keeps the very latest changes from the Git history, including the redesigned visual treatment and the polish work done since the v2.4 release.',
+      'The What’s new dialog now shows the current v2.5 release at the top and keeps v2.4 as the previous release in the archive list, matching the actual release history and the frozen build setup.',
+      'Live updates stay in the current site only, while older versions remain playable as frozen archives that cannot sign in, submit, or reach the leaderboard.',
+    ],
+  },
+  {
     id: 'v2-4',
     version: 'v2.4',
     title: 'A connection meter, and a Challenge List that tells you about itself',
