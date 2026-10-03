@@ -18,6 +18,14 @@
   flex: 0 0 auto;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .brand-wrap {
   display: flex;
   align-items: center;
@@ -1062,6 +1070,79 @@
   /* Two independent guards, since the row is also a grid item: this stops the
      text itself from ever establishing a wide min-content floor. */
   overflow-wrap: anywhere;
+}
+
+.profile-card {
+  display: grid;
+  gap: 18px;
+}
+
+.profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.profile-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-summary div {
+  display: grid;
+  gap: 5px;
+  padding: 16px 14px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  text-align: center;
+}
+
+.profile-summary strong {
+  font-size: 1.15rem;
+  color: #f8fafc;
+}
+
+.profile-summary span {
+  color: #9fb7d8;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.notification-list {
+  display: grid;
+  gap: 12px;
+}
+
+.notification-item {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.55);
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.notification-item.unread {
+  border-color: rgba(103, 232, 249, 0.45);
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.notification-item span,
+.notification-item small {
+  color: #cbd5e1;
 }
 
 /* The old inline settings panel, replaced by the Settings dialog. */

@@ -539,6 +539,41 @@ console.log('a login code works as a password')
   void bob
 }
 
+console.log('follow, profile and notification routes')
+{
+  const { env, alice, bob } = await setup()
+  const mike = (await jsonCall(env, '/api/register', { method: 'POST', body: { username: '@geometricalmike', password: 'a good password', displayName: 'Mike' } })).data
+
+  const mikeRun = (await jsonCall(env, '/api/runs', { method: 'POST', body: aRun({ runId: 'mike-run-1', source: 'AREDL' }), token: mike.token })).data.run
+  await env.DB.prepare('INSERT INTO submissions (run_id, video_url, container, note, created_at, status) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(mikeRun.id, 'https://example.com/mike.mp4', 'mp4', 'approved', Date.now(), 'approved')
+    .run()
+
+  const search = await jsonCall(env, '/api/users/search?q=geo', { token: alice.token })
+  check('search by username works', search.response.status === 200 && search.data.users.some((user) => user.username === 'geometricalmike'), JSON.stringify(search.data))
+
+  const profile = await jsonCall(env, '/api/users/geometricalmike', { token: alice.token })
+  check('profile data is public', profile.response.status === 200 && profile.data.user.username === 'geometricalmike', JSON.stringify(profile.data))
+  check('profile shows accepted public runs only', Array.isArray(profile.data.runs) && profile.data.runs.length === 1, JSON.stringify(profile.data.runs))
+  check('profile counts are reported', profile.data.user.followerCount >= 0 && profile.data.user.followingCount >= 0, JSON.stringify(profile.data.user))
+
+  const follow = await jsonCall(env, '/api/users/geometricalmike/follow', { method: 'POST', token: alice.token })
+  check('following a user succeeds', follow.response.status === 200 && follow.data.following === true, JSON.stringify(follow.data))
+  check('follower counts update', follow.data.user.followerCount >= 1, JSON.stringify(follow.data.user))
+
+  const secondFollow = await jsonCall(env, '/api/users/geometricalmike/follow', { method: 'POST', token: alice.token })
+  check('following again is idempotent', secondFollow.response.status === 200 && secondFollow.data.following === true, JSON.stringify(secondFollow.data))
+
+  const notifications = await jsonCall(env, '/api/notifications', { token: mike.token })
+  check('the followed user gets a notification', notifications.response.status === 200 && notifications.data.notifications.some((item) => item.type === 'follow' && item.actorUsername === 'alice'), JSON.stringify(notifications.data))
+
+  const dereference = await jsonCall(env, '/api/users/geometricalmike/unfollow', { method: 'POST', token: alice.token })
+  check('unfollowing removes the relationship', dereference.response.status === 200 && dereference.data.following === false, JSON.stringify(dereference.data))
+
+  const bobSearch = await jsonCall(env, '/api/users/search?q=', { token: bob.token })
+  check('empty search defaults to geometricalmike', bobSearch.response.status === 200 && bobSearch.data.users.some((user) => user.username === 'geometricalmike'), JSON.stringify(bobSearch.data))
+}
+
 if (failures > 0) {
   console.log(`\n${failures} check(s) failed.`)
   process.exit(1)

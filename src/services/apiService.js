@@ -213,6 +213,45 @@ export const fetchMyEntries = async (signal) => {
   }
 }
 
+export const searchUsers = async (query = '') => {
+  const result = await request(`/api/users/search?q=${encodeURIComponent(query.trim())}`, { signal: undefined })
+  return result.users ?? []
+}
+
+export const fetchUserProfile = async (username, signal) => {
+  const result = await request(`/api/users/${encodeURIComponent(String(username ?? '').trim())}`, { signal })
+  return result
+}
+
+export const followUser = async (username) => {
+  const result = await request(`/api/users/${encodeURIComponent(String(username ?? '').trim())}/follow`, {
+    method: 'POST',
+    auth: true,
+  })
+  return result
+}
+
+export const unfollowUser = async (username) => {
+  const result = await request(`/api/users/${encodeURIComponent(String(username ?? '').trim())}/unfollow`, {
+    method: 'POST',
+    auth: true,
+  })
+  return result
+}
+
+export const fetchNotifications = async (signal) => {
+  const result = await request('/api/notifications', { auth: true, signal })
+  return result
+}
+
+export const markNotificationRead = async (id) => {
+  const result = await request(`/api/notifications/${encodeURIComponent(String(id))}/read`, {
+    method: 'POST',
+    auth: true,
+  })
+  return result
+}
+
 /**
  * Changes the signed-in player's display name.
  *

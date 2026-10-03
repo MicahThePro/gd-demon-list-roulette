@@ -9,6 +9,8 @@ import { useGameRules, timeLimitMinutesToMs } from './hooks/useGameRules'
 import { useCensorSetting } from './hooks/useCensorSetting'
 import PreviewBanner from './components/PreviewBanner'
 import RedeemCodePage from './pages/RedeemCodePage'
+import ProfilePage from './pages/ProfilePage'
+import NotificationsPage from './pages/NotificationsPage'
 import { getPreviewUser, syncPlayerData } from './services/adminService'
 import { fetchMyEntries } from './services/apiService'
 import { fetchAredlLevelDetails, fetchChallengeLevelDetails, fetchImpossibleLevelDetails, fetchList } from './services/listService'
@@ -21,6 +23,8 @@ const SCREEN = {
   ROULETTE: 'roulette',
   RESULTS: 'results',
   REDEEM: 'redeem',
+  PROFILE: 'profile',
+  NOTIFICATIONS: 'notifications',
 }
 
 /* The player's own settings, read straight out of the cookies the rules hook
@@ -165,6 +169,7 @@ function App() {
       : SCREEN.HOME,
   )
   const [run, setRun] = usePersistentRun()
+  const [profileUsername, setProfileUsername] = useState('geometricalmike')
   const gameRules = useGameRules()
   /* Whether swear words are masked. Held up here rather than inside the settings
    * dialog because the mask is applied by a plain function that components call
@@ -766,12 +771,32 @@ function App() {
           </div>
         </div>
 
-        {screen !== SCREEN.HOME && run && (
-          <div className="status-pill">
-            <span>{run.status}</span>
-            <strong>{currentStatus}</strong>
-          </div>
-        )}
+        <div className="topbar-actions">
+          <button
+            type="button"
+            className="secondary-button small-button"
+            onClick={() => {
+              setProfileUsername('geometricalmike')
+              setScreen(SCREEN.PROFILE)
+            }}
+          >
+            Profiles
+          </button>
+          <button
+            type="button"
+            className="secondary-button small-button"
+            onClick={() => setScreen(SCREEN.NOTIFICATIONS)}
+            disabled={!auth.user}
+          >
+            Notifications
+          </button>
+          {screen !== SCREEN.HOME && run && (
+            <div className="status-pill">
+              <span>{run.status}</span>
+              <strong>{currentStatus}</strong>
+            </div>
+          )}
+        </div>
       </header>
 
       {screen === SCREEN.REDEEM && (
@@ -795,6 +820,32 @@ function App() {
           isMasked={isMasked}
           onIsMaskedChange={setIsMasked}
           auth={auth}
+          onOpenProfile={(username) => {
+            setProfileUsername(username || 'geometricalmike')
+            setScreen(SCREEN.PROFILE)
+          }}
+          onOpenNotifications={() => setScreen(SCREEN.NOTIFICATIONS)}
+        />
+      )}
+      {screen === SCREEN.PROFILE && (
+        <ProfilePage
+          username={profileUsername}
+          viewer={auth.user}
+          onOpenProfile={(username) => {
+            setProfileUsername(username || 'geometricalmike')
+            setScreen(SCREEN.PROFILE)
+          }}
+          onBack={() => setScreen(SCREEN.HOME)}
+        />
+      )}
+      {screen === SCREEN.NOTIFICATIONS && (
+        <NotificationsPage
+          viewer={auth.user}
+          onOpenProfile={(username) => {
+            setProfileUsername(username || 'geometricalmike')
+            setScreen(SCREEN.PROFILE)
+          }}
+          onBack={() => setScreen(SCREEN.HOME)}
         />
       )}
       {screen === SCREEN.ROULETTE && run && (

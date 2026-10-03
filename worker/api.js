@@ -800,6 +800,109 @@ const getPersonalStanding = async (db, user, url) => {
   }
 }
 
+const getUserCounts = async (db, userId) => {
+  const row = await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM follows WHERE following_user_id = ?) AS follower_count,
+         (SELECT COUNT(*) FROM follows WHERE follower_user_id = ?) AS following_count`,
+    )
+    .bind(userId, userId)
+    .first()
+
+  return {
+    followerCount: Number(row?.follower_count ?? 0),
+    followingCount: Number(row?.following_count ?? 0),
+  }
+}
+
+const getPublicRunsForUser = async (db, userId, limit = 50) => {
+  const rows = await db
+    .prepare(
+      `SELECT r.id, r.run_key, r.source, r.percent_step, r.pointercrate_parts, r.status,
+              r.timed_out, r.score,
+              r.target_reached, r.rounds_played, r.passed, r.skipped, r.total_ms, r.avg_ms,
+              r.skip_reasons, r.created_at,
+              EXISTS (
+                SELECT 1 FROM submissions s
+                 WHERE s.run_id = r.id AND s.status = 'approved'
+              ) AS on_global_board
+         FROM runs r
+        WHERE r.user_id = ?
+          AND EXISTS (SELECT 1 FROM submissions s WHERE s.run_id = r.id AND s.status = 'approved')
+          AND ${NOT_TRASHED}
+        ORDER BY r.created_at DESC
+        LIMIT ?`,
+    )
+    .bind(userId, limit)
+    .all()
+
+  return (rows.results ?? []).map(toRunRow)
+}
+
+const getUserProfile = async (db, username, viewerId = null) => {
+  const key = usernameKey(username)
+  const row = await db
+    .prepare(
+      `SELECT u.id, u.username, u.display_name, u.created_at,
+              (SELECT COUNT(*) FROM follows WHERE following_user_id = u.id) AS follower_count,
+              (SELECT COUNT(*) FROM follows WHERE follower_user_id = u.id) AS following_count
+         FROM users u
+        WHERE u.username_lower = ?`,
+    )
+    .bind(key)
+    .first()
+
+  if (!row) {
+    return null
+  }
+
+  const following = viewerId
+    ? await db
+        .prepare('SELECT 1 FROM follows WHERE follower_user_id = ? AND following_user_id = ? LIMIT 1')
+        .bind(viewerId, row.id)
+        .first()
+    : null
+
+  return {
+    user: {
+      id: row.id,
+      username: row.username,
+      displayName: row.display_name,
+      followerCount: Number(row.follower_count ?? 0),
+      followingCount: Number(row.following_count ?? 0),
+      isFollowing: Boolean(following),
+      createdAt: row.created_at,
+    },
+    runs: await getPublicRunsForUser(db, row.id, 50),
+  }
+}
+
+const listNotifications = async (db, userId) => {
+  const rows = await db
+    .prepare(
+      `SELECT n.id, n.type, n.is_read, n.created_at,
+              a.id AS actor_id, a.username AS actor_username, a.display_name AS actor_display_name
+         FROM notifications n
+         JOIN users a ON a.id = n.actor_user_id
+        WHERE n.user_id = ?
+        ORDER BY n.created_at DESC
+        LIMIT 50`,
+    )
+    .bind(userId)
+    .all()
+
+  return (rows.results ?? []).map((row) => ({
+    id: row.id,
+    type: row.type,
+    isRead: Boolean(row.is_read),
+    createdAt: row.created_at,
+    actorId: row.actor_id,
+    actorUsername: row.actor_username,
+    actorDisplayName: row.actor_display_name,
+  }))
+}
+
 export const handleAccountRoutes = async ({ db, request, url, key }) => {
   if (!db) {
     return null
@@ -1118,6 +1221,170 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
       return { error: 'Sign in to do that', status: 401 }
     }
     return { status: 200, body: await getMyEntries(db, user.id) }
+  }
+
+  if (request.method === 'GET' && route === 'users/search') {
+    const query = normalizeUsername(url.searchParams.get('q') ?? '') || 'geometricalmike'
+    const rows = await db
+      .prepare(
+        `SELECT u.id, u.username, u.display_name,
+                (SELECT COUNT(*) FROM follows WHERE following_user_id = u.id) AS follower_count,
+                (SELECT COUNT(*) FROM follows WHERE follower_user_id = u.id) AS following_count
+           FROM users u
+          WHERE u.username_lower LIKE ? OR u.username_lower LIKE ?
+          ORDER BY CASE WHEN u.username_lower LIKE ? THEN 0 ELSE 1 END, u.username_lower ASC
+          LIMIT 20`,
+      )
+      .bind(`${query}%`, `%${query}%`, `${query}%`)
+      .all()
+
+    return {
+      status: 200,
+      body: {
+        users: (rows.results ?? []).map((row) => ({
+          id: row.id,
+          username: row.username,
+          displayName: row.display_name,
+          followerCount: Number(row.follower_count ?? 0),
+          followingCount: Number(row.following_count ?? 0),
+        })),
+      },
+    }
+  }
+
+  if (request.method === 'GET' && route.startsWith('users/')) {
+    const tail = route.slice('users/'.length)
+    if (!tail || tail === 'search') {
+      return null
+    }
+
+    const target = decodeURIComponent(tail.split('/')[0] ?? '')
+    const user = await getUserProfile(db, target, (await getSessionUser(db, request, now))?.id ?? null)
+    if (!user) {
+      return { error: 'That user does not exist', status: 404 }
+    }
+
+    return { status: 200, body: user }
+  }
+
+  if (request.method === 'POST' && route.startsWith('users/')) {
+    const tail = route.slice('users/'.length)
+    if (!tail.includes('/')) {
+      return null
+    }
+
+    const [targetName, action] = tail.split('/')
+    const viewer = await requireUser(db, request)
+    if (!viewer) {
+      return { error: 'Sign in to do that', status: 401 }
+    }
+
+    const requested = normalizeUsername(decodeURIComponent(targetName))
+    const target = await db
+      .prepare('SELECT id, username, display_name FROM users WHERE username_lower = ?')
+      .bind(requested)
+      .first()
+
+    if (!target) {
+      return { error: 'That user does not exist', status: 404 }
+    }
+
+    if (viewer.id === target.id) {
+      return { error: 'You cannot follow yourself', status: 400 }
+    }
+
+    if (action === 'follow') {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO follows (follower_user_id, following_user_id, created_at)
+             VALUES (?, ?, ?)`,
+        )
+        .bind(viewer.id, target.id, now)
+        .run()
+
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO notifications (user_id, actor_user_id, type, is_read, created_at)
+             VALUES (?, ?, 'follow', 0, ?)`,
+        )
+        .bind(target.id, viewer.id, now)
+        .run()
+
+      const profile = await getUserProfile(db, target.username, viewer.id)
+      return {
+        status: 200,
+        body: {
+          following: true,
+          user: profile?.user ?? null,
+        },
+      }
+    }
+
+    if (action === 'unfollow') {
+      await db
+        .prepare('DELETE FROM follows WHERE follower_user_id = ? AND following_user_id = ?')
+        .bind(viewer.id, target.id)
+        .run()
+
+      const profile = await getUserProfile(db, target.username, viewer.id)
+      return {
+        status: 200,
+        body: {
+          following: false,
+          user: profile?.user ?? null,
+        },
+      }
+    }
+  }
+
+  if (request.method === 'GET' && route === 'notifications') {
+    const user = await requireUser(db, request)
+    if (!user) {
+      return { error: 'Sign in to do that', status: 401 }
+    }
+    const notifications = await listNotifications(db, user.id)
+    const unreadCount = notifications.filter((item) => !item.isRead).length
+    return {
+      status: 200,
+      body: {
+        notifications,
+        unreadCount,
+      },
+    }
+  }
+
+  if (request.method === 'GET' && route === 'notifications/count') {
+    const user = await requireUser(db, request)
+    if (!user) {
+      return { error: 'Sign in to do that', status: 401 }
+    }
+    const notifications = await listNotifications(db, user.id)
+    return {
+      status: 200,
+      body: { count: notifications.filter((item) => !item.isRead).length },
+    }
+  }
+
+  if (request.method === 'POST' && route.startsWith('notifications/')) {
+    const user = await requireUser(db, request)
+    if (!user) {
+      return { error: 'Sign in to do that', status: 401 }
+    }
+
+    const tail = route.slice('notifications/'.length)
+    const idPart = tail.split('/')[0]
+    const readId = asInteger(idPart)
+    if (!Number.isFinite(readId) || readId < 1) {
+      return { error: 'That notification id is not valid', status: 400 }
+    }
+
+    if (tail.endsWith('/read')) {
+      const updated = await db
+        .prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ? RETURNING id')
+        .bind(readId, user.id)
+        .first()
+      return { status: 200, body: { ok: Boolean(updated), id: readId } }
+    }
   }
 
   return null
