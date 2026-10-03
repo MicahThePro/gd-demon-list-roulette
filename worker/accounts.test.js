@@ -8,69 +8,28 @@
  *
  * Run with: node --experimental-sqlite worker/accounts.test.js
  */
-import { DatabaseSync } from 'node:sqlite'
-import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import worker from './index.js'
 import { createPasswordRecord } from './auth.js'
+import { createTestDb } from './testDb.js'
 
-const SCHEMA = [
-  './migrations/0001_init.sql',
-  './migrations/0002_submissions.sql',
-  './migrations/0003_admin.sql',
-  './migrations/0004_trashed_runs.sql',
-  './migrations/0005_username_case.sql',
-  './migrations/0006_display_name_cooldown.sql',
-  './migrations/0007_username_lowercase.sql',
-]
-  .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
-  .join('\n')
+/* Every migration, applied in order, by the shared helper. It used to be a local list
+ * of migration filenames, which had to be edited by hand every time a migration was
+ * added -- and was missed. The result was a test suite running against a schema the
+ * production database does not have, passing against tables that were never created. */
+const createDb = () => createTestDb()
 
-const createDb = () => {
-  const db = new DatabaseSync(':memory:')
-  db.exec(SCHEMA)
-
-  // The same D1-shaped stub the other Worker tests use, so these exercise the
-  // real SQL against the real schema rather than a mock.
-  const prepared = (sql) => {
-    const statement = db.prepare(sql)
-    const execute = (values) => {
-      statement.run(...values)
-      return { success: true, meta: {} }
-    }
-    return {
-      bind: (...values) => ({
-        first: async () => statement.get(...values) ?? null,
-        all: async () => ({ results: statement.all(...values) }),
-        run: async () => execute(values),
-      }),
-      first: async () => statement.get() ?? null,
-      all: async () => ({ results: statement.all() }),
-      run: async () => execute([]),
-    }
-  }
-
-  return {
-    prepare: prepared,
-    // /api/runs writes the run and its rounds in one batch, so the stub has to
-    // offer it or the route cannot be exercised at all.
-    batch: async (statements) => {
-      db.exec('BEGIN')
-      try {
-        for (const statement of statements) {
-          await statement.run()
-        }
-        db.exec('COMMIT')
-        return statements.map(() => ({ success: true }))
-      } catch (error) {
-        db.exec('ROLLBACK')
-        throw error
-      }
-    },
-  }
-}
-
-const PASSCOD = (await createPasswordRecord('258456')).passwordHash
+/* A passcode that exists only to be typed into a test. It is not the site's, and it is
+ * not the one that was once committed to this repository and read out of a public file;
+ * it was replaced deliberately so that a test fixture cannot be mistaken for the real
+ * thing, or be copied back out of here into production. The real passcode lives in a
+ * Worker secret and is never in this repository. */
+/* The plaintext behind PASSCOD. Named rather than repeated, so a call site that types
+ * the right passcode is visibly the same one the hash is of -- the bug this replaces
+ * was a correct hash paired with a literal typed by hand, which failed for a reason
+ * that had nothing to do with what was being tested. */
+const CORRECT = 'test-only-admin-passcode'
+const PASSCOD = (await createPasswordRecord(CORRECT)).passwordHash
 const makeEnv = (extra = {}) => ({ DB: createDb(), ADMIN_PASSCODE: PASSCOD, ...extra })
 
 const BASE = 'https://worker.test'
@@ -146,41 +105,43 @@ console.log('searching accounts')
 {
   const { env, alice } = await setup()
 
+  // 401, not 429: nothing was guessed, so there is no wait to report. See the note
+  // in checkAdminPasscode about why a request with no passcode must not move the ladder.
   check('no passcode is refused', (await jsonCall(env, '/api/admin/accounts')).response.status === 401)
-  check('a wrong passcode is refused', (await jsonCall(env, '/api/admin/accounts', { passcode: '000000' })).response.status === 401)
+  check('a wrong passcode is refused', (await jsonCall(env, '/api/admin/accounts', { passcode: '000000' })).response.status === 429)
 
-  const all = await jsonCall(env, '/api/admin/accounts', { passcode: '258456' })
+  const all = await jsonCall(env, '/api/admin/accounts', { passcode: CORRECT })
   check('the list comes back', all.response.status === 200, JSON.stringify(all.data))
   check('both accounts are there', all.data.accounts.length === 2, String(all.data.accounts?.length))
 
-  const byName = await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })
+  const byName = await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })
   check('a username search finds it', byName.data.accounts.length === 1, JSON.stringify(byName.data))
   check('and it is the right one', byName.data.accounts[0].username === 'alice')
 
-  const byDisplay = await jsonCall(env, '/api/admin/accounts?q=Bob', { passcode: '258456' })
+  const byDisplay = await jsonCall(env, '/api/admin/accounts?q=Bob', { passcode: CORRECT })
   check('a display name search finds it', byDisplay.data.accounts.length === 1, JSON.stringify(byDisplay.data))
   check('and it is the right one', byDisplay.data.accounts[0].username === 'bob')
 
-  check('a search for nobody comes back empty', (await jsonCall(env, '/api/admin/accounts?q=zzz', { passcode: '258456' })).data.accounts.length === 0)
+  check('a search for nobody comes back empty', (await jsonCall(env, '/api/admin/accounts?q=zzz', { passcode: CORRECT })).data.accounts.length === 0)
 
   // A wildcard must not turn into a match-everything, and must not be an error.
-  const wildcard = await jsonCall(env, '/api/admin/accounts?q=%', { passcode: '258456' })
+  const wildcard = await jsonCall(env, '/api/admin/accounts?q=%', { passcode: CORRECT })
   check('a % in the search is treated as a literal', wildcard.response.status === 200 && wildcard.data.accounts.length === 0, JSON.stringify(wildcard.data))
 
   // The account ids are what the detail and delete routes take.
   const bobId = byDisplay.data.accounts[0].id
   check('a new account has no runs yet', byDisplay.data.accounts[0].runCount === 0)
 
-  const detail = await jsonCall(env, `/api/admin/accounts/${bobId}`, { passcode: '258456' })
+  const detail = await jsonCall(env, `/api/admin/accounts/${bobId}`, { passcode: CORRECT })
   check('the detail view opens', detail.response.status === 200, JSON.stringify(detail.data))
   check('it carries the account', detail.data.account.username === 'bob')
   check('and an empty run list', detail.data.account.runs.length === 0)
   check('and no mirrored data yet', detail.data.account.playerData.syncedAt === null)
   check('and no login code yet', detail.data.account.loginCode.hasCode === false)
 
-  check('an unknown account is a 404', (await jsonCall(env, '/api/admin/accounts/9999', { passcode: '258456' })).response.status === 404)
-  check('a wrong passcode cannot confirm an account exists', (await jsonCall(env, `/api/admin/accounts/${bobId}`, { passcode: '000000' })).response.status === 401)
-  check('alice is untouched by reading bob', (await jsonCall(env, `/api/admin/accounts/${alice.user.id}`, { passcode: '258456' })).data.account.username === 'alice')
+  check('an unknown account is a 404', (await jsonCall(env, '/api/admin/accounts/9999', { passcode: CORRECT })).response.status === 404)
+  check('a wrong passcode cannot confirm an account exists', (await jsonCall(env, `/api/admin/accounts/${bobId}`, { passcode: '000000' })).response.status === 429)
+  check('alice is untouched by reading bob', (await jsonCall(env, `/api/admin/accounts/${alice.user.id}`, { passcode: CORRECT })).data.account.username === 'alice')
 }
 
 console.log('a players submitted runs')
@@ -194,7 +155,7 @@ console.log('a players submitted runs')
     body: { runId: run.id, videoUrl: 'https://youtu.be/dQw4w9WgXcQ', container: 'mp4', note: 'hi' },
   })
 
-  const detail = await jsonCall(env, `/api/admin/accounts/${alice.user.id}`, { passcode: '258456' })
+  const detail = await jsonCall(env, `/api/admin/accounts/${alice.user.id}`, { passcode: CORRECT })
   const account = detail.data.account
   check('the run shows up', account.runs.length === 1, String(account.runs.length))
   check('with its score', account.runs[0].score >= 0)
@@ -205,14 +166,14 @@ console.log('a players submitted runs')
 console.log('the one-time login code')
 {
   const { env } = await setup()
-  const id = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: '258456' })).data.accounts[0].id
+  const id = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: CORRECT })).data.accounts[0].id
 
-  const issued = await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })
+  const issued = await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })
   check('a code is issued', issued.response.status === 201, JSON.stringify(issued.data))
   check('it is readable characters only', /^[A-Z0-9]+$/.test(issued.data.code ?? ''), String(issued.data.code))
   check('and long enough to be unguessable', (issued.data.code ?? '').length >= 12, String(issued.data.code))
 
-  check('issuing needs the passcode', (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '000000' })).response.status === 401)
+  check('issuing needs the passcode', (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '000000' })).response.status === 429)
   check('redeeming it signs in as the player', (await jsonCall(env, '/api/redeem', { method: 'POST', body: { code: issued.data.code } })).data.user.username === 'bob')
   check('and it is not the same session as a real sign in', (await jsonCall(env, '/api/redeem', { method: 'POST', body: { code: issued.data.code } })).response.status !== 200)
 
@@ -228,7 +189,7 @@ console.log('the one-time login code')
 
   // A code read out with spaces and in the wrong case still works, because a code
   // dictated over a call is typed like that.
-  const second = await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })
+  const second = await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })
   const spaced = second.data.code.toLowerCase().replace(/(.{5})/g, '$1 ')
   check('a code typed in pieces still works', (await jsonCall(env, '/api/redeem', { method: 'POST', body: { code: spaced } })).data.user?.username === 'bob')
 }
@@ -236,10 +197,10 @@ console.log('the one-time login code')
 console.log('a new code kills the old one')
 {
   const { env } = await setup()
-  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
+  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
 
-  const first = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })).data.code
-  const second = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })).data.code
+  const first = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })).data.code
+  const second = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })).data.code
   check('the two codes differ', first !== second)
 
   // The first was never used, but issuing a second one retired it.
@@ -251,22 +212,22 @@ console.log('a new code kills the old one')
 console.log('revoking a code')
 {
   const { env } = await setup()
-  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
-  const code = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })).data.code
+  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
+  const code = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })).data.code
 
-  check('revoking needs the passcode', (await jsonCall(env, `/api/admin/accounts/${id}/revoke-code`, { method: 'POST', passcode: '000000' })).response.status === 401)
-  check('revoking works', (await jsonCall(env, `/api/admin/accounts/${id}/revoke-code`, { method: 'POST', passcode: '258456' })).response.status === 200)
+  check('revoking needs the passcode', (await jsonCall(env, `/api/admin/accounts/${id}/revoke-code`, { method: 'POST', passcode: '000000' })).response.status === 429)
+  check('revoking works', (await jsonCall(env, `/api/admin/accounts/${id}/revoke-code`, { method: 'POST', passcode: CORRECT })).response.status === 200)
   check('and the code stops working', (await jsonCall(env, '/api/redeem', { method: 'POST', body: { code } })).response.status === 401)
 
-  const detail = await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: '258456' })
+  const detail = await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: CORRECT })
   check('the panel reports no live code', detail.data.account.loginCode.hasCode === false)
 }
 
 console.log('the redeemed session is a real one')
 {
   const { env } = await setup()
-  const id = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: '258456' })).data.accounts[0].id
-  const code = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })).data.code
+  const id = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: CORRECT })).data.accounts[0].id
+  const code = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })).data.code
 
   const redeemed = (await jsonCall(env, '/api/redeem', { method: 'POST', body: { code } })).data
   check('it is the player, not an admin', redeemed.user.username === 'bob')
@@ -287,22 +248,22 @@ console.log('the redeemed session is a real one')
 console.log('deleting an account')
 {
   const { env, alice } = await setup()
-  const aliceId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
-  const bobId = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: '258456' })).data.accounts[0].id
+  const aliceId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
+  const bobId = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: CORRECT })).data.accounts[0].id
 
   const run = (await jsonCall(env, '/api/runs', { method: 'POST', body: aRun(), token: alice.token })).data.run
   await jsonCall(env, '/api/submissions', { method: 'POST', token: alice.token, body: { runId: run.id, videoUrl: 'https://youtu.be/x', container: 'mp4' } })
 
-  check('deleting needs the passcode', (await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: '000000', body: { confirm: 'alice' } })).response.status === 401)
-  check('a delete with the wrong confirmation is refused', (await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'wrong' } })).response.status === 400)
-  check('and with no confirmation at all', (await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: '258456' })).response.status === 400)
+  check('deleting needs the passcode', (await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: '000000', body: { confirm: 'alice' } })).response.status === 429)
+  check('a delete with the wrong confirmation is refused', (await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: CORRECT, body: { confirm: 'wrong' } })).response.status === 400)
+  check('and with no confirmation at all', (await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: CORRECT })).response.status === 400)
 
-  const gone = await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'alice' } })
+  const gone = await jsonCall(env, `/api/admin/accounts/${aliceId}/delete`, { method: 'POST', passcode: CORRECT, body: { confirm: 'alice' } })
   check('the delete works', gone.response.status === 200, JSON.stringify(gone.data))
   check('and says who went', gone.data.deleted === 'alice')
 
-  check('the account is gone', (await jsonCall(env, `/api/admin/accounts/${aliceId}`, { passcode: '258456' })).response.status === 404)
-  check('bob is untouched', (await jsonCall(env, `/api/admin/accounts/${bobId}`, { passcode: '258456' })).data.account.username === 'bob')
+  check('the account is gone', (await jsonCall(env, `/api/admin/accounts/${aliceId}`, { passcode: CORRECT })).response.status === 404)
+  check('bob is untouched', (await jsonCall(env, `/api/admin/accounts/${bobId}`, { passcode: CORRECT })).data.account.username === 'bob')
   check('the deleted player cannot still sign in', (await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: 'a good password' } })).response.status === 401)
   check('their old session is dead', (await jsonCall(env, '/api/me', { token: alice.token })).data.user == null)
   check('their runs are gone from the leaderboard', (await jsonCall(env, '/api/leaderboard')).data.entries.length === 0)
@@ -311,10 +272,10 @@ console.log('deleting an account')
 console.log('deleting takes the login codes with it')
 {
   const { env } = await setup()
-  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
-  const code = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })).data.code
+  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
+  const code = (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })).data.code
 
-  await jsonCall(env, `/api/admin/accounts/${id}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'alice' } })
+  await jsonCall(env, `/api/admin/accounts/${id}/delete`, { method: 'POST', passcode: CORRECT, body: { confirm: 'alice' } })
   const after = await jsonCall(env, '/api/redeem', { method: 'POST', body: { code } })
   check('a code for a deleted account cannot be redeemed', after.response.status === 401, String(after.response.status))
 }
@@ -322,14 +283,14 @@ console.log('deleting takes the login codes with it')
 console.log('the audit log')
 {
   const { env } = await setup()
-  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
+  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
 
-  check('the log needs the passcode', (await jsonCall(env, '/api/admin/audit', { passcode: '000000' })).response.status === 401)
+  check('the log needs the passcode', (await jsonCall(env, '/api/admin/audit', { passcode: '000000' })).response.status === 429)
 
-  await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })
-  await jsonCall(env, `/api/admin/accounts/${id}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'alice' } })
+  await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })
+  await jsonCall(env, `/api/admin/accounts/${id}/delete`, { method: 'POST', passcode: CORRECT, body: { confirm: 'alice' } })
 
-  const log = await jsonCall(env, '/api/admin/audit', { passcode: '258456' })
+  const log = await jsonCall(env, '/api/admin/audit', { passcode: CORRECT })
   check('the log reads back', log.response.status === 200, JSON.stringify(log.data))
   const actions = (log.data.entries ?? []).map((entry) => entry.action)
   check('issuing a code is logged', actions.includes('login-code.issue'), JSON.stringify(actions))
@@ -343,7 +304,7 @@ console.log('the audit log')
 console.log('a players own data can be mirrored')
 {
   const { env, alice } = await setup()
-  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
+  const id = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
 
   check('uploading without a session is refused', (await jsonCall(env, '/api/player-data', { method: 'PUT', body: { history: '[]' } })).response.status === 401)
 
@@ -356,7 +317,7 @@ console.log('a players own data can be mirrored')
   check('the upload is accepted', saved.response.status === 200, JSON.stringify(saved.data))
   check('and it reports when it happened', Number.isFinite(saved.data.syncedAt))
 
-  const detail = await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: '258456' })
+  const detail = await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: CORRECT })
   check(
     'the panel can read it back',
     JSON.stringify(detail.data.account.playerData.history) === history,
@@ -367,20 +328,20 @@ console.log('a players own data can be mirrored')
 
   // A second upload replaces rather than duplicating, so the mirror is one row.
   await jsonCall(env, '/api/player-data', { method: 'PUT', token: alice.token, body: { history: '[]', settings: null } })
-  const again = await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: '258456' })
+  const again = await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: CORRECT })
   check('a second upload replaces it', JSON.stringify(again.data.account.playerData.history) === '[]', JSON.stringify(again.data.account.playerData))
 
   check('an oversized upload is refused', (await jsonCall(env, '/api/player-data', { method: 'PUT', token: alice.token, body: { history: 'x'.repeat(2 * 1024 * 1024) } })).response.status === 413)
 
   // A mirror is a copy, so deleting the account must take it with the account.
-  await jsonCall(env, `/api/admin/accounts/${id}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'alice' } })
-  check('deleting the account takes its mirrored data', (await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: '258456' })).response.status === 404)
+  await jsonCall(env, `/api/admin/accounts/${id}/delete`, { method: 'POST', passcode: CORRECT, body: { confirm: 'alice' } })
+  check('deleting the account takes its mirrored data', (await jsonCall(env, `/api/admin/accounts/${id}`, { passcode: CORRECT })).response.status === 404)
 }
 
 console.log('trashing a run, submitted or not')
 {
   const { env, alice, bob } = await setup()
-  const accountId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
+  const accountId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
 
   // Two runs: one that was sent for review and one that was never sent anywhere.
   // The second is the point -- a run only reaches an account by being saved
@@ -390,22 +351,22 @@ console.log('trashing a run, submitted or not')
   const unsubmitted = (await jsonCall(env, '/api/runs', { method: 'POST', token: alice.token, body: aRun({ runId: 'alice-2' }) })).data.run
   const bobsRun = (await jsonCall(env, '/api/runs', { method: 'POST', token: bob.token, body: aRun({ runId: 'bob-1' }) })).data.run
 
-  const before = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: '258456' })).data.account
+  const before = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: CORRECT })).data.account
   check('every run is listed, submitted or not', before.runs.length === 2, JSON.stringify(before.runs.map((r) => r.runId)))
   check('one has no submission', before.runs.some((r) => r.runId === 'alice-2' && r.submission === null), JSON.stringify(before.runs))
   check('nothing is trashed to begin with', before.runs.every((r) => r.trashed === false))
 
   check('trashing needs the passcode', (await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, { method: 'POST' })).response.status === 401)
-  check('a wrong passcode is refused', (await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, { method: 'POST', passcode: '000000' })).response.status === 401)
+  check('a wrong passcode is refused', (await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, { method: 'POST', passcode: '000000' })).response.status === 429)
 
   const trashed = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, {
     method: 'POST',
-    passcode: '258456',
+    passcode: CORRECT,
     body: { reason: 'not this account\'s run' },
   })
   check('trashing succeeds', trashed.response.status === 200 && trashed.data.trashed === true, JSON.stringify(trashed.data))
 
-  const after = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: '258456' })).data.account
+  const after = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: CORRECT })).data.account
   check('a trashed run is still on the account', after.runs.length === 2, JSON.stringify(after.runs.map((r) => r.runId)))
   check('and it is marked as trashed', after.runs.find((r) => r.id === unsubmitted.id)?.trashed === true, JSON.stringify(after.runs))
   check('the reason is kept for the log', after.runs.find((r) => r.id === unsubmitted.id)?.trashReason === "not this account's run", JSON.stringify(after.runs.find((r) => r.id === unsubmitted.id)))
@@ -416,7 +377,7 @@ console.log('trashing a run, submitted or not')
   // key is what stops it, and the second call just refreshes the reason.
   const twice = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/trash`, {
     method: 'POST',
-    passcode: '258456',
+    passcode: CORRECT,
     body: { reason: 'still not theirs' },
   })
   check('trashing twice is fine', twice.response.status === 200, JSON.stringify(twice.data))
@@ -429,31 +390,31 @@ console.log('trashing a run, submitted or not')
 
   // A run belonging to another account is not reachable through this one, so a
   // wrong id in the path cannot trash somebody else's run.
-  const crossAccount = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${bobsRun.id}/trash`, { method: 'POST', passcode: '258456' })
+  const crossAccount = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${bobsRun.id}/trash`, { method: 'POST', passcode: CORRECT })
   check("another account's run is not reachable here", crossAccount.response.status === 404, JSON.stringify(crossAccount.data))
   const bobStillFine = await env.DB.prepare('SELECT COUNT(*) AS n FROM trashed_runs WHERE run_id = ?').bind(bobsRun.id).first()
   check("and their run is not trashed", bobStillFine?.n === 0, JSON.stringify(bobStillFine))
 
-  const untrashed = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/untrash`, { method: 'POST', passcode: '258456' })
+  const untrashed = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/untrash`, { method: 'POST', passcode: CORRECT })
   check('un-trashing succeeds', untrashed.response.status === 200 && untrashed.data.trashed === false, JSON.stringify(untrashed.data))
-  const restored = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: '258456' })).data.account
+  const restored = (await jsonCall(env, `/api/admin/accounts/${accountId}`, { passcode: CORRECT })).data.account
   check('the run comes back', restored.runs.find((r) => r.id === unsubmitted.id)?.trashed === false, JSON.stringify(restored.runs))
   check('with its reason cleared', restored.runs.find((r) => r.id === unsubmitted.id)?.trashReason === null)
 
   // Un-trashing something that was never trashed is a no-op rather than an
   // error, so a double click cannot turn into a spurious error on screen.
-  const again = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/untrash`, { method: 'POST', passcode: '258456' })
+  const again = await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${unsubmitted.id}/untrash`, { method: 'POST', passcode: CORRECT })
   check('un-trashing an untrashed run is not an error', again.response.status === 200, JSON.stringify(again.data))
 
-  const audit = (await jsonCall(env, '/api/admin/audit', { passcode: '258456' })).data.entries
+  const audit = (await jsonCall(env, '/api/admin/audit', { passcode: CORRECT })).data.entries
   check('the trashing is in the log', audit.some((entry) => entry.action === 'run.trash' && entry.targetName === 'alice'), JSON.stringify(audit.map((e) => e.action)))
   check('the reason is in the log', audit.some((entry) => entry.action === 'run.trash' && String(entry.detail).includes('still not theirs')), JSON.stringify(audit))
   check('the un-trashing is in the log', audit.some((entry) => entry.action === 'run.untrash'), JSON.stringify(audit.map((e) => e.action)))
 
   // Deleting the account takes the markers with it, or the table would keep rows
   // pointing at runs that no longer exist.
-  await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${submitted.id}/trash`, { method: 'POST', passcode: '258456' })
-  await jsonCall(env, `/api/admin/accounts/${accountId}/delete`, { method: 'POST', passcode: '258456', body: { confirm: 'alice' } })
+  await jsonCall(env, `/api/admin/accounts/${accountId}/runs/${submitted.id}/trash`, { method: 'POST', passcode: CORRECT })
+  await jsonCall(env, `/api/admin/accounts/${accountId}/delete`, { method: 'POST', passcode: CORRECT, body: { confirm: 'alice' } })
   const orphans = await env.DB.prepare('SELECT COUNT(*) AS n FROM trashed_runs').first()
   check('deleting the account clears its trash markers', orphans?.n === 0, JSON.stringify(orphans))
 }
@@ -464,9 +425,9 @@ console.log('a login code works as a password')
   // code for; alice is reached through the admin search like any other moderator
   // would.
   const { env, bob } = await setup()
-  const aliceId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: '258456' })).data.accounts[0].id
+  const aliceId = (await jsonCall(env, '/api/admin/accounts?q=alice', { passcode: CORRECT })).data.accounts[0].id
 
-  const issue = async (id) => (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: '258456' })).data.code
+  const issue = async (id) => (await jsonCall(env, `/api/admin/accounts/${id}/login-code`, { method: 'POST', passcode: CORRECT })).data.code
   const aliceCode = await issue(aliceId)
   check('a code is issued', typeof aliceCode === 'string' && aliceCode.length === 15, aliceCode)
 
@@ -494,7 +455,7 @@ console.log('a login code works as a password')
   // A code for one account must not sign in as another, even when the caller
   // asks for the other account by name. Without this, a code pasted into the
   // wrong row would sign in as the code's real owner and say nothing.
-  const bobId = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: '258456' })).data.accounts[0].id
+  const bobId = (await jsonCall(env, '/api/admin/accounts?q=bob', { passcode: CORRECT })).data.accounts[0].id
   const bobCode = await issue(bobId)
   const mismatch = await jsonCall(env, '/api/login', { method: 'POST', body: { username: 'alice', password: bobCode } })
   check('a code cannot sign in as somebody else', mismatch.response.status === 401, JSON.stringify(mismatch.data))
@@ -530,7 +491,7 @@ console.log('a login code works as a password')
      rather than leaving a moderator to read it and type it back. Asserted here as
      the shape the panel builds, so it cannot quietly lose the parameter again. */
   const liz = (await jsonCall(env, '/api/register', { method: 'POST', body: { username: 'lt4717', password: 'a good password' } })).data
-  const lizCode = (await jsonCall(env, `/api/admin/accounts/${liz.user.id}/login-code`, { method: 'POST', passcode: '258456' })).data
+  const lizCode = (await jsonCall(env, `/api/admin/accounts/${liz.user.id}/login-code`, { method: 'POST', passcode: CORRECT })).data
   const misread = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'it4717', code: lizCode.code } })
   check('a misread one is still refused, so the name has to come from the link', misread.response.status === 401, JSON.stringify(misread.data))
   const byLink = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: new URLSearchParams('username=lt4717').get('username'), code: lizCode.code } })
@@ -544,14 +505,14 @@ console.log('a login code works as a password')
      A handle has one spelling now, so the folded form IS the stored form -- which
      is why "NeXus" below is stored as "nexus" and still redeems from "NEXUS". */
   const lizShouty = await jsonCall(env, '/api/register', { method: 'POST', body: { username: 'NeXus', password: 'a good password' } }).then((r) => r.data)
-  const nexusCode = (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}/login-code`, { method: 'POST', passcode: '258456' })).data
+  const nexusCode = (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}/login-code`, { method: 'POST', passcode: CORRECT })).data
   check(
     'the mixed-case handle is stored folded',
-    (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}`, { passcode: '258456' })).data.account.username === 'nexus',
-    (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}`, { passcode: '258456' })).data.account.username,
+    (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}`, { passcode: CORRECT })).data.account.username === 'nexus',
+    (await jsonCall(env, `/api/admin/accounts/${lizShouty.user.id}`, { passcode: CORRECT })).data.account.username,
   )
   const otherCase = await jsonCall(env, '/api/register', { method: 'POST', body: { username: 'Nexuz', password: 'a good password' } }).then((r) => r.data)
-  const otherCode = (await jsonCall(env, `/api/admin/accounts/${otherCase.user.id}/login-code`, { method: 'POST', passcode: '258456' })).data
+  const otherCode = (await jsonCall(env, `/api/admin/accounts/${otherCase.user.id}/login-code`, { method: 'POST', passcode: CORRECT })).data
   const stillWrong = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'Nexuz', code: nexusCode.code } })
   check('but a different name in any case is still refused', stillWrong.response.status === 401, JSON.stringify(stillWrong.data))
   const nexusAnyCase = await jsonCall(env, '/api/redeem', { method: 'POST', body: { username: 'NEXUS', code: nexusCode.code } })

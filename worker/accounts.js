@@ -459,8 +459,16 @@ export const handleAdminAccountRoutes = async ({ db, request, url, key, adminPas
 
   // Checked before anything is read, exactly as the submission queue does it, so
   // a wrong passcode cannot confirm an account exists.
-  if (!(await checkAdminPasscode(request, adminPasscode))) {
-    return { error: 'Wrong passcode', status: 401 }
+  const passcode = await checkAdminPasscode(request, adminPasscode, db)
+  if (!passcode.ok) {
+    // A lockout carries its own status and wording, so the escalating ladder is
+    // visible to whoever is typing rather than showing as a flat "Wrong passcode"
+    // over and over. retry_after_seconds is what the panel counts down from.
+    return {
+      error: passcode.message ?? 'Wrong passcode',
+      status: passcode.permanent ? 403 : passcode.locked ? 429 : 401,
+      retry_after_seconds: passcode.retryAfterSeconds ?? null,
+    }
   }
 
   const now = Date.now()

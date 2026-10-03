@@ -17,6 +17,7 @@
  */
 import process from 'node:process'
 import worker from './index.js'
+import { createTestDb } from './testDb.js'
 import { PROTOCOL_HEADER, PROTOCOL_VALUE } from './protocol.js'
 
 const BASE = 'https://worker.test'
@@ -34,22 +35,44 @@ const check = (name, condition, detail) => {
   }
 }
 
-/* A DB stand-in that fails loudly if anything reaches it. The gate must refuse
- * before the first query, so a test that trips this is a gate that ran too late --
- * which is the difference between refusing a request and merely answering it
- * differently. */
-const tripwireDb = {
-  prepare() {
-    throw new Error('The database was touched by a request the gate should have refused')
+/* A DB stand-in that fails loudly if a REFUSED request reaches the database.
+ *
+ * The version gate and the permanent ban both have to refuse before the first query,
+ * so a test that trips this is a gate that ran too late -- the difference between
+ * refusing a request and merely answering it differently.
+ *
+ * Used only by the tests that expect a refusal. A request that is *allowed* through
+ * legitimately reads the ban table, so those tests use a real in-memory database
+ * instead; asserting that a permitted request touches nothing would be asserting that
+ * the ban check does not exist.
+ *
+ * `db` has to be a property rather than a class instance: the Worker checks
+ * `env?.DB` for truthiness only, so anything would do, but an object keeps the
+ * tripwire's own fields away from the prototype chain it is proxying. */
+const tripwireDb = new Proxy(
+  {
+    prepare() {
+      throw new Error('The database was touched by a request a gate should have refused')
+    },
+    batch() {
+      throw new Error('The database was touched by a request a gate should have refused')
+    },
   },
-  batch() {
-    throw new Error('The database was touched by a request the gate should have refused')
+  {
+    get(target, prop) {
+      return prop in target ? target[prop] : undefined
+    },
   },
-}
+)
 
-const env = { DB: tripwireDb, ADMIN_PASSCODE: 'not-a-real-hash' }
+/* For the tests where the request is meant to be allowed through, and so legitimately
+ * reads the ban table. */
+const realEnv = () => ({ DB: createTestDb(), ADMIN_PASSCODE: 'test-only-admin-passcode' })
 
-const call = (path, { method = 'GET', protocol = PROTOCOL_VALUE, body } = {}) => {
+// The default env for the refusal tests: a database that throws if a gate is too slow.
+const bannedEnv = { DB: tripwireDb, ADMIN_PASSCODE: 'not-a-real-hash' }
+
+const call = (path, { method = 'GET', protocol = PROTOCOL_VALUE, body, env = bannedEnv } = {}) => {
   const headers = {}
   // Absent by default rather than set to null: a header present with no value and
   // a header missing entirely are different things to the Worker.
@@ -131,20 +154,23 @@ console.log('\n  an unknown protocol is a different failure')
 
 console.log('\n  admits the current build')
 {
-  const response = await call('/api/leaderboard')
-  // Reaching a route at all is the assertion: the tripwire DB throws on the first
-  // query, so anything other than a 500 proves the gate let the request past.
-  check('the gate does not block a current build', response.status !== 426 && response.status !== 409)
+  const response = await call('/api/leaderboard', { env: realEnv() })
+  // Past both gates: not 426 (archived) and not 409 (protocol mismatch). Reaching a
+  // route at all is the assertion, since the tripwire database throws on first use.
+  check(
+    'the gate does not block a current build',
+    response.status !== 426 && response.status !== 409 && response.status !== 403,
+    `got ${response.status}`,
+  )
 }
 
 console.log('\n  leaves the list endpoints open')
 {
   // An archived build has to keep reading the level lists or it cannot play a run
   // at all, which is the one thing the archive is for. Those routes are not gated.
-  const response = await call('/impossible-levels', { protocol: null })
+  const response = await call('/impossible-levels', { protocol: null, env: realEnv() })
   check('the list endpoints are not gated', response.status !== 426, `got ${response.status}`)
 }
-
 console.log('\n  the refusal is readable cross-origin')
 {
   // The Worker is a third-party origin from GitHub Pages, so the browser will not

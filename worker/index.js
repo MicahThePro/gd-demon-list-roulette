@@ -40,6 +40,7 @@ import {
   handlePlayerDataRoutes,
 } from './accounts.js'
 import { checkProtocol } from './protocol.js'
+import { isBanned, PERMANENT_BAN_MESSAGE } from './lockout.js'
 
 const IMPOSSIBLE_LEVELS_API = 'https://api.impossiblelevels.com/api/levels'
 const CHALLENGE_LIST_URL = 'https://challengelist.gd/challenges/'
@@ -378,6 +379,30 @@ export default {
         )
       }
 
+      /* The permanent ban, ahead of every route.
+       *
+       * The escalating ladder lives in worker/lockout.js and is enforced by
+       * checkAdminPasscode on the admin routes. This is the wider one: once an
+       * address is permanently banned it loses the WHOLE API, not just /admin. That
+       * covers signing in, submitting runs, reading and deleting runs, and
+       * redeeming a login code -- so a banned device cannot reach anything the site
+       * keeps about anybody.
+       *
+       * What this does not and cannot do is stop the static pages loading: those are
+       * served by GitHub Pages on a different origin, and no Worker has any say in
+       * whether a browser downloads a file from a CDN. See the ban notice on the
+       * client side, which is honest about that.
+       */
+      if (env?.DB) {
+        const ban = await isBanned(env.DB, request)
+        if (ban) {
+          return json(
+            { error: PERMANENT_BAN_MESSAGE, permanent_ban: true },
+            { status: 403, headers: { 'cache-control': 'no-store' } },
+          )
+        }
+      }
+
       // A missing binding means the D1 database has not been created or bound
       // yet. Saying so plainly beats a 500 with no explanation, and the list
       // endpoints keep working either way.
@@ -400,7 +425,13 @@ export default {
           adminPasscode: env.ADMIN_PASSCODE,
         })
         if (account) {
-          return json(account.error ? { error: account.error } : (account.body ?? {}), {
+          // `retry_after_seconds` travels with the refusal so the panel can count
+          // down from the number the server already had, rather than asking again.
+          return json(
+            account.error
+              ? { error: account.error, retry_after_seconds: account.retry_after_seconds ?? null }
+              : (account.body ?? {}),
+            {
             status: account.status ?? 200,
             headers: { 'cache-control': 'no-store' },
           })
@@ -418,7 +449,11 @@ export default {
         })
         if (submission) {
           const headers = { 'cache-control': 'no-store' }
-          return json(submission.error ? { error: submission.error } : (submission.body ?? {}), {
+          return json(
+            submission.error
+              ? { error: submission.error, retry_after_seconds: submission.retry_after_seconds ?? null }
+              : (submission.body ?? {}),
+            {
             status: submission.status ?? 200,
             headers,
           })

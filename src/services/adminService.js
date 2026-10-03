@@ -30,9 +30,61 @@ const parse = async (response) => {
     payload = null
   }
   if (!response.ok) {
-    throw new ApiError(payload?.error ?? `The server returned ${response.status}`, response.status)
+    const error = new ApiError(payload?.error ?? `The server returned ${response.status}`, response.status)
+    /* The lockout carries two things a plain error message cannot.
+     *
+     * `retry_after_seconds` is the number the server already had when it refused, so
+     * the panel can count down from it rather than asking again -- and so the countdown
+     * is measured from the server's clock, not a device clock that could be behind and
+     * unlock the box early.
+     *
+     * `permanent_ban` is a separate flag because a permanent ban is not just "wait
+     * longer": it is the point where this device loses the API entirely, and the panel
+     * records that locally so the notice survives a reload. The real authority is the
+     * server; this flag only lets the browser say so without a round trip. */
+    error.retryAfterSeconds = payload?.retry_after_seconds ?? null
+    error.permanentBan = payload?.permanent_ban === true
+    if (error.permanentBan) {
+      rememberLocalBan()
+    }
+    throw error
   }
   return payload
+}
+
+/**
+ * A note on this device, written when the server reports a permanent ban.
+ *
+ * It hides the site from the banned device and nothing else. It is worth being blunt
+ * about what that is worth: the site is served as static files from GitHub Pages, on a
+ * different origin from the Worker, and no Worker can decide whether a browser
+ * downloads a file from a CDN. So this stops the site at this device and can be cleared
+ * by clearing storage or opening a private window.
+ *
+ * What it cannot touch is the part that matters. The ban lives in the Worker's own
+ * database, so the device stays locked out of every API call -- signing in, submitting
+ * runs, the leaderboard, redeeming a code -- from any browser, forever, until somebody
+ * with the database lifts it. That part is not a speed bump. This flag is the courtesy
+ * half: it stops a banned device from sitting on a page that can no longer do anything.
+ */
+const BAN_KEY = 'demon-roulette-device-banned'
+
+export const isLocallyBanned = () => {
+  try {
+    return localStorage.getItem(BAN_KEY) !== null
+  } catch {
+    // No storage, so no record of a ban on this device. The server still refuses every
+    // call, which is the part that actually holds.
+    return false
+  }
+}
+
+const rememberLocalBan = () => {
+  try {
+    localStorage.setItem(BAN_KEY, new Date().toISOString())
+  } catch {
+    // Nothing to do. The server-side ban is unaffected by whether this succeeded.
+  }
 }
 
 const request = async (path, { method = 'GET', body, auth = false, passcode = null, signal } = {}) => {

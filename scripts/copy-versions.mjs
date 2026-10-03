@@ -16,6 +16,7 @@
 import { cpSync, existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { guardVersions } from './block-version-online.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const source = join(root, 'versions')
@@ -34,6 +35,11 @@ if (!versions.length) {
 
 // Replaced whole, so a version rebuilt or deleted upstream does not leave the
 // previous copy behind to be served forever.
+/* Before the copy, so the guarded index.html and its shim are what lands in
+   dist/. An old version is an archive and must not be able to reach the Worker --
+   see scripts/block-version-online.mjs. */
+guardVersions(source)
+
 rmSync(target, { recursive: true, force: true })
 cpSync(source, target, { recursive: true })
 

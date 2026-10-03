@@ -10,70 +10,19 @@
  */
 // The eslint config targets the browser, so the test file's own globals are
 // declared here rather than by loosening the config for every other file.
-import { DatabaseSync } from 'node:sqlite'
-import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import worker from './index.js'
+import { createTestDb } from './testDb.js'
 
 // Both migrations, because the leaderboard now reads the submissions table to
 // decide which runs have been vetted. Loading only the first would leave the
 // board querying a table that does not exist. The third is the trash table,
 // which every leaderboard and run-list query now filters through.
-const SCHEMA = [
-  './migrations/0001_init.sql',
-  './migrations/0002_submissions.sql',
-  './migrations/0004_trashed_runs.sql',
-  './migrations/0005_username_case.sql',
-  './migrations/0006_display_name_cooldown.sql',
-  './migrations/0007_username_lowercase.sql',
-]
-  .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
-  .join('\n')
-
-/* The slice of the D1 API the Worker uses: prepare/bind/first/all/run/batch.
-   `run` has to actually execute, since that is how every INSERT and DELETE in
-   the Worker reaches the database. */
-const createDb = () => {
-  const db = new DatabaseSync(':memory:')
-  db.exec(SCHEMA)
-
-  const prepared = (sql) => {
-    const statement = db.prepare(sql)
-    const execute = (values) => {
-      statement.run(...values)
-      return { success: true, meta: {} }
-    }
-
-    return {
-      bind: (...values) => ({
-        first: async () => statement.get(...values) ?? null,
-        all: async () => ({ results: statement.all(...values) }),
-        run: async () => execute(values),
-      }),
-      first: async () => statement.get() ?? null,
-      all: async () => ({ results: statement.all() }),
-      run: async () => execute([]),
-    }
-  }
-
-  return {
-    prepare: prepared,
-    batch: async (statements) => {
-      db.exec('BEGIN')
-      try {
-        for (const statement of statements) {
-          await statement.run()
-        }
-        db.exec('COMMIT')
-      } catch (error) {
-        db.exec('ROLLBACK')
-        throw error
-      }
-      return statements.map(() => ({ success: true }))
-    },
-  }
-}
-
+/* Every migration, applied in order, by the shared helper. It used to be a local list
+ * of migration filenames, edited by hand whenever a migration was added -- and missed,
+ * which left the suite running against a schema the production database does not have,
+ * passing against tables that were never created. */
+const createDb = () => createTestDb()
 const BASE = 'https://worker.test'
 let failures = 0
 

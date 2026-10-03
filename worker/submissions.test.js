@@ -8,64 +8,25 @@
  *
  * Run with: node --experimental-sqlite worker/submissions.test.js
  */
-import { DatabaseSync } from 'node:sqlite'
-import { readFileSync } from 'node:fs'
 import process from 'node:process'
 import worker from './index.js'
 import { createPasswordRecord } from './auth.js'
+import { createTestDb } from './testDb.js'
 
-const SCHEMA = [
-  './migrations/0001_init.sql',
-  './migrations/0002_submissions.sql',
-  './migrations/0004_trashed_runs.sql',
-  './migrations/0005_username_case.sql',
-  './migrations/0006_display_name_cooldown.sql',
-  './migrations/0007_username_lowercase.sql',
-]
-  .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
-  .join('\n')
+/* Every migration, applied in order, by the shared helper. It used to be a local list
+ * of migration filenames, edited by hand whenever a migration was added -- and missed,
+ * which left the suite running against a schema the production database does not have. */
+const createDb = () => createTestDb()
 
-const createDb = () => {
-  const db = new DatabaseSync(':memory:')
-  db.exec(SCHEMA)
-
-  const prepared = (sql) => {
-    const statement = db.prepare(sql)
-    const execute = (values) => {
-      statement.run(...values)
-      return { success: true, meta: {} }
-    }
-    return {
-      bind: (...values) => ({
-        first: async () => statement.get(...values) ?? null,
-        all: async () => ({ results: statement.all(...values) }),
-        run: async () => execute(values),
-      }),
-      first: async () => statement.get() ?? null,
-      all: async () => ({ results: statement.all() }),
-      run: async () => execute([]),
-    }
-  }
-
-  return {
-    prepare: prepared,
-    batch: async (statements) => {
-      db.exec('BEGIN')
-      try {
-        for (const statement of statements) {
-          await statement.run()
-        }
-        db.exec('COMMIT')
-      } catch (error) {
-        db.exec('ROLLBACK')
-        throw error
-      }
-      return statements.map(() => ({ success: true }))
-    },
-  }
-}
-
-const PASSCOD = (await createPasswordRecord('258456')).passwordHash
+/* A passcode that exists only to be typed into a test, deliberately not the one that
+ * was once committed to this repository and read out of a public file. The real
+ * passcode is a Worker secret and is never in this repository. */
+/* The plaintext behind PASSCOD. Named rather than repeated, so a call site that types
+ * the right passcode is visibly the same one the hash is of -- the bug this replaces
+ * was a correct hash paired with a literal typed by hand, which failed for a reason
+ * that had nothing to do with what was being tested. */
+const CORRECT = 'test-only-admin-passcode'
+const PASSCOD = (await createPasswordRecord(CORRECT)).passwordHash
 const makeEnv = (extra = {}) => ({ DB: createDb(), ADMIN_PASSCODE: PASSCOD, ...extra })
 
 const BASE = 'https://worker.test'
@@ -161,34 +122,44 @@ console.log('the admin passcode')
   const { env } = await setup()
 
   check('no passcode is refused', (await jsonCall(env, '/api/admin/submissions')).response.status === 401)
-  check('a wrong passcode is refused', (await jsonCall(env, '/api/admin/submissions', { passcode: '000000' })).response.status === 401)
+  check('a wrong passcode is refused', (await jsonCall(env, '/api/admin/submissions', { passcode: '000000' })).response.status === 429)
 
   const wrong = await jsonCall(env, '/api/admin/submissions', { passcode: '000000' })
   check('a wrong passcode says so plainly', /passcode/i.test(wrong.data?.error ?? ''), JSON.stringify(wrong.data))
 
-  const right = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
+  const right = await jsonCall(env, '/api/admin/submissions', { passcode: CORRECT })
   check('the right passcode gets in', right.response.status === 200, JSON.stringify(right.data))
   check('the queue reads as an array', Array.isArray(right.data?.submissions))
 
   // A wrong passcode must not be able to tell whether a submission exists.
   const probe = await jsonCall(env, '/api/admin/submissions/999', { passcode: '000000' })
-  check('a wrong passcode cannot confirm a submission exists', probe.response.status === 401)
+  check('a wrong passcode cannot confirm a submission exists', probe.response.status === 429)
 }
 
 console.log('the built-in passcode works with no setup')
+console.log('the admin passcode secret')
 {
-  // The owner's chosen passcode is hashed into the Worker, so a first deploy
-  // needs no secret step at all.
-  const env = { DB: createDb() }
+  /* There is no built-in passcode any more, and that is the point.
+   *
+   * It used to be a hash in worker/admin.js whose plaintext sat in a test fixture in
+   * this public repository, so anybody could read the passcode out of the source. A
+   * fallback secret in committed code is not a secret. The panel now refuses until a
+   * real Worker secret is set, and says so -- rather than reporting it as a wrong
+   * passcode, which would send the owner looking in the wrong place. */
+  const noSecret = { DB: createDb() }
+  const unset = await jsonCall(noSecret, '/api/admin/submissions', { passcode: CORRECT })
+  check('no secret set means no access', unset.response.status === 500, String(unset.response.status))
+  check(
+    'and it says the secret is unset rather than that the passcode is wrong',
+    /ADMIN_PASSCODE is not set/.test(unset.data?.error ?? ''),
+    JSON.stringify(unset.data),
+  )
+  check('and it does not echo the hash or the passcode', !/200000:/.test(unset.data?.error ?? ''))
 
-  const in1 = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
-  check('the built-in passcode works with no secret set', in1.response.status === 200, JSON.stringify(in1.data))
-  check('a wrong passcode is still refused', (await jsonCall(env, '/api/admin/submissions', { passcode: '258457' })).response.status === 401)
-
-  // A secret overrides it, so the passcode can be changed without a deploy.
-  const override = { ...env, ADMIN_PASSCODE: (await createPasswordRecord('a different code')).passwordHash }
-  check('a secret overrides the built-in one', (await jsonCall(override, '/api/admin/submissions', { passcode: 'a different code' })).response.status === 200)
-  check('and the built-in one stops working', (await jsonCall(override, '/api/admin/submissions', { passcode: '258456' })).response.status === 401)
+  // Set it and the panel works, with no code change at all.
+  const set = { ...noSecret, ADMIN_PASSCODE: (await createPasswordRecord('a different code')).passwordHash }
+  check('a secret opens the panel', (await jsonCall(set, '/api/admin/submissions', { passcode: 'a different code' })).response.status === 200)
+  check('and the wrong passcode is refused', (await jsonCall(set, '/api/admin/submissions', { passcode: CORRECT })).response.status === 429)
 }
 
 console.log('submitting a link')
@@ -250,20 +221,20 @@ console.log('a run can only be submitted once')
 
   // Rejected is not a retry. A run that was turned down stays turned down, so
   // the queue cannot be refilled with copies of something already refused.
-  const id = (await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })).data.submissions[0].id
-  await jsonCall(env, `/api/admin/submissions/${id}/reject`, { method: 'POST', body: { note: 'nope' }, passcode: '258456' })
+  const id = (await jsonCall(env, '/api/admin/submissions', { passcode: CORRECT })).data.submissions[0].id
+  await jsonCall(env, `/api/admin/submissions/${id}/reject`, { method: 'POST', body: { note: 'nope' }, passcode: CORRECT })
 
   const afterReject = await submit(env, runId, proof(), token)
   check('a rejected run cannot be sent again', afterReject.response.status === 409, String(afterReject.response.status))
   check('and it says it was turned down', /turned down/i.test(afterReject.data?.error ?? ''), JSON.stringify(afterReject.data))
 
-  await jsonCall(env, `/api/admin/submissions/${id}/approve`, { method: 'POST', body: { note: 'on reflection' }, passcode: '258456' })
+  await jsonCall(env, `/api/admin/submissions/${id}/approve`, { method: 'POST', body: { note: 'on reflection' }, passcode: CORRECT })
   const afterApprove = await submit(env, runId, proof(), token)
   check('an approved run cannot be sent again either', afterApprove.response.status === 409, String(afterApprove.response.status))
   check('and it says it is already on the board', /already on the global leaderboard/i.test(afterApprove.data?.error ?? ''), JSON.stringify(afterApprove.data))
 
   // One run, one row, however many times the request is repeated.
-  const queue = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
+  const queue = await jsonCall(env, '/api/admin/submissions', { passcode: CORRECT })
   check('the run is in the queue exactly once', queue.data.submissions.length === 1, String(queue.data.submissions.length))
 
   // A different run is unaffected: the rule is per run, not per player.
@@ -282,7 +253,7 @@ console.log('the leaderboard only holds approved runs')
   await submit(env, runId, proof(), token)
   check('a pending run is still off the board', (await board()).entries.length === 0)
 
-  const queue = await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })
+  const queue = await jsonCall(env, '/api/admin/submissions', { passcode: CORRECT })
   const submission = queue.data.submissions[0]
   check('the submission is in the queue', Boolean(submission), JSON.stringify(queue.data))
   check('the queue carries the player', submission.username === 'player')
@@ -291,17 +262,17 @@ console.log('the leaderboard only holds approved runs')
   check('the queue carries the round list to check against', Array.isArray(submission.rounds) && submission.rounds.length === 3, String(submission.rounds?.length))
   check('the queue carries the score', submission.score === 3, String(submission.score))
 
-  const pendingOnly = await jsonCall(env, '/api/admin/submissions?status=pending', { passcode: '258456' })
+  const pendingOnly = await jsonCall(env, '/api/admin/submissions?status=pending', { passcode: CORRECT })
   check('filtering by pending works', pendingOnly.data.submissions.length === 1)
 
-  await jsonCall(env, `/api/admin/submissions/${submission.id}/approve`, { method: 'POST', body: { note: 'watched it, looks right' }, passcode: '258456' })
+  await jsonCall(env, `/api/admin/submissions/${submission.id}/approve`, { method: 'POST', body: { note: 'watched it, looks right' }, passcode: CORRECT })
 
   const after = (await board())
   check('an approved run goes on the board', after.entries.length === 1, JSON.stringify(after.entries))
   check('and it is the right one', after.entries[0].displayName === 'player')
 
   // A moderator changing their mind has to take the run back off.
-  await jsonCall(env, `/api/admin/submissions/${submission.id}/reject`, { method: 'POST', body: { note: 'on reflection' }, passcode: '258456' })
+  await jsonCall(env, `/api/admin/submissions/${submission.id}/reject`, { method: 'POST', body: { note: 'on reflection' }, passcode: CORRECT })
   check('a rejected run comes off the board', (await board()).entries.length === 0)
 }
 
@@ -310,21 +281,21 @@ console.log('moderation actions')
   const { env, token, runId } = await setup()
   await submit(env, runId, proof(), token)
 
-  const id = (await jsonCall(env, '/api/admin/submissions', { passcode: '258456' })).data.submissions[0].id
+  const id = (await jsonCall(env, '/api/admin/submissions', { passcode: CORRECT })).data.submissions[0].id
 
   check('approving needs the passcode', (await jsonCall(env, `/api/admin/submissions/${id}/approve`, { method: 'POST', body: {} })).response.status === 401)
-  check('approving nothing is a 404', (await jsonCall(env, '/api/admin/submissions/9999/approve', { method: 'POST', body: {}, passcode: '258456' })).response.status === 404)
+  check('approving nothing is a 404', (await jsonCall(env, '/api/admin/submissions/9999/approve', { method: 'POST', body: {}, passcode: CORRECT })).response.status === 404)
 
-  const detail = await jsonCall(env, `/api/admin/submissions/${id}`, { passcode: '258456' })
+  const detail = await jsonCall(env, `/api/admin/submissions/${id}`, { passcode: CORRECT })
   check('one submission can be read on its own', detail.response.status === 200 && detail.data.submission.id === id, JSON.stringify(detail.data).slice(0, 80))
 
   // Deleting has to take the run with it, not just the submission.
   const fresh = await setup()
   await submit(fresh.env, fresh.runId, proof(), fresh.token)
-  const freshId = (await jsonCall(fresh.env, '/api/admin/submissions', { passcode: '258456' })).data.submissions[0].id
+  const freshId = (await jsonCall(fresh.env, '/api/admin/submissions', { passcode: CORRECT })).data.submissions[0].id
 
-  await jsonCall(fresh.env, `/api/admin/submissions/${freshId}/delete`, { method: 'POST', body: {}, passcode: '258456' })
-  const gone = await jsonCall(fresh.env, '/api/admin/submissions', { passcode: '258456' })
+  await jsonCall(fresh.env, `/api/admin/submissions/${freshId}/delete`, { method: 'POST', body: {}, passcode: CORRECT })
+  const gone = await jsonCall(fresh.env, '/api/admin/submissions', { passcode: CORRECT })
   check('deleting removes the submission', gone.data.submissions.length === 0, JSON.stringify(gone.data))
   check('deleting removes the run too', (await jsonCall(fresh.env, '/api/runs', { token: fresh.token })).data.runs.length === 0)
 }
@@ -354,10 +325,10 @@ console.log('nothing is stored and nothing is fetched')
   check('submitting works with no storage binding', noBucket.response.status === 201, JSON.stringify(noBucket.data))
 
   // The old video streaming route is gone rather than left failing.
-  const old = await jsonCall(env, `/api/admin/submissions/1/video`, { passcode: '258456' })
+  const old = await jsonCall(env, `/api/admin/submissions/1/video`, { passcode: CORRECT })
   check('the old video route no longer exists', old.response.status === 404, String(old.response.status))
 
-  const unknown = await jsonCall(env, '/api/submissions/1/video', { passcode: '258456' })
+  const unknown = await jsonCall(env, '/api/submissions/1/video', { passcode: CORRECT })
   check('and neither does a public one', unknown.response.status === 404, String(unknown.response.status))
 }
 

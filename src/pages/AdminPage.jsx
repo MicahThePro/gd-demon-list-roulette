@@ -4,6 +4,7 @@ import { censorText } from '../utils/censor'
 import { adminDecide, fetchAdminSubmissions } from '../services/submissionService'
 import { PLAYABLE, getHostLabel } from '../utils/videoFile'
 import AccountsTab from '../components/AccountsTab'
+import { formatWait, useCountdown } from '../hooks/useCountdown'
 
 const FILTERS = [
   { id: 'pending', label: 'Waiting' },
@@ -71,6 +72,13 @@ const formatWhen = (timestamp) =>
 export default function AdminPage({ onExit }) {
   const [error, setError] = useState('')
   const [enteredPasscode, setEnteredPasscode] = useState('')
+  // Seconds left on a lockout, as the server reported it when it refused. Null when
+  // the last attempt was not locked out. Kept beside the message rather than folded
+  // into it so the countdown can tick without rewriting the text every second.
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState(null)
+  // Ticks down from whatever the last refusal reported, and is null whenever the last
+  // attempt was not locked out at all.
+  const waitingOn = useCountdown(retryAfterSeconds)
   const [filter, setFilter] = useState('pending')
   const [submissions, setSubmissions] = useState([])
   const [selected, setSelected] = useState(null)
@@ -138,7 +146,17 @@ export default function AdminPage({ onExit }) {
       setIsUnlocked(true)
       setSelected(list[0] ?? null)
     } catch (caught) {
-      setError(caught?.status === 401 ? 'Wrong passcode.' : (caught?.message ?? 'Could not load the queue.'))
+      // A lockout reports the server's own wording and how long is left, rather than
+      // the flat "Wrong passcode." that used to sit there. The escalating ladder
+      // means the two are very different situations: a wrong guess costs a minute,
+      // while a permanent block cannot be waited out at all, and showing the same
+      // message for both left somebody thinking they had typed it wrong.
+      setRetryAfterSeconds(caught?.retryAfterSeconds ?? null)
+      setError(
+        caught?.status === 401
+          ? 'Wrong passcode.'
+          : (caught?.message ?? 'Could not load the queue.'),
+      )
     } finally {
       setIsLoading(false)
     }
@@ -209,7 +227,21 @@ export default function AdminPage({ onExit }) {
               />
               Keep me signed in on this browser
             </label>
-            {error && <div className="validation-message">{error}</div>}
+            {error && (
+              <div className="validation-message">
+                {error}
+                {/* The wait is shown counting down rather than as a fixed sentence,
+                    because the escalating ladder can end at half an hour and somebody
+                    needs to know whether it is worth trying again yet. */}
+                {waitingOn !== null && (
+                  <div>
+                    {waitingOn > 0
+                      ? `You can try again in ${formatWait(waitingOn)}.`
+                      : 'You can try again now.'}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="action-row">
               <button type="submit" className="primary-button" disabled={isLoading}>
                 {isLoading ? 'Checking...' : 'Unlock'}
