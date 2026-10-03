@@ -213,9 +213,20 @@ export const fetchMyEntries = async (signal) => {
   }
 }
 
-export const searchUsers = async (query = '') => {
-  const result = await request(`/api/users/search?q=${encodeURIComponent(query.trim())}`, { signal: undefined })
-  return result.users ?? []
+export const searchUsers = async (query = '', page = 1, limit = 12) => {
+  const cleanQuery = String(query ?? '').trim()
+  const safePage = Number.isFinite(Number(page)) ? Math.max(1, Number(page)) : 1
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Number(limit)) : 12
+  const result = await request(
+    `/api/users/search?q=${encodeURIComponent(cleanQuery)}&page=${safePage}&limit=${safeLimit}`,
+    { signal: undefined },
+  )
+  return {
+    users: result.users ?? [],
+    page: Number(result.page ?? safePage),
+    total: Number(result.total ?? 0),
+    totalPages: Number(result.totalPages ?? 1),
+  }
 }
 
 export const fetchUserProfile = async (username, signal) => {

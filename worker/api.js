@@ -1224,7 +1224,21 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
   }
 
   if (request.method === 'GET' && route === 'users/search') {
-    const query = normalizeUsername(url.searchParams.get('q') ?? '') || 'geometricalmike'
+    const rawQuery = url.searchParams.get('q') ?? ''
+    const query = normalizeUsername(rawQuery) || 'geometricalmike'
+    const page = clamp(asInteger(url.searchParams.get('page')) ?? 1, 1, 1000)
+    const limit = clamp(asInteger(url.searchParams.get('limit')) ?? 12, 1, 100)
+    const offset = (page - 1) * limit
+
+    const matching = await db
+      .prepare(
+        `SELECT COUNT(*) AS total
+           FROM users u
+          WHERE u.username_lower LIKE ? OR u.username_lower LIKE ?`,
+      )
+      .bind(`${query}%`, `%${query}%`)
+      .first()
+
     const rows = await db
       .prepare(
         `SELECT u.id, u.username, u.display_name,
@@ -1233,10 +1247,13 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
            FROM users u
           WHERE u.username_lower LIKE ? OR u.username_lower LIKE ?
           ORDER BY CASE WHEN u.username_lower LIKE ? THEN 0 ELSE 1 END, u.username_lower ASC
-          LIMIT 20`,
+          LIMIT ? OFFSET ?`,
       )
-      .bind(`${query}%`, `%${query}%`, `${query}%`)
+      .bind(`${query}%`, `%${query}%`, `${query}%`, limit, offset)
       .all()
+
+    const total = Number(matching?.total ?? 0)
+    const totalPages = Math.max(1, Math.ceil(total / limit))
 
     return {
       status: 200,
@@ -1248,6 +1265,9 @@ export const handleAccountRoutes = async ({ db, request, url, key }) => {
           followerCount: Number(row.follower_count ?? 0),
           followingCount: Number(row.following_count ?? 0),
         })),
+        page,
+        total,
+        totalPages,
       },
     }
   }

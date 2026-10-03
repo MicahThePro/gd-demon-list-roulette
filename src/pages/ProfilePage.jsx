@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchUserProfile, followUser, unfollowUser } from '../services/apiService'
+import { fetchUserProfile, followUser, searchUsers, unfollowUser } from '../services/apiService'
+
+const PAGE_SIZE = 12
 
 const formatWhen = (value) => {
   if (!value) return 'Recently'
@@ -14,6 +16,10 @@ export default function ProfilePage({ username, viewer, onOpenProfile, onBack })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [query, setQuery] = useState(username || 'geometricalmike')
+  const [searchResults, setSearchResults] = useState([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalUsers, setTotalUsers] = useState(0)
 
   useEffect(() => {
     setQuery(username || 'geometricalmike')
@@ -29,6 +35,32 @@ export default function ProfilePage({ username, viewer, onOpenProfile, onBack })
       setProfile(null)
     }
   }
+
+  const loadSearch = async (nextQuery = query, nextPage = page) => {
+    const trimmed = String(nextQuery ?? '').trim()
+    const searchText = trimmed || 'geometricalmike'
+    try {
+      const result = await searchUsers(searchText, nextPage, PAGE_SIZE)
+      setSearchResults(result.users ?? [])
+      setTotalPages(Math.max(1, Number(result.totalPages ?? 1)))
+      setTotalUsers(Number(result.total ?? 0))
+    } catch (caught) {
+      setSearchResults([])
+      setTotalPages(1)
+      setTotalUsers(0)
+      setError(caught?.message ?? 'Could not search for that user.')
+    }
+  }
+
+  useEffect(() => {
+    if (!query || query.trim() === '') {
+      setPage(1)
+      loadSearch('geometricalmike', 1)
+      return
+    }
+
+    loadSearch(query, page)
+  }, [query, page])
 
   useEffect(() => {
     loadProfile(username || 'geometricalmike')
@@ -59,6 +91,15 @@ export default function ProfilePage({ username, viewer, onOpenProfile, onBack })
   const handleSearch = async (event) => {
     event.preventDefault()
     const next = query.trim() || 'geometricalmike'
+    setPage(1)
+    await loadProfile(next)
+    onOpenProfile?.(next)
+  }
+
+  const handleUserCardClick = async (name) => {
+    const next = String(name ?? '').trim() || 'geometricalmike'
+    setQuery(next)
+    setPage(1)
     await loadProfile(next)
     onOpenProfile?.(next)
   }
@@ -81,20 +122,60 @@ export default function ProfilePage({ username, viewer, onOpenProfile, onBack })
             Search users
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setPage(1)
+              }}
               onBlur={() => {
                 const next = query.trim() || 'geometricalmike'
                 if (next !== query) setQuery(next)
               }}
-              placeholder="@geometricalmike"
+              placeholder="Type a letter or username"
             />
           </label>
           <div className="action-row">
-            <button type="submit" className="primary-button">View profile</button>
+            <button type="submit" className="primary-button">Open profile</button>
           </div>
         </form>
 
         {error && <div className="validation-message">{error}</div>}
+
+        {searchResults.length > 0 && (
+          <div className="user-results-wrap">
+            <div className="user-grid">
+              {searchResults.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  className="user-card"
+                  onClick={() => handleUserCardClick(user.username)}
+                >
+                  <span className="user-card-avatar">@</span>
+                  <strong>{user.displayName || user.username}</strong>
+                  <small>@{user.username}</small>
+                  <span>{user.followerCount} followers</span>
+                </button>
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="pagination" aria-label="User search pages">
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    className={num === page ? 'page-button page-button-active' : 'page-button'}
+                    onClick={() => setPage(num)}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="settings-note">{totalUsers} matching users · page {page} of {totalPages}</p>
+          </div>
+        )}
 
         {profile?.user && (
           <div className="profile-card">
