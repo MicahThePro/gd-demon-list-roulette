@@ -1,218 +1,75 @@
-html, body, #root {
+html, body {
   margin: 0;
   padding: 0;
-  width: 100%;
-  min-height: 100vh;
-  background: #ffffff !important;
-  color: #111111 !important;
-  font-family: Arial, Helvetica, sans-serif !important;
-  font-size: 22px;
-  line-height: 1.45;
-  text-rendering: optimizeLegibility;
+  background: #ffffff;
+  color: #111111;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 24px;
+  line-height: 1.5;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
 * {
-  box-sizing: border-box !important;
-  background: transparent !important;
-  background-image: none !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  filter: none !important;
-  backdrop-filter: none !important;
+  box-sizing: border-box;
 }
 
 body {
-  overflow-x: hidden;
+  min-height: 100vh;
 }
 
-#root {
-  display: block;
-}
-
-main,
-.app-shell,
-.page-shell,
-.panel,
-.leaderboard,
-.board-body,
-.result-form,
-.settings-dialog-body,
-.modal-card,
-.admin-body,
-.account-panel,
-.results-pane,
-.results-screen,
-.run-header,
-.result-box,
-.run-card,
-.list-panel,
-.row,
-.setup-form,
-.account-form,
-.status-actions,
-.action-row,
-.settings-row,
-.modal-actions,
-.admin-actions,
-.submit-proof,
-.settings-field,
-.submit-field,
-.host-list,
-.toggle-row {
-  display: block;
-  width: 100%;
-  max-width: none;
-  margin: 0 0 1rem 0 !important;
-  padding: 0 !important;
-  background: #ffffff !important;
-  color: #111111 !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}
-
-main {
-  padding: 0.6rem;
-}
-
-button,
-input,
-select,
-textarea,
-option,
-label,
-.submit-field,
-.settings-field,
-.field,
-.account-form input,
-.account-form button,
-.setup-form select,
-.admin-search input,
-.result-form input,
-.submit-picker input[type='file']::file-selector-button {
-  font: inherit !important;
-  font-size: 1rem !important;
-  line-height: 1.35 !important;
-  color: #111111 !important;
-}
-
-button,
-input,
-select,
-textarea {
-  width: 100%;
-  min-height: 2.8rem;
-  padding: 0.7rem 0.8rem !important;
-  margin: 0.35rem 0 !important;
-  border: 2px solid #111111 !important;
-  background: #ffffff !important;
-  border-radius: 0 !important;
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  outline: none !important;
-}
-
-button,
-.primary-button,
-.secondary-button,
-.danger-button,
-.action-row button,
-.settings-row button,
-.admin-actions button,
-.modal-actions button,
-.status-actions button {
-  width: auto !important;
-  background: #111111 !important;
-  color: #ffffff !important;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-button[disabled],
-.primary-button:disabled,
-.secondary-button:disabled,
-.danger-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: #666666 !important;
-}
-
-a,
-.lb-link,
-.link,
-.player-name,
-.account-link {
-  color: #111111 !important;
-  text-decoration: underline !important;
-}
-
-p,
-li,
-span,
-div,
-td,
-th,
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-small,
-.muted,
-.settings-hint,
-.status-message,
-.validation-message,
-.export-status {
-  color: #111111 !important;
-}
-
-img,
-svg,
-video {
-  display: block;
+.kindle-page {
   max-width: 100%;
-  height: auto;
+  padding: 1rem 1rem 2rem;
 }
 
-table,
-thead,
-tbody,
-tr,
-td,
-th {
-  width: 100%;
-  border-collapse: collapse;
-  border-spacing: 0;
+.eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
 }
 
-th,
-td {
-  padding: 0.45rem 0.35rem;
-  border: 1px solid #111111;
-  text-align: left;
-  vertical-align: top;
-  background: #ffffff;
+h1 {
+  margin: 0 0 1rem;
+  font-size: 2rem;
+  line-height: 1.1;
 }
 
-[hidden],
-.hidden {
-  display: none !important;
+h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.4rem;
 }
 
-@media (max-width: 900px) {
-  html, body, #root {
+p, li {
+  margin: 0 0 0.8rem;
+}
+
+ol {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+a {
+  color: #111111;
+  text-decoration: underline;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  html, body {
     font-size: 20px;
   }
 
-  main {
-    padding: 0.5rem;
+  .kindle-page {
+    padding: 0.75rem;
   }
 }
