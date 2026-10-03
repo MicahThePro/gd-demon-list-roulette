@@ -433,7 +433,7 @@ export default function RoulettePage({ run, onSuccess, onSkip, onGiveUp, onQuit,
               <button
                 className="danger-button"
                 type="button"
-                onClick={onQuit}
+                onClick={() => onQuit()}
               >
                 Yes, quit run
               </button>

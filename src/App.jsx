@@ -861,7 +861,10 @@ function App() {
       />
       <header className="topbar">
         <div className="brand-wrap">
-          <span className="brand-mark">DLR</span>
+          <span className="brand-mark" aria-label="GDLR">
+            <span>GD</span>
+            <span>LR</span>
+          </span>
           <div>
             <strong>
               Made by{' '}

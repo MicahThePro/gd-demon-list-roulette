@@ -50,16 +50,25 @@
 
 .brand-mark {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   width: 48px;
   height: 48px;
   border-radius: 16px;
   background: linear-gradient(135deg, #34d399 0%, #22d3ee 28%, #8b5cf6 64%, #ec4899 100%);
   color: white;
+  font-size: 17px;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
+  line-height: 0.95;
   box-shadow: 0 14px 28px rgba(34, 211, 238, 0.32);
+}
+
+.brand-mark span {
+  display: block;
+  padding-left: 0.1em;
 }
 
 .brand-wrap strong,
