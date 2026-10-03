@@ -9,6 +9,7 @@
  */
 
 import { ApiError, getStoredToken, saveToken } from './apiService'
+import { protocolHeaders } from './protocol.js'
 
 const API_URL = 'https://demon-roulette-list-proxy.micah-nordlund.workers.dev'
 // Marks this browser as previewing another account, so the banner survives a
@@ -35,7 +36,8 @@ const parse = async (response) => {
 }
 
 const request = async (path, { method = 'GET', body, auth = false, passcode = null, signal } = {}) => {
-  const headers = {}
+  // The protocol header is what the Worker gates on. See ./protocol.js.
+  const headers = protocolHeaders()
   if (body !== undefined) {
     headers['content-type'] = 'application/json'
   }

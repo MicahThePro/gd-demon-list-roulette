@@ -39,6 +39,7 @@ import {
   handleLoginCodeRoutes,
   handlePlayerDataRoutes,
 } from './accounts.js'
+import { checkProtocol } from './protocol.js'
 
 const IMPOSSIBLE_LEVELS_API = 'https://api.impossiblelevels.com/api/levels'
 const CHALLENGE_LIST_URL = 'https://challengelist.gd/challenges/'
@@ -69,6 +70,15 @@ const CORS_HEADERS = {
   'access-control-max-age': '86400',
 }
 
+// The gate's own header has to be allowed through the preflight, or no request
+// carrying it would ever reach the Worker. Listed here and nowhere else.
+const PROTOCOL_ALLOW_HEADER = 'x-dlr-protocol'
+
+const CORS_WITH_PROTOCOL = {
+  ...CORS_HEADERS,
+  'access-control-allow-headers': `${CORS_HEADERS['access-control-allow-headers']}, ${PROTOCOL_ALLOW_HEADER}`,
+}
+
 const json = (data, init = {}) => {
   const { headers, ...rest } = init
   return new Response(JSON.stringify(data), {
@@ -76,7 +86,11 @@ const json = (data, init = {}) => {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'public, max-age=900',
-      ...CORS_HEADERS,
+      // With the gate's header, not the bare CORS set: the version refusal is
+      // itself a CORS response the browser has to be allowed to read, otherwise
+      // an archived build sees an opaque network failure instead of being told
+      // the server refused it.
+      ...CORS_WITH_PROTOCOL,
       // Caller-supplied headers come last so they win; spreading them first
       // would silently drop the per-route cache-control.
       ...headers,
@@ -337,13 +351,33 @@ const SESSION_COOKIE = (token, maxAgeSeconds) =>
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS })
+      return new Response(null, { status: 204, headers: CORS_WITH_PROTOCOL })
     }
 
     const url = new URL(request.url)
     const key = url.pathname.replace(/^\/+/, '').replace(/\.json$/, '')
 
     if (key === 'api' || key.startsWith('api/')) {
+      /* The version gate, before anything else touches the database.
+       *
+       * An archived build under versions/ is still a working site and used to be
+       * able to sign in and submit from here, scoring runs with rules that no
+       * longer exist. Those builds are blocked in the browser too, but that guard
+       * is only a speed bump -- devtools undoes it. This is the real rule: a
+       * request without the current protocol header is refused before a route
+       * runs, and refusing costs nothing because no row is written either way.
+       *
+       * Only /api/* is gated. The list endpoints above stay open to every build,
+       * because reading the level lists is what an archived version needs in
+       * order to still be playable. */
+      const protocol = checkProtocol(request)
+      if (!protocol.ok) {
+        return json(
+          { error: protocol.error },
+          { status: protocol.status, headers: { 'cache-control': 'no-store' } },
+        )
+      }
+
       // A missing binding means the D1 database has not been created or bound
       // yet. Saying so plainly beats a 500 with no explanation, and the list
       // endpoints keep working either way.

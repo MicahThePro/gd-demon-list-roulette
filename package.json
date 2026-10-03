@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
-    "worker:test": "node --experimental-sqlite worker/auth.test.js && node --experimental-sqlite worker/api.test.js && node --experimental-sqlite worker/submissions.test.js && node --experimental-sqlite worker/accounts.test.js && node src/services/sourceNames.test.js && node src/utils/codes.test.js",
+    "worker:test": "node --experimental-sqlite worker/auth.test.js && node --experimental-sqlite worker/protocol.test.js && node --experimental-sqlite worker/api.test.js && node --experimental-sqlite worker/submissions.test.js && node --experimental-sqlite worker/accounts.test.js && node src/services/sourceNames.test.js && node src/utils/codes.test.js",
     "test:render": "node scripts/render-test.mjs",
     "test:services": "node scripts/service-test.mjs /src/services/adminService.test.js /src/hooks/boardDeletion.test.js",
     "test": "npm run worker:test && npm run test:services && npm run test:render",
@@ -18,7 +18,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/copy-versions.mjs && gh-pages -d dist",
-    "versions:build": "node scripts/build-versions.mjs"
+    "versions:build": "node scripts/build-versions.mjs",
+    "versions:block-online": "node scripts/block-version-online.mjs",
+    "versions:block-online:check": "node scripts/block-version-online.mjs --check"
   },
   "dependencies": {
     "react": "^19.2.8",

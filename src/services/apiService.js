@@ -1,4 +1,5 @@
 import { LIST_SOURCES } from './listService.js'
+import { protocolHeaders } from './protocol.js'
 
 /**
  * The client half of the Worker's accounts and global leaderboard API.
@@ -71,7 +72,7 @@ export const saveToken = (token) => {
 export const getStoredToken = readToken
 
 const request = async (path, { method = 'GET', body, auth = false, signal } = {}) => {
-  const headers = {}
+  const headers = protocolHeaders()
   if (body !== undefined) {
     headers['content-type'] = 'application/json'
   }

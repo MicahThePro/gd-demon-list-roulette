@@ -8,6 +8,8 @@
  * there is no window where an unvouched-for score is on the board.
  */
 
+import { protocolHeaders } from './protocol.js'
+
 const API_URL = 'https://demon-roulette-list-proxy.micah-nordlund.workers.dev'
 const TOKEN_KEY = 'demon-roulette-session'
 
@@ -30,7 +32,8 @@ const readToken = () => {
 /** Builds the headers for a call. `passcode` is only ever sent to the admin
  * routes, and only from the admin page, which is the only place that has it. */
 const headersFor = ({ auth = false, passcode = null, json = false } = {}) => {
-  const headers = {}
+  // The protocol header is what the Worker gates on. See ./protocol.js.
+  const headers = protocolHeaders()
   if (json) {
     headers['content-type'] = 'application/json'
   }
